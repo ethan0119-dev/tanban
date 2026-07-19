@@ -21,6 +21,14 @@ export type OrderStatus =
   | 'REFUNDED'
   | 'PAYMENT_EXCEPTION';
 
+/**
+ * 订单所属经营域。店内域可以继续通过 fulfillmentType 区分桌边堂食和到店自取，
+ * 外卖域则承载配送地址、骑手等后续能力。
+ */
+export type OrderBusinessType = 'DINE_IN' | 'DELIVERY';
+export type OrderType = 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
+export type PrintBusinessType = OrderType;
+
 export interface OrderItem {
   id?: Id;
   productName: string;
@@ -46,7 +54,13 @@ export interface Order {
   paidAmount?: number;
   refundAmount?: number;
   paymentMethod?: string;
-  fulfillmentType?: 'PICKUP' | 'DINE_IN';
+  businessType?: OrderBusinessType;
+  orderType?: OrderType;
+  fulfillmentType?: 'PICKUP' | 'TAKEOUT' | 'DINE_IN' | 'DELIVERY';
+  tableCodeId?: Id;
+  tableNo?: string;
+  tableName?: string;
+  tableAreaName?: string;
   customerName?: string;
   customerPhone?: string;
   remark?: string;
@@ -54,6 +68,64 @@ export interface Order {
   paidAt?: string;
   items: OrderItem[];
   printCount?: number;
+}
+
+export interface TableCode {
+  id: Id;
+  areaId: Id;
+  areaName: string;
+  tableNo: string;
+  tableName: string;
+  seats: number;
+  status: 'ACTIVE' | 'DISABLED';
+  publicId?: string;
+  remark?: string;
+  sortOrder?: number;
+  /** 后端生成的、不暴露租户主键的稳定扫码参数。 */
+  scene: string;
+  miniappPath: string;
+  qrCodeUrl?: string;
+  orderCount?: number;
+  lastScannedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TableArea {
+  id: Id;
+  name: string;
+  sortOrder: number;
+  status: 'ACTIVE' | 'DISABLED';
+}
+
+export interface PrintTemplateSection {
+  id?: Id;
+  name: string;
+  enabled: boolean;
+  triggerEvent: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
+  copies: number;
+  templateText: string;
+  updatedAt?: string;
+}
+
+export interface BusinessPrintTemplate {
+  id?: Id;
+  businessType: PrintBusinessType;
+  receipt: PrintTemplateSection;
+  label: PrintTemplateSection;
+}
+
+export interface PrintTemplateRecord {
+  id: Id;
+  businessType: PrintBusinessType;
+  templateType: 'RECEIPT' | 'LABEL';
+  name: string;
+  content: string;
+  triggerEvent: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
+  copies: number;
+  enabled?: boolean;
+  status: 'ACTIVE' | 'DISABLED';
+  updatedAt?: string;
 }
 
 export interface Category {
@@ -131,6 +203,7 @@ export interface Printer {
   lastSeenAt?: string;
   paperWidth?: number;
   printTrigger?: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
+  outputType?: 'RECEIPT' | 'LABEL';
   templateText?: string;
 }
 

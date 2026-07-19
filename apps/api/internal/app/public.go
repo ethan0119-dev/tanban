@@ -15,6 +15,7 @@ import (
 )
 
 func (s *Server) publicRoutes(r chi.Router) {
+	r.Get("/table-codes/{code}", s.publicResolveTableCode)
 	r.Get("/stores/{storeCode}", s.publicStore)
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
 	r.Post("/stores/{storeCode}/orders", s.publicCreateOrder)
@@ -129,23 +130,41 @@ func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, er
 	return store, err
 }
 
+type publicOrderItemInput struct {
+	ProductID         int64                   `json:"productId"`
+	SKUID             int64                   `json:"skuId"`
+	LegacySKU         int64                   `json:"sku_id"`
+	Quantity          int                     `json:"quantity"`
+	OptionValueIDs    []int64                 `json:"optionValueIds"`
+	AttributeValueIDs []int64                 `json:"attributeValueIds"`
+	Modifiers         []selectedModifierInput `json:"modifiers"`
+	ItemRemark        string                  `json:"itemRemark"`
+}
+
 type publicOrderInput struct {
-	OpenID        string `json:"openid"`
-	CustomerKey   string `json:"customerKey"`
-	CustomerName  string `json:"customer_name"`
-	CustomerPhone string `json:"customer_phone"`
-	Fulfillment   string `json:"fulfillmentType"`
-	Remark        string `json:"remark"`
-	Items         []struct {
-		ProductID         int64                   `json:"productId"`
-		SKUID             int64                   `json:"skuId"`
-		LegacySKU         int64                   `json:"sku_id"`
-		Quantity          int                     `json:"quantity"`
-		OptionValueIDs    []int64                 `json:"optionValueIds"`
-		AttributeValueIDs []int64                 `json:"attributeValueIds"`
-		Modifiers         []selectedModifierInput `json:"modifiers"`
-		ItemRemark        string                  `json:"itemRemark"`
-	} `json:"items"`
+	OpenID        string                 `json:"openid"`
+	CustomerKey   string                 `json:"customerKey"`
+	CustomerName  string                 `json:"customer_name"`
+	CustomerPhone string                 `json:"customer_phone"`
+	Fulfillment   string                 `json:"fulfillmentType"`
+	Remark        string                 `json:"remark"`
+	Items         []publicOrderItemInput `json:"items"`
+	OrderType     string                 `json:"orderType"`
+	OrderScene    string                 `json:"order_scene"`
+	TablePublicID string                 `json:"table_public_id"`
+	TableScene    string                 `json:"tableScene"`
+}
+
+func legacyPublicOrderFingerprint(input publicOrderInput) string {
+	return requestFingerprint(struct {
+		OpenID        string                 `json:"openid"`
+		CustomerKey   string                 `json:"customerKey"`
+		CustomerName  string                 `json:"customer_name"`
+		CustomerPhone string                 `json:"customer_phone"`
+		Fulfillment   string                 `json:"fulfillmentType"`
+		Remark        string                 `json:"remark"`
+		Items         []publicOrderItemInput `json:"items"`
+	}{input.OpenID, input.CustomerKey, input.CustomerName, input.CustomerPhone, input.Fulfillment, input.Remark, input.Items})
 }
 
 func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -183,12 +202,30 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "between 1 and 100 items are required")
 		return
 	}
-	if input.Fulfillment != "" && input.Fulfillment != "PICKUP" && input.Fulfillment != "DINE_IN" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "fulfillmentType must be PICKUP or DINE_IN")
+	orderType, typeErr := normalizeOrderType(input.OrderType, input.OrderScene, input.Fulfillment)
+	if typeErr != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", typeErr.Error())
 		return
 	}
-	if input.Fulfillment == "" {
-		input.Fulfillment = "PICKUP"
+	if orderType == orderTypeDelivery {
+		writeError(w, http.StatusBadRequest, "DELIVERY_NOT_AVAILABLE", "delivery ordering is not available in this release")
+		return
+	}
+	input.OrderType = orderType
+	input.OrderScene = ""
+	input.Fulfillment = legacyFulfillmentType(orderType)
+	if input.TablePublicID == "" {
+		input.TablePublicID = input.TableScene
+	}
+	input.TablePublicID = strings.TrimSpace(strings.TrimPrefix(input.TablePublicID, "tc="))
+	input.TableScene = ""
+	if orderType == orderTypeDineIn && input.TablePublicID == "" {
+		writeError(w, http.StatusBadRequest, "TABLE_CODE_REQUIRED", "table_public_id is required for a dine-in order")
+		return
+	}
+	if orderType != orderTypeDineIn && input.TablePublicID != "" {
+		writeError(w, http.StatusBadRequest, "TABLE_CODE_NOT_ALLOWED", "table_public_id is only valid for a dine-in order")
+		return
 	}
 	input.OpenID = strings.TrimSpace(input.OpenID)
 	input.CustomerKey = strings.TrimSpace(input.CustomerKey)
@@ -199,11 +236,12 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fingerprint := requestFingerprint(input)
+	legacyFingerprint := legacyPublicOrderFingerprint(input)
 	var existingID int64
 	var existingFingerprint string
 	err = s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM orders WHERE tenant_id=? AND store_id=? AND idempotency_key=?", store.TenantID, store.ID, idempotencyKey).Scan(&existingID, &existingFingerprint)
 	if err == nil {
-		if existingFingerprint != "" && existingFingerprint != fingerprint {
+		if existingFingerprint != "" && existingFingerprint != fingerprint && existingFingerprint != legacyFingerprint {
 			writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different order request")
 			return
 		}
@@ -225,6 +263,18 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var table orderTableReference
+	if input.OrderType == orderTypeDineIn {
+		table, err = resolveOrderTable(r.Context(), tx, store.TenantID, store.ID, input.TablePublicID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusBadRequest, "INVALID_TABLE_CODE", "table code does not belong to this store or is disabled")
+				return
+			}
+			handleSQLError(w, err)
+			return
+		}
+	}
 	type resolvedItem struct {
 		productID, skuID, basePrice, modifierPrice, unitPrice               int64
 		productName, skuName, productType, attrs, configuration, itemRemark string
@@ -295,12 +345,13 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orderNo := newBusinessNo("TB")
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,inventory_reserved,stock_reserved_at,total_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, total)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
 			if e := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM orders WHERE tenant_id=? AND store_id=? AND idempotency_key=?", store.TenantID, store.ID, idempotencyKey).Scan(&existingID, &existingFingerprint); e == nil {
-				if existingFingerprint != "" && existingFingerprint != fingerprint {
+				if existingFingerprint != "" && existingFingerprint != fingerprint && existingFingerprint != legacyFingerprint {
 					writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different order request")
 					return
 				}
@@ -461,5 +512,13 @@ func publicOrderView(order orderDTO) map[string]any {
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	return map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": fmt.Sprintf("%04d", order.ID%10000), "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": fmt.Sprintf("%04d", order.ID%10000), "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	if order.Table != nil {
+		view["table"] = map[string]any{"publicId": order.Table.PublicID, "name": order.Table.Name, "areaName": order.Table.AreaName, "tableCode": order.Table.TableCode}
+		view["tablePublicId"] = order.Table.PublicID
+		view["tableName"] = order.Table.Name
+		view["tableCode"] = order.Table.TableCode
+		view["tableAreaName"] = order.Table.AreaName
+	}
+	return view
 }

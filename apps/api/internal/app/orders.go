@@ -20,12 +20,15 @@ type orderDTO struct {
 	ID             int64          `json:"id"`
 	TenantID       int64          `json:"tenant_id"`
 	StoreID        int64          `json:"store_id"`
+	StoreName      string         `json:"store_name"`
 	OrderNo        string         `json:"order_no"`
 	CustomerName   string         `json:"customer_name"`
 	CustomerPhone  string         `json:"customer_phone"`
 	Remark         string         `json:"remark"`
 	Source         string         `json:"source"`
 	Fulfillment    string         `json:"fulfillment_type"`
+	OrderType      string         `json:"order_type"`
+	Table          *orderTableDTO `json:"table,omitempty"`
 	Status         string         `json:"status"`
 	PaymentStatus  string         `json:"payment_status"`
 	TotalCents     int64          `json:"total_cents"`
@@ -36,6 +39,14 @@ type orderDTO struct {
 	Items          []orderItemDTO `json:"items,omitempty"`
 	Payment        any            `json:"payment,omitempty"`
 	AvailableSteps []string       `json:"available_transitions"`
+}
+
+type orderTableDTO struct {
+	ID        int64  `json:"id"`
+	PublicID  string `json:"publicId"`
+	AreaName  string `json:"areaName"`
+	Name      string `json:"name"`
+	TableCode string `json:"tableCode"`
 }
 
 type orderItemDTO struct {
@@ -69,13 +80,50 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		where += " AND status=?"
 		args = append(args, status)
 	}
+	orderType, err := normalizeOrderTypeFilter(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	if orderType != "" {
+		where += " AND order_type=?"
+		args = append(args, orderType)
+	}
+	keyword := strings.TrimSpace(r.URL.Query().Get("keyword"))
+	if len([]rune(keyword)) > 100 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "keyword must not exceed 100 characters")
+		return
+	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		where += " AND (order_no LIKE ? OR customer_name LIKE ? OR customer_phone LIKE ? OR table_area_name_snapshot LIKE ? OR table_name_snapshot LIKE ? OR table_code_snapshot LIKE ? OR LPAD(MOD(id,10000),4,'0') LIKE ?)"
+		args = append(args, like, like, like, like, like, like, like)
+	}
+	for _, filter := range []struct {
+		camel, snake, operator string
+	}{{"startAt", "start_at", ">="}, {"endAt", "end_at", "<="}} {
+		raw := strings.TrimSpace(r.URL.Query().Get(filter.camel))
+		if raw == "" {
+			raw = strings.TrimSpace(r.URL.Query().Get(filter.snake))
+		}
+		if raw == "" {
+			continue
+		}
+		parsed, parseErr := time.Parse(time.RFC3339, raw)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", filter.camel+" must be an RFC3339 timestamp")
+			return
+		}
+		where += " AND created_at " + filter.operator + " ?"
+		args = append(args, parsed.UTC())
+	}
 	var total int
 	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM orders"+where, args...).Scan(&total); err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	args = append(args, size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,order_no,customer_name,customer_phone,remark,source,fulfillment_type,status,payment_status,total_cents,paid_cents,refunded_cents,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -86,10 +134,13 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item orderDTO
 		var paidAt sql.NullString
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
+		var tableID sql.NullInt64
+		var tablePublicID, tableArea, tableName, tableCode string
+		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
+		setOrderTable(&item, tableID, tablePublicID, tableArea, tableName, tableCode)
 		if paidAt.Valid {
 			item.PaidAt = &paidAt.String
 		}
@@ -126,7 +177,7 @@ type sqlQueryer interface {
 }
 
 func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID, id int64, orderNo string) (orderDTO, error) {
-	query := `SELECT id,tenant_id,store_id,order_no,customer_name,customer_phone,remark,source,fulfillment_type,status,payment_status,total_cents,paid_cents,refunded_cents,
+	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders WHERE tenant_id=?`
 	args := []any{tenantID}
 	if id > 0 {
@@ -138,13 +189,16 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	}
 	var item orderDTO
 	var paidAt sql.NullString
-	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
+	var tableID sql.NullInt64
+	var tablePublicID, tableArea, tableName, tableCode string
+	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
 	if err != nil {
 		return item, err
 	}
 	if paidAt.Valid {
 		item.PaidAt = &paidAt.String
 	}
+	setOrderTable(&item, tableID, tablePublicID, tableArea, tableName, tableCode)
 	item.AvailableSteps = orderTransitions[item.Status]
 	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? ORDER BY id`, tenantID, item.ID)
 	if err != nil {
@@ -178,6 +232,13 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 		return item, err
 	}
 	return item, nil
+}
+
+func setOrderTable(order *orderDTO, tableID sql.NullInt64, publicID, areaName, name, tableCode string) {
+	if !tableID.Valid {
+		return
+	}
+	order.Table = &orderTableDTO{ID: tableID.Int64, PublicID: publicID, AreaName: areaName, Name: name, TableCode: tableCode}
 }
 
 var orderTransitions = map[string][]string{

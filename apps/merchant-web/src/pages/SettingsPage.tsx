@@ -113,16 +113,16 @@ export function SettingsPage() {
               <Form.Item label="支付提示有效时间" name="paymentTimeoutMinutes" rules={[{ required: true }]}><InputNumber min={1} max={1440} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
             </Card>
 
-            <Card bordered={false} className="content-card settings-card" title={<Space><PrinterOutlined />打印触发设置</Space>}>
-              <Alert type="warning" showIcon message="建议选择“支付成功后打印”" description="避免未付款订单提前制作或耗材浪费。无论选择哪种策略，支付回调与打印任务都使用幂等键防止重复出单。" />
-              <Form.Item label="自动打印触发点" name="printTrigger" rules={[{ required: true }]} className="trigger-choice">
+            <Card bordered={false} className="content-card settings-card" title={<Space><PrinterOutlined />打印总策略</Space>}>
+              <Alert type="warning" showIcon message="建议默认选择“支付成功后打印”" description="这里的触发点用于首次生成场景模板；已存在的桌码堂食、自提和外卖模板可在各自打印模板页单独调整。下面两个自动打印开关是门店总开关，关闭后不会自动创建对应任务。" />
+              <Form.Item label="新模板默认触发点" name="printTrigger" rules={[{ required: true }]} className="trigger-choice">
                 <Radio.Group>
                   <Radio.Button value="PAYMENT_SUCCESS"><Space><BankOutlined />付款后打印</Space></Radio.Button>
                   <Radio.Button value="ORDER_CREATED"><Space><ClockCircleOutlined />下单后打印</Space></Radio.Button>
                 </Radio.Group>
               </Form.Item>
               <Typography.Paragraph type="secondary">
-                当前策略：{printTrigger === 'ORDER_CREATED' ? '订单创建成功即生成打印任务，未付款订单也可能出单。' : '只有支付机构确认成功后生成打印任务。'}
+                新模板默认：{printTrigger === 'ORDER_CREATED' ? '订单创建成功即生成打印任务，未付款订单也可能出单。' : '只有支付机构确认成功后生成打印任务。'}
               </Typography.Paragraph>
               <div className="setting-switch-row"><div><strong>自动打印订单小票</strong><p>打印整单信息、金额和订单备注</p></div><Form.Item name="autoPrintReceipt" valuePropName="checked" noStyle><Switch /></Form.Item></div>
               <div className="setting-switch-row"><div><strong>自动打印商品标签</strong><p>按商品数量拆分标签，适合饮品杯贴</p></div><Form.Item name="autoPrintLabel" valuePropName="checked" noStyle><Switch /></Form.Item></div>

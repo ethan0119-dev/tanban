@@ -49,6 +49,7 @@ interface PrinterFormValues {
   model: string;
   sn: string;
   type: Printer['type'];
+  outputType: NonNullable<Printer['outputType']>;
   enabled: boolean;
 }
 
@@ -65,6 +66,7 @@ function normalizePrinter(value: Printer): Printer {
     status: rawStatus === 'ACTIVE' ? 'ONLINE' : rawStatus === 'PAPER_OUT' ? 'PAPER_OUT' : rawStatus === 'DISABLED' ? 'DISABLED' : 'OFFLINE',
     paperWidth: value.paperWidth ?? Number(raw.paper_width ?? 58),
     printTrigger: value.printTrigger ?? (raw.print_trigger as Printer['printTrigger']) ?? 'PAYMENT_SUCCESS',
+    outputType: value.outputType ?? (raw.output_type as Printer['outputType']) ?? (value.type === 'LABEL' ? 'LABEL' : 'RECEIPT'),
     templateText: value.templateText ?? String(raw.template_text ?? ''),
   };
 }
@@ -91,6 +93,7 @@ function printerPayload(values: PrinterFormValues | Printer, enabled = values.en
     sn: values.sn,
     paper_width: 'paperWidth' in values ? values.paperWidth ?? 58 : 58,
     print_trigger: 'printTrigger' in values ? values.printTrigger ?? 'PAYMENT_SUCCESS' : 'PAYMENT_SUCCESS',
+    output_type: values.outputType ?? (type === 'LABEL' ? 'LABEL' : 'RECEIPT'),
     template_text: 'templateText' in values && values.templateText ? values.templateText : '订单 {{order_no}}\n{{items}}\n合计：{{total_cents}} 分\n{{remark}}',
     status: enabled ? 'ACTIVE' : 'DISABLED',
   };
@@ -132,8 +135,8 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
 
   const openBind = (virtual = false) => {
     form.setFieldsValue(virtual ? {
-      name: '开发调试虚拟打印机', vendor: 'TANBAN', model: 'Mock Printer', sn: `MOCK-${Date.now()}`, type: 'VIRTUAL', enabled: true,
-    } : { vendor: '芯烨', model: 'T58H', type: 'LABEL', enabled: true, name: '出单打印机', sn: '' });
+      name: '开发调试虚拟打印机', vendor: 'TANBAN', model: 'Mock Printer', sn: `MOCK-${Date.now()}`, type: 'VIRTUAL', outputType: 'RECEIPT', enabled: true,
+    } : { vendor: '芯烨', model: 'T58H', type: 'LABEL', outputType: 'LABEL', enabled: true, name: '出单打印机', sn: '' });
     setBinding(true);
   };
 
@@ -260,7 +263,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
                             <div><Typography.Title level={5}>{printer.name}</Typography.Title><Badge status={state.status} text={state.text} /></div>
                             <Switch checked={printer.enabled} onChange={(checked) => void togglePrinter(printer, checked)} />
                           </div>
-                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>设备类型</span><strong>{printer.type === 'VIRTUAL' ? 'Mock 虚拟机' : printer.type === 'LABEL' ? '标签打印机' : '小票打印机'}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
+                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? 'Mock 虚拟机' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
                           <Button block icon={<PrinterOutlined />} disabled={!printer.enabled} onClick={() => void testPrint(printer)}>测试打印</Button>
                         </Card>
                       </Col>
@@ -286,6 +289,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
           </Row>
           <Form.Item label="设备 SN" name="sn" rules={[{ required: true, message: '请输入打印机底部的 SN' }]}><Input placeholder="打印机底部标签中的序列号" /></Form.Item>
           <Form.Item label="设备类型" name="type" rules={[{ required: true }]}><Select options={[{ label: '虚拟打印机（开发调试）', value: 'VIRTUAL' }, { label: '标签打印机', value: 'LABEL' }, { label: '小票打印机', value: 'RECEIPT' }]} /></Form.Item>
+          <Form.Item label="输出类型" name="outputType" rules={[{ required: true, message: '请选择输出类型' }]}><Select options={[{ label: '订单小票', value: 'RECEIPT' }, { label: '商品标签 / 杯贴', value: 'LABEL' }]} /></Form.Item>
           <Form.Item label="绑定后立即启用" name="enabled" valuePropName="checked"><Switch /></Form.Item>
         </Form>
       </Modal>

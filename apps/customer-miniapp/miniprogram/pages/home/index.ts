@@ -1,5 +1,5 @@
 import type { TanbanAppOption } from "../../app";
-import type { DecorationAction, DecorationConfig, DecorationModule, Store } from "../../types/domain";
+import type { DecorationAction, DecorationConfig, DecorationModule, Store, TableOrderingContext } from "../../types/domain";
 import {
   applyDecorationChrome,
   decorationStyle,
@@ -10,7 +10,7 @@ import {
   shouldDisplaySplash,
 } from "../../utils/decoration";
 import { request } from "../../utils/request";
-import { routedStoreCode } from "../../utils/store-route";
+import { tableContextForStore } from "../../utils/table-context";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -21,20 +21,30 @@ Page({
     decoration: defaultDecoration() as DecorationConfig,
     modules: [] as DecorationModule[],
     appearanceStyle: "",
+    tableContext: null as TableOrderingContext | null,
     splashVisible: false,
     error: "",
   },
-  onLoad(options: Record<string, string>) {
+  onShow() {
+    void this.syncOrderingRoute(!this.data.store);
+  },
+  async syncOrderingRoute(forceReload: boolean) {
     const app = getApp<TanbanAppOption>();
-    const routedCode = routedStoreCode(options);
-    if (routedCode) app.globalData.storeCode = routedCode;
-    this.loadStore(app.globalData.storeCode);
+    await app.globalData.routeReady;
+    if (app.globalData.routeError) {
+      this.setData({ loading: false, store: null, tableContext: null, error: app.globalData.routeError });
+      return;
+    }
+    const storeCode = app.globalData.storeCode;
+    const tableContext = tableContextForStore(storeCode);
+    this.setData({ tableContext });
+    if (forceReload || !this.data.store || this.data.store.code !== storeCode) await this.loadStore(storeCode);
   },
   onUnload() {
     if (splashTimer) clearTimeout(splashTimer);
   },
   onPullDownRefresh() {
-    this.loadStore(getApp<TanbanAppOption>().globalData.storeCode).finally(() => wx.stopPullDownRefresh());
+    this.syncOrderingRoute(true).finally(() => wx.stopPullDownRefresh());
   },
   async loadStore(storeCode: string) {
     this.setData({ loading: true, error: "" });

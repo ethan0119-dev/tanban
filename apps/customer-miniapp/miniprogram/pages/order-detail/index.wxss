@@ -1,9 +1,14 @@
-.success { display: flex; flex-direction: column; align-items: center; padding-top: 45rpx; }
+.success, .payment-waiting { display: flex; flex-direction: column; align-items: center; padding-top: 45rpx; }
 .check { display: flex; align-items: center; justify-content: center; width: 104rpx; height: 104rpx; border-radius: 50%; background: var(--green); color: white; font-size: 56rpx; }
+.payment-waiting .check { background: #d78b3e; }
 .status-title { margin-top: 22rpx; font-size: 38rpx; font-weight: 800; }
-.success .muted { margin-top: 10rpx; font-size: 23rpx; }
+.success .muted, .payment-waiting .muted { margin-top: 10rpx; font-size: 23rpx; text-align: center; }
 .pickup { display: flex; width: 100%; flex-direction: column; align-items: center; margin-top: 36rpx; padding: 30rpx 0; border-radius: 22rpx; background: var(--cream); }
 .pickup text:last-child { margin-top: 6rpx; font-family: Georgia, serif; font-size: 82rpx; font-weight: 800; }
+.table-destination { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 7rpx; margin-top: 36rpx; padding: 28rpx 0; border-radius: 22rpx; background: linear-gradient(145deg, var(--cream), #edf4ee); }
+.table-destination text:first-child { color: var(--green); font-size: 22rpx; font-weight: 800; }
+.table-destination text:nth-child(2) { font-size: 48rpx; font-weight: 800; }
+.table-destination text:last-child { color: var(--muted); font-size: 22rpx; }
 .detail-line { display: flex; justify-content: space-between; padding: 20rpx 0; border-bottom: 1rpx solid #eeeae2; color: var(--muted); font-size: 24rpx; }
 .detail-line text:last-child { max-width: 65%; color: var(--ink); text-align: right; }
 .back { margin: 32rpx 28rpx; }

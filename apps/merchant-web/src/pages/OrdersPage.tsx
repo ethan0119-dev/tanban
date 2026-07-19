@@ -7,6 +7,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -19,6 +20,7 @@ import {
   List,
   Modal,
   Row,
+  Segmented,
   Space,
   Steps,
   Table,
@@ -33,8 +35,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
-import type { ListResult, Order, OrderStatus } from '../types';
-import { dateTime, pickupCode, yuan } from '../utils/format';
+import { normalizeOrder } from '../features/storefront/model';
+import type { ListResult, Order, OrderBusinessType, OrderStatus } from '../types';
+import { dateTime, yuan } from '../utils/format';
 
 const { RangePicker } = DatePicker;
 const statusTabs: Array<{ key: 'ALL' | OrderStatus; label: string }> = [
@@ -54,40 +57,6 @@ const nextStatus: Partial<Record<OrderStatus, { status: OrderStatus; text: strin
   READY: { status: 'COMPLETED', text: '完成订单' },
 };
 
-function normalizeOrder(value: Order): Order {
-  const raw = value as unknown as Record<string, unknown>;
-  const rawItems = (raw.items ?? []) as Array<Record<string, unknown>>;
-  const orderNo = value.orderNo ?? String(raw.order_no ?? '');
-  const existingPickupNo = String(value.pickupNo ?? raw.pickup_no ?? '').trim();
-  return {
-    ...value,
-    id: value.id ?? String(raw.orderId ?? raw.order_id ?? value.orderNo),
-    orderNo,
-    pickupNo: existingPickupNo || pickupCode(value.id ?? raw.id),
-    amount: raw.total_cents !== undefined ? Number(raw.total_cents) / 100 : Number(value.amount ?? raw.totalAmount ?? raw.total_amount ?? 0),
-    paidAmount: raw.paid_cents !== undefined ? Number(raw.paid_cents) / 100 : Number(value.paidAmount ?? raw.paid_amount ?? value.amount ?? 0),
-    refundAmount: raw.refunded_cents !== undefined ? Number(raw.refunded_cents) / 100 : Number(value.refundAmount ?? raw.refund_amount ?? 0),
-    customerName: value.customerName ?? String(raw.customer_name ?? ''),
-    customerPhone: value.customerPhone ?? String(raw.customer_phone ?? ''),
-    fulfillmentType: (value.fulfillmentType ?? raw.fulfillment_type ?? 'PICKUP') as Order['fulfillmentType'],
-    paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
-    createdAt: value.createdAt ?? String(raw.created_at ?? ''),
-    items: rawItems.map((item) => ({
-      id: item.id as string | number,
-      productName: String(item.productName ?? item.product_name ?? ''),
-      skuName: String(item.skuName ?? item.sku_name ?? ''),
-      quantity: Number(item.quantity ?? 0),
-      unitPrice: item.unit_price_cents !== undefined ? Number(item.unit_price_cents) / 100 : Number(item.unitPrice ?? 0),
-      amount: item.subtotal_cents !== undefined ? Number(item.subtotal_cents) / 100 : Number(item.amount ?? 0),
-      remark: item.remark ? String(item.remark) : undefined,
-      itemRemark: item.item_remark ? String(item.item_remark) : undefined,
-      configuration: item.configuration && typeof item.configuration === 'object'
-        ? item.configuration as Order['items'][number]['configuration']
-        : undefined,
-    })),
-  };
-}
-
 function itemConfigurationSummary(item: Order['items'][number]): string[] {
   const options = (item.configuration?.options || [])
     .map((option) => [option.groupName, option.valueName].filter(Boolean).join('：'))
@@ -102,8 +71,9 @@ function itemConfigurationSummary(item: Order['items'][number]): string[] {
   ];
 }
 
-export function OrdersPage() {
+export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { businessType?: OrderBusinessType; unavailable?: boolean }) {
   const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL');
+  const [serviceMode, setServiceMode] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
   const [keyword, setKeyword] = useState('');
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [result, setResult] = useState<ListResult<Order>>({ items: [], meta: { page: 1, pageSize: 20, total: 0 } });
@@ -112,8 +82,14 @@ export function OrdersPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+  const isDelivery = businessType === 'DELIVERY';
+  const domainName = isDelivery ? '外卖' : '店内';
 
   const load = useCallback(async (page = 1, pageSize = result.meta.pageSize ?? 20) => {
+    if (unavailable) {
+      setResult({ items: [], meta: { page: 1, pageSize, total: 0 } });
+      return;
+    }
     setLoading(true);
     try {
       const normalized = await api.getList<Order>('/merchant/orders', {
@@ -121,18 +97,24 @@ export function OrdersPage() {
         keyword: keyword || undefined,
         startAt: dates?.[0]?.startOf('day').toISOString(),
         endAt: dates?.[1]?.endOf('day').toISOString(),
+        order_type: isDelivery ? 'DELIVERY' : serviceMode,
         page,
         page_size: pageSize,
       });
-      setResult({ ...normalized, items: normalized.items.map(normalizeOrder), meta: { page, pageSize, ...normalized.meta } });
+      const items = normalized.items.map(normalizeOrder);
+      setResult({
+        ...normalized,
+        items,
+        meta: { page, pageSize, ...normalized.meta },
+      });
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [dates, keyword, messageApi, result.meta.pageSize, status]);
+  }, [dates, isDelivery, keyword, messageApi, result.meta.pageSize, serviceMode, status, unavailable]);
 
-  useEffect(() => { void load(1); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(1); }, [serviceMode, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openDetail = async (order: Order) => {
     setSelected(order);
@@ -164,7 +146,7 @@ export function OrdersPage() {
     if (!selected) return;
     setActionLoading(true);
     try {
-      await api.post(`/merchant/orders/${selected.id}/reprint`, { type: 'RECEIPT', markAsReprint: true });
+      await api.post(`/merchant/orders/${selected.id}/reprint`, { type: 'RECEIPT', business_type: businessType, markAsReprint: true });
       messageApi.success('补打任务已提交，小票将标记“补打”');
     } catch (error) {
       messageApi.error(errorMessage(error));
@@ -191,7 +173,18 @@ export function OrdersPage() {
   }, {}), [result.items]);
 
   const columns = [
-    { title: '取餐号', dataIndex: 'pickupNo', width: 105, render: (value: string) => <strong className="pickup-no large">#{value || '--'}</strong> },
+    {
+      title: isDelivery ? '配送单' : '桌台 / 取餐号', key: 'serviceContext', width: 160,
+      render: (_: unknown, order: Order) => order.tableName
+        ? <div className="table-context-cell"><strong>{order.tableName}</strong><small>{order.tableAreaName || '店内桌码'}</small></div>
+        : <strong className="pickup-no large">#{order.pickupNo || '--'}</strong>,
+    },
+    {
+      title: '场景', key: 'fulfillmentType', width: 100,
+      render: (_: unknown, order: Order) => order.orderType === 'DELIVERY'
+        ? <Tag color="purple">外卖配送</Tag>
+        : order.orderType === 'DINE_IN' ? <Tag color="blue">桌码堂食</Tag> : <Tag color="gold">快餐自取</Tag>,
+    },
     { title: '订单号', dataIndex: 'orderNo', width: 190, ellipsis: true },
     {
       title: '商品', key: 'items', minWidth: 240,
@@ -216,32 +209,36 @@ export function OrdersPage() {
     <div className="page-shell">
       {contextHolder}
       <PageHeading
-        title="订单管理"
-        description="统一查看点单、支付、制作和打印状态"
-        extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button>}
+        title={`${domainName}订单`}
+        description={isDelivery ? '独立承载配送订单、收货信息和外卖打印链路' : '查看桌码堂食和门店自取订单，统一处理支付、制作与出单'}
+        extra={<Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>}
       />
+      {unavailable && <Alert className="order-domain-alert" type="warning" showIcon message="外卖订单一期未开放" description="系统已经将外卖识别为独立经营域，但尚未接入配送地址、配送范围、运费、骑手或第三方外卖平台。当前不会创建外卖订单，也不会把店内订单误显示到这里。" />}
       <Card bordered={false} className="content-card order-filter-card">
         <Tabs
           activeKey={status}
           onChange={(key) => setStatus(key as typeof status)}
           items={statusTabs.map((tab) => ({
             key: tab.key,
+            disabled: unavailable,
             label: <span>{tab.label}{tab.key !== 'ALL' && counts[tab.key] ? <em className="tab-count">{counts[tab.key]}</em> : null}</span>,
           }))}
         />
+        {!isDelivery && <div className="order-service-mode"><Typography.Text strong>店内场景</Typography.Text><Segmented disabled={unavailable} value={serviceMode} onChange={(value) => setServiceMode(value as typeof serviceMode)} options={[{ label: '桌码堂食', value: 'DINE_IN' }, { label: '快餐 / 到店自取', value: 'TAKEOUT' }]} /></div>}
         <Row gutter={[12, 12]}>
           <Col xs={24} lg={9}>
             <Input
               allowClear
+              disabled={unavailable}
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               onPressEnter={() => void load(1)}
               prefix={<SearchOutlined />}
-              placeholder="搜索订单号、取餐号或顾客手机号"
+              placeholder={isDelivery ? '搜索订单号、收货人或手机号' : '搜索订单号、桌号、取餐号或顾客手机号'}
             />
           </Col>
-          <Col xs={24} sm={16} lg={9}><RangePicker value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
-          <Col xs={24} sm={8} lg={6}><Button type="primary" block icon={<SearchOutlined />} onClick={() => void load(1)}>查询订单</Button></Col>
+          <Col xs={24} sm={16} lg={9}><RangePicker disabled={unavailable} value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
+          <Col xs={24} sm={8} lg={6}><Button type="primary" block disabled={unavailable} icon={<SearchOutlined />} onClick={() => void load(1)}>查询订单</Button></Col>
         </Row>
       </Card>
       <Card bordered={false} className="content-card table-card">
@@ -251,7 +248,7 @@ export function OrdersPage() {
           dataSource={result.items}
           columns={columns}
           scroll={{ x: 1050 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有符合条件的订单" /> }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={unavailable ? '外卖能力开放后，配送订单将在此展示' : `没有符合条件的${domainName}订单`} /> }}
           pagination={{
             current: result.meta.page,
             pageSize: result.meta.pageSize,
@@ -283,7 +280,7 @@ export function OrdersPage() {
         {selected ? (
           <div className="order-detail">
             <div className="detail-hero">
-              <span>取餐号</span><strong>#{selected.pickupNo || '--'}</strong>
+              <span>{selected.tableName ? '当前桌台' : isDelivery ? '配送单' : '取餐号'}</span><strong>{selected.tableName || `#${selected.pickupNo || '--'}`}</strong>
               <small>{selected.orderNo}</small>
             </div>
             {selected.status !== 'CLOSED' ? (
@@ -314,7 +311,9 @@ export function OrdersPage() {
               <Descriptions.Item label="下单时间">{dateTime(selected.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="支付时间">{dateTime(selected.paidAt)}</Descriptions.Item>
               <Descriptions.Item label="支付方式">{selected.paymentMethod || '--'}</Descriptions.Item>
-              <Descriptions.Item label="取餐方式">{selected.fulfillmentType === 'DINE_IN' ? '堂食' : '门店自取'}</Descriptions.Item>
+              <Descriptions.Item label="订单类型">{selected.businessType === 'DELIVERY' ? '外卖订单' : '店内订单'}</Descriptions.Item>
+              <Descriptions.Item label="取餐方式">{selected.orderType === 'DELIVERY' ? '外卖配送' : selected.orderType === 'DINE_IN' ? '桌码堂食' : '快餐 / 到店自取'}</Descriptions.Item>
+              {selected.tableName && <Descriptions.Item label="桌台">{[selected.tableAreaName, selected.tableName].filter(Boolean).join(' · ')}</Descriptions.Item>}
               <Descriptions.Item label="顾客">{selected.customerName || '微信顾客'} {selected.customerPhone}</Descriptions.Item>
               <Descriptions.Item label="订单备注">{selected.remark || '无'}</Descriptions.Item>
               <Descriptions.Item label="打印次数">{selected.printCount ?? 0} 次</Descriptions.Item>

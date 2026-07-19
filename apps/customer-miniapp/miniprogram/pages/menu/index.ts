@@ -1,8 +1,9 @@
-import type { CartItem, Category, DecorationConfig, ModifierGroup, Product, ProductOptionGroup, Sku, Store } from "../../types/domain";
+import type { CartItem, Category, DecorationConfig, ModifierGroup, Product, ProductOptionGroup, Sku, Store, TableOrderingContext } from "../../types/domain";
 import type { TanbanAppOption } from "../../app";
 import { addCartItem, cartLineKey, changeCartLineQuantity, readCart } from "../../utils/cart";
 import { applyDecorationChrome, decorationStyle, defaultDecoration, normalizeDecoration } from "../../utils/decoration";
 import { request } from "../../utils/request";
+import { tableContextForStore } from "../../utils/table-context";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -45,11 +46,20 @@ Page({
     decoration: defaultDecoration() as DecorationConfig,
     appearanceStyle: "",
     menuLayoutClass: "category-left product-list-view density-comfortable",
+    tableContext: null as TableOrderingContext | null,
+    routeError: "",
   },
-  onShow() {
-    const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+  async onShow() {
+    const app = getApp<TanbanAppOption>();
+    await app.globalData.routeReady;
+    if (app.globalData.routeError) {
+      this.setData({ loading: false, routeError: app.globalData.routeError, tableContext: null });
+      return;
+    }
+    const storeCode = app.globalData.storeCode;
+    this.setData({ routeError: "", tableContext: tableContextForStore(storeCode) });
     this.setCart(readCart(storeCode));
-    this.loadCatalog();
+    await this.loadCatalog();
   },
   onPullDownRefresh() { this.loadCatalog().finally(() => wx.stopPullDownRefresh()); },
   async loadCatalog() {
@@ -211,6 +221,7 @@ Page({
   },
   countForProduct(productId: number): number { return this.data.cart.find((item) => item.productId === productId)?.quantity || 0; },
   checkout() {
+    if (this.data.routeError) return wx.showToast({ title: this.data.routeError, icon: "none" });
     if (!this.data.cartQuantity) return wx.showToast({ title: "请先选择商品", icon: "none" });
     wx.navigateTo({ url: "/pages/checkout/index" });
   },

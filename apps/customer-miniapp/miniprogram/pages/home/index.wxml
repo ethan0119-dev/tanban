@@ -1,4 +1,9 @@
 <view class="page decorated-page" style="{{appearanceStyle}}" wx:if="{{!loading && store}}">
+  <view class="table-context-card" wx:if="{{tableContext}}">
+    <view><text class="table-context-badge">堂食点单</text><text class="table-context-name">{{tableContext.tableName}}</text></view>
+    <text>{{tableContext.areaName ? tableContext.areaName + ' · ' : ''}}{{store.name}}</text>
+    <text class="muted">订单将送至当前桌台，换桌请重新扫码</text>
+  </view>
   <block wx:for="{{modules}}" wx:key="id">
     <view wx:if="{{item.type === 'HERO_BANNER'}}" class="decor-module decor-hero">
       <swiper wx:if="{{item.config.items.length}}" class="hero-swiper" autoplay="{{item.config.items.length > 1}}" circular="{{item.config.items.length > 1}}" indicator-dots="{{item.config.items.length > 1}}">

@@ -125,6 +125,19 @@ export interface Store {
   decorationVersion?: number;
 }
 
+/** A server-verified dine-in table route kept while the customer orders. */
+export interface TableOrderingContext {
+  publicScene: string;
+  storeCode: string;
+  storeName: string;
+  tablePublicId: string;
+  tableName: string;
+  tableCode?: string;
+  areaName?: string;
+  resolvedAt: number;
+  validUntil: number;
+}
+
 export interface Category {
   id: number;
   name: string;
@@ -214,6 +227,18 @@ export interface Order {
   status: string;
   paymentStatus: string;
   fulfillmentType?: "PICKUP" | "DINE_IN";
+  orderScene?: "TAKEOUT" | "DINE_IN";
+  order_scene?: "TAKEOUT" | "DINE_IN";
+  tablePublicId?: string;
+  tableName?: string;
+  tableCode?: string;
+  tableAreaName?: string;
+  table?: {
+    publicId?: string;
+    name?: string;
+    tableCode?: string;
+    areaName?: string;
+  };
   remark?: string;
   amount: number;
   createdAt: string;

@@ -1,4 +1,4 @@
-import type { CartItem } from "../types/domain";
+import type { CartItem, TableOrderingContext } from "../types/domain";
 import { cartLineKey } from "./cart";
 import { ApiError, idempotencyKey } from "./request";
 
@@ -8,11 +8,16 @@ export const CHECKOUT_FLOW_TTL_MS = 30 * 60 * 1000;
 export interface CheckoutFlow {
   storeCode: string;
   cartFingerprint: string;
+  orderingContextKey: string;
   idempotencyKey: string;
   orderNo: string;
   fulfillmentType: "PICKUP" | "DINE_IN";
   remark: string;
   submitted: boolean;
+  orderScene?: "DINE_IN";
+  tablePublicId?: string;
+  tablePublicScene?: string;
+  tableName?: string;
   createdAt: number;
 }
 
@@ -32,6 +37,10 @@ function fingerprintCart(cart: CartItem[]): string {
     .join("|");
 }
 
+function orderingContextKey(context: TableOrderingContext | null | undefined): string {
+  return context ? `TABLE:${context.publicScene}:${context.tablePublicId}` : "STORE";
+}
+
 function readCheckoutFlow(now = Date.now()): CheckoutFlow | null {
   const stored = wx.getStorageSync<CheckoutFlow>(CHECKOUT_FLOW_KEY);
   if (!stored || typeof stored !== "object") return null;
@@ -45,6 +54,7 @@ function readCheckoutFlow(now = Date.now()): CheckoutFlow | null {
   }
   return {
     ...stored,
+    orderingContextKey: stored.orderingContextKey || "STORE",
     orderNo: stored.orderNo || "",
     fulfillmentType: stored.fulfillmentType === "DINE_IN" ? "DINE_IN" : "PICKUP",
     remark: typeof stored.remark === "string" ? stored.remark : "",
@@ -57,19 +67,37 @@ function writeCheckoutFlow(flow: CheckoutFlow): void {
 }
 
 /** Reuses one key while the same cart remains in the current checkout flow. */
-export function checkoutFlowFor(storeCode: string, cart: CartItem[]): CheckoutFlow {
+export function checkoutFlowFor(
+  storeCode: string,
+  cart: CartItem[],
+  tableContext?: TableOrderingContext | null,
+): CheckoutFlow {
   const cartFingerprint = fingerprintCart(cart);
+  const contextKey = orderingContextKey(tableContext);
   const current = readCheckoutFlow();
-  if (current && current.storeCode === storeCode && current.cartFingerprint === cartFingerprint) return current;
+  if (
+    current
+    && current.storeCode === storeCode
+    && current.cartFingerprint === cartFingerprint
+    && current.orderingContextKey === contextKey
+    && (Boolean(tableContext) || current.fulfillmentType !== "DINE_IN")
+  ) return current;
 
   const flow: CheckoutFlow = {
     storeCode,
     cartFingerprint,
+    orderingContextKey: contextKey,
     idempotencyKey: idempotencyKey("order"),
     orderNo: "",
-    fulfillmentType: "PICKUP",
+    fulfillmentType: tableContext ? "DINE_IN" : "PICKUP",
     remark: "",
     submitted: false,
+    ...(tableContext ? {
+      orderScene: "DINE_IN" as const,
+      tablePublicId: tableContext.tablePublicId,
+      tablePublicScene: tableContext.publicScene,
+      tableName: tableContext.tableName,
+    } : {}),
     createdAt: Date.now(),
   };
   writeCheckoutFlow(flow);
@@ -85,7 +113,7 @@ export function rememberCheckoutOrder(flowKey: string, orderNo: string): void {
 export function rememberCheckoutDetails(flowKey: string, fulfillmentType: "PICKUP" | "DINE_IN", remark: string): void {
   const flow = readCheckoutFlow();
   if (!flow || flow.idempotencyKey !== flowKey || flow.submitted) return;
-  writeCheckoutFlow({ ...flow, fulfillmentType, remark });
+  writeCheckoutFlow({ ...flow, fulfillmentType: flow.orderScene === "DINE_IN" ? "DINE_IN" : fulfillmentType, remark });
 }
 
 export function markCheckoutSubmitted(flowKey: string): void {

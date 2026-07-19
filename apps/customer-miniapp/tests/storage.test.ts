@@ -12,6 +12,7 @@ import {
 } from '../miniprogram/utils/checkout';
 import { ApiError } from '../miniprogram/utils/request';
 import { customerGuestKey } from '../miniprogram/utils/customer';
+import type { TableOrderingContext } from '../miniprogram/types/domain';
 
 describe('miniapp scoped storage', () => {
   let storage: Map<string, unknown>;
@@ -89,6 +90,31 @@ describe('miniapp scoped storage', () => {
     expect(third.idempotencyKey).not.toBe(second.idempotencyKey);
   });
 
+  it('scopes checkout idempotency and fulfillment to the verified table', () => {
+    const cart = [{ productId: 1, name: '美式', price: 12, quantity: 1 }];
+    const tableContext: TableOrderingContext = {
+      publicScene: '0123456789abcdef0123456789ab',
+      storeCode: 'coffee-a',
+      storeName: '码农咖啡',
+      tablePublicId: 'table-public-b02',
+      tableName: 'B02桌',
+      resolvedAt: Date.now(),
+      validUntil: Date.now() + 60_000,
+    };
+    const ordinary = checkoutFlowFor('coffee-a', cart);
+    const dineIn = checkoutFlowFor('coffee-a', cart, tableContext);
+    const backToOrdinary = checkoutFlowFor('coffee-a', cart);
+
+    expect(dineIn.idempotencyKey).not.toBe(ordinary.idempotencyKey);
+    expect(dineIn).toMatchObject({
+      fulfillmentType: 'DINE_IN',
+      orderScene: 'DINE_IN',
+      tablePublicId: 'table-public-b02',
+    });
+    expect(backToOrdinary.idempotencyKey).not.toBe(dineIn.idempotencyKey);
+    expect(backToOrdinary.fulfillmentType).toBe('PICKUP');
+  });
+
   it('persists one install-scoped anonymous customer key', () => {
     const first = customerGuestKey();
     const second = customerGuestKey();
@@ -117,10 +143,19 @@ describe('miniapp scoped storage', () => {
 
   it('persists checkout details and freezes them after the first submission', () => {
     const cart = [{ productId: 1, name: '美式', price: 12, quantity: 1 }];
-    const flow = checkoutFlowFor('coffee-a', cart);
+    const tableContext: TableOrderingContext = {
+      publicScene: '0123456789abcdef0123456789ab',
+      storeCode: 'coffee-a',
+      storeName: '码农咖啡',
+      tablePublicId: 'table-public-b02',
+      tableName: 'B02桌',
+      resolvedAt: Date.now(),
+      validUntil: Date.now() + 60_000,
+    };
+    const flow = checkoutFlowFor('coffee-a', cart, tableContext);
     rememberCheckoutDetails(flow.idempotencyKey, 'DINE_IN', '送到 B02');
 
-    expect(checkoutFlowFor('coffee-a', cart)).toMatchObject({
+    expect(checkoutFlowFor('coffee-a', cart, tableContext)).toMatchObject({
       fulfillmentType: 'DINE_IN',
       remark: '送到 B02',
       submitted: false,
@@ -128,7 +163,7 @@ describe('miniapp scoped storage', () => {
 
     markCheckoutSubmitted(flow.idempotencyKey);
     rememberCheckoutDetails(flow.idempotencyKey, 'PICKUP', '不应覆盖');
-    expect(checkoutFlowFor('coffee-a', cart)).toMatchObject({
+    expect(checkoutFlowFor('coffee-a', cart, tableContext)).toMatchObject({
       fulfillmentType: 'DINE_IN',
       remark: '送到 B02',
       submitted: true,

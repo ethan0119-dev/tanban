@@ -2,12 +2,14 @@ import {
   AppstoreOutlined,
   BgColorsOutlined,
   BellOutlined,
+  CarOutlined,
   CoffeeOutlined,
   DashboardOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PrinterOutlined,
+  QrcodeOutlined,
   SettingOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
@@ -26,18 +28,32 @@ const { Header, Sider, Content } = Layout;
 
 const managementNavigationItems: MenuProps['items'] = [
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
-  { key: '/orders', label: '订单管理', icon: <ShoppingCartOutlined /> },
+  {
+    key: 'dine-in-domain', label: '店内', icon: <ShopOutlined />,
+    children: [
+      { key: '/dine-in/orders', label: '店内订单' },
+      { key: '/dine-in/table-codes', label: '桌码管理', icon: <QrcodeOutlined /> },
+      { key: '/dine-in/print-template', label: '店内打印模板' },
+    ],
+  },
+  {
+    key: 'delivery-domain', label: '外卖', icon: <CarOutlined />,
+    children: [
+      { key: '/delivery/orders', label: <span className="menu-label-with-status"><span>外卖订单</span><em>未开放</em></span> },
+      { key: '/delivery/print-template', label: <span className="menu-label-with-status"><span>外卖打印模板</span><em>预配置</em></span> },
+    ],
+  },
   {
     key: 'catalog-domain', label: '商品管理', icon: <AppstoreOutlined />,
     children: [
-      { key: '/products', label: '商品与库存' },
-      { key: '/catalog', label: '分类·套餐·加料·配置库' },
+      { key: '/products', label: '商品管理' },
+      { key: '/catalog', label: '商品配置中心' },
     ],
   },
   {
     key: 'customer-domain', label: '用户管理', icon: <UsergroupAddOutlined />,
     children: [
-      { key: '/customers', label: '用户列表·标签·余额' },
+      { key: '/customers', label: '用户管理' },
       { key: '/membership', label: '会员管理' },
       { key: '/stored-value', label: '储值管理' },
     ],
@@ -61,7 +77,7 @@ function navigationRouteKeys(items: MenuProps['items']): string[] {
 
 const staffNavigationItems: MenuProps['items'] = [
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
-  { key: '/orders', label: '订单管理', icon: <ShoppingCartOutlined /> },
+  { key: '/dine-in/orders', label: '店内订单', icon: <ShoppingCartOutlined /> },
   { key: '/print-jobs', label: '打印任务', icon: <PrinterOutlined /> },
 ];
 
@@ -113,7 +129,7 @@ export function AppLayout() {
           theme="dark"
           items={navigationItems}
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['catalog-domain', 'customer-domain']}
+          defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain']}
           onClick={({ key }) => navigate(key)}
         />
         {!collapsed && <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>}

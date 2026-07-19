@@ -1,5 +1,10 @@
 .decorated-page { min-height: 100vh; padding-top: 28rpx; box-sizing: border-box; }
 .decor-module { box-sizing: border-box; }
+.table-context-card { display: flex; flex-direction: column; gap: 10rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border: 2rpx solid rgba(33, 77, 63, .18); border-radius: var(--radius, 24rpx); background: linear-gradient(135deg, #edf4ee, var(--surface, #fffefa)); box-shadow: 0 12rpx 34rpx rgba(33, 77, 63, .08); }
+.table-context-card > view { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.table-context-badge { padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--green); color: white; font-size: 20rpx; font-weight: 800; }
+.table-context-name { font-size: 34rpx; font-weight: 800; }
+.table-context-card > text { font-size: 23rpx; }
 .decor-hero { margin: 0 28rpx; }
 .hero-swiper, .banner { width: 100%; height: 300rpx; border-radius: var(--radius, 28rpx); overflow: hidden; }
 .banner-hit { position: relative; width: 100%; height: 100%; }

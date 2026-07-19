@@ -1,6 +1,20 @@
 export type StoreRouteQuery = Record<string, string | undefined>;
 
+export interface OrderingEntryOptions {
+  query?: StoreRouteQuery;
+  /** WeChat launch scene number. It is not the custom mini-program-code payload. */
+  scene?: number | string;
+}
+
+export type OrderingEntryRoute =
+  | { kind: "NONE" }
+  | { kind: "STORE"; storeCode: string }
+  | { kind: "TABLE"; publicScene: string; expectedStoreCode?: string }
+  | { kind: "INVALID"; message: string };
+
 const STORE_CODE_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const TABLE_SCENE_PATTERN = /^[a-zA-Z0-9_-]{20,32}$/;
+const TABLE_KEYS = ["tableCode", "table_code", "tc"] as const;
 
 function decode(value: string): string {
   try {
@@ -16,18 +30,28 @@ function validStoreCode(value: string | undefined): string {
   return STORE_CODE_PATTERN.test(decoded) ? decoded : "";
 }
 
-function storeCodeFromScene(rawScene: string | undefined): string {
-  if (!rawScene) return "";
-  const scene = decode(rawScene);
-  if (!scene.includes("=")) return validStoreCode(scene);
+function validTableScene(value: string | undefined): string {
+  if (!value) return "";
+  const decoded = decode(value).trim();
+  return TABLE_SCENE_PATTERN.test(decoded) ? decoded : "";
+}
 
-  const fields = scene.split("&").reduce<Record<string, string>>((result, field) => {
+function sceneFields(rawScene: string): Record<string, string> {
+  const scene = decode(rawScene).replace(/^\?/, "");
+  return scene.split("&").reduce<Record<string, string>>((result, field) => {
     const separator = field.indexOf("=");
     if (separator < 0) return result;
     const key = decode(field.slice(0, separator));
     result[key] = decode(field.slice(separator + 1));
     return result;
   }, {});
+}
+
+function storeCodeFromScene(rawScene: string | undefined): string {
+  if (!rawScene) return "";
+  const scene = decode(rawScene);
+  if (!scene.includes("=")) return validStoreCode(scene);
+  const fields = sceneFields(scene);
   return validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
 }
 
@@ -37,4 +61,89 @@ export function routedStoreCode(query: StoreRouteQuery): string {
     || validStoreCode(query.store)
     || validStoreCode(query.s)
     || storeCodeFromScene(query.scene);
+}
+
+function presentValue(query: StoreRouteQuery, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(query, key)) return query[key];
+  }
+  return undefined;
+}
+
+function hasAnyKey(query: StoreRouteQuery, keys: readonly string[]): boolean {
+  return keys.some((key) => Object.prototype.hasOwnProperty.call(query, key));
+}
+
+/**
+ * Parses only routing parameters owned by Tanban. Custom QR payload lives in
+ * `options.query.scene`; WeChat's numeric `options.scene` is deliberately ignored.
+ */
+export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntryRoute {
+  const query = options.query || {};
+  const storeKeys = ["storeCode", "store", "s"] as const;
+  const hasExplicitStore = hasAnyKey(query, storeKeys);
+  const rawStore = presentValue(query, storeKeys);
+  const explicitStore = validStoreCode(rawStore);
+  if (hasExplicitStore && !explicitStore) {
+    return { kind: "INVALID", message: "门店参数无效，请重新扫码" };
+  }
+
+  if (hasAnyKey(query, TABLE_KEYS)) {
+    const publicScene = validTableScene(presentValue(query, TABLE_KEYS));
+    if (!publicScene) return { kind: "INVALID", message: "桌码参数无效，请重新扫码" };
+    return { kind: "TABLE", publicScene, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(query, "scene")) {
+    const rawScene = query.scene;
+    if (!rawScene) return { kind: "INVALID", message: "二维码参数为空，请重新扫码" };
+    const scene = decode(rawScene).trim();
+    if (!scene) return { kind: "INVALID", message: "二维码参数为空，请重新扫码" };
+
+    if (scene.includes("=")) {
+      const fields = sceneFields(scene);
+      if (hasAnyKey(fields, TABLE_KEYS)) {
+        const publicScene = validTableScene(presentValue(fields, TABLE_KEYS));
+        if (!publicScene) return { kind: "INVALID", message: "桌码参数无效或已损坏，请重新扫码" };
+        const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
+        if (hasAnyKey(fields, storeKeys) && !sceneStore) {
+          return { kind: "INVALID", message: "桌码中的门店参数无效，请重新扫码" };
+        }
+        if (explicitStore && sceneStore && explicitStore !== sceneStore) {
+          return { kind: "INVALID", message: "桌码与门店不匹配，请重新扫码" };
+        }
+        const expectedStoreCode = explicitStore || sceneStore;
+        return { kind: "TABLE", publicScene, ...(expectedStoreCode ? { expectedStoreCode } : {}) };
+      }
+      const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
+      if (!sceneStore) return { kind: "INVALID", message: "二维码参数无效，请重新扫码" };
+      if (explicitStore && explicitStore !== sceneStore) {
+        return { kind: "INVALID", message: "二维码中的门店不一致，请重新扫码" };
+      }
+      return { kind: "STORE", storeCode: explicitStore || sceneStore };
+    }
+
+    // Backward-compatible unlimited-code payloads may be the bare opaque token.
+    // Limit this heuristic to 20-32 hex chars so ordinary human-readable stores
+    // keep their legacy raw-scene behavior.
+    const bareTableScene = /^[a-fA-F0-9]{20,32}$/.test(scene) ? validTableScene(scene) : "";
+    if (bareTableScene) {
+      return { kind: "TABLE", publicScene: bareTableScene, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
+    }
+    const sceneStore = validStoreCode(scene);
+    if (!sceneStore) return { kind: "INVALID", message: "二维码参数无效，请重新扫码" };
+    if (explicitStore && explicitStore !== sceneStore) {
+      return { kind: "INVALID", message: "二维码中的门店不一致，请重新扫码" };
+    }
+    return { kind: "STORE", storeCode: explicitStore || sceneStore };
+  }
+
+  if (explicitStore) return { kind: "STORE", storeCode: explicitStore };
+  return { kind: "NONE" };
+}
+
+export function orderingEntryKey(route: OrderingEntryRoute): string {
+  if (route.kind === "TABLE") return `TABLE:${route.expectedStoreCode || ""}:${route.publicScene}`;
+  if (route.kind === "STORE") return `STORE:${route.storeCode}`;
+  return route.kind;
 }

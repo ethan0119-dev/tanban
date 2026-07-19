@@ -75,7 +75,82 @@ paths:
     get:
       summary: 商户订单列表
       security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: order_type
+          schema: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+          description: 可使用兼容别名 orderType 或 order_scene
+        - in: query
+          name: keyword
+          schema: {type: string, maxLength: 100}
+          description: 订单号、顾客、桌台或取餐号模糊搜索
+        - in: query
+          name: startAt
+          schema: {type: string, format: date-time}
+        - in: query
+          name: endAt
+          schema: {type: string, format: date-time}
       responses: {'200': {description: Order page}}
+  /merchant/table-areas:
+    get:
+      summary: 桌台区域列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Table areas}}
+    post:
+      summary: 创建桌台区域
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created table area}}
+  /merchant/table-codes:
+    get:
+      summary: 桌码列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Table codes with stable public scene}}
+    post:
+      summary: 创建桌码
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created table code}}
+  /merchant/table-areas/{areaID}:
+    put:
+      summary: 修改桌台区域或启停状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: areaID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Updated table area}}
+    delete:
+      summary: 删除没有桌位引用的区域
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: areaID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Deleted table area}}
+  /merchant/table-codes/{tableID}:
+    put:
+      summary: 修改桌台资料或启停状态，publicId 保持不变
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: tableID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Updated table code}}
+  /merchant/print-templates:
+    get:
+      summary: 按经营场景读取小票和标签模板
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: businessType
+          schema: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+      responses: {'200': {description: Print templates}}
+    post:
+      summary: 保存经营场景打印模板
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created or replaced template}}
   /merchant/refunds:
     post:
       summary: 部分或全额退款
@@ -106,6 +181,17 @@ paths:
           required: true
           schema: {type: string}
       responses: {'200': {description: Store, categories and products}}
+  /public/table-codes/{code}:
+    get:
+      summary: 解析不可猜测的桌码 publicId
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 32}
+      responses:
+        '200': {description: Active store and table context}
+        '404': {description: Code, area, store or tenant is unavailable}
   /public/stores/{storeCode}/orders:
     post:
       summary: 幂等创建订单
@@ -118,6 +204,17 @@ paths:
           name: Idempotency-Key
           required: true
           schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                order_scene: {type: string, enum: [DINE_IN, TAKEOUT]}
+                table_public_id: {type: string, description: DINE_IN 必填且必须属于路径中的门店}
+                items: {type: array, minItems: 1, items: {type: object}}
       responses: {'201': {description: Order created}}
   /public/orders/{orderNo}/payments:
     post:

@@ -75,6 +75,20 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Put("/printers/{printerID}", s.updatePrinter)
 		managers.Delete("/printers/{printerID}", s.deletePrinter)
 		managers.Post("/printers/{printerID}/test", s.testPrinter)
+		managers.Get("/table-areas", s.listTableAreas)
+		managers.Post("/table-areas", s.createTableArea)
+		managers.Put("/table-areas/{areaID}", s.updateTableArea)
+		managers.Delete("/table-areas/{areaID}", s.deleteTableArea)
+		managers.Get("/table-codes", s.listTableCodes)
+		managers.Post("/table-codes", s.createTableCode)
+		managers.Get("/table-codes/{tableID}", s.getTableCode)
+		managers.Put("/table-codes/{tableID}", s.updateTableCode)
+		managers.Delete("/table-codes/{tableID}", s.deleteTableCode)
+		managers.Get("/print-templates", s.listPrintTemplates)
+		managers.Post("/print-templates", s.createPrintTemplate)
+		managers.Get("/print-templates/{templateID}", s.getPrintTemplate)
+		managers.Put("/print-templates/{templateID}", s.updatePrintTemplate)
+		managers.Delete("/print-templates/{templateID}", s.deletePrintTemplate)
 		managers.Get("/staff", s.listStaff)
 		managers.Post("/staff", s.createStaff)
 		managers.Get("/staff/{userID}", s.getStaff)
@@ -159,7 +173,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		popularProducts = append(popularProducts, map[string]any{"name": name, "count": count})
 	}
 	popularRows.Close()
-	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,order_type,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
 		FROM orders WHERE tenant_id=? AND store_id=? ORDER BY id DESC LIMIT 5`, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -168,13 +182,17 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 	recentOrders := []map[string]any{}
 	for recentRows.Next() {
 		var orderID, totalCents int64
-		var orderNo, status, createdAt string
-		if err = recentRows.Scan(&orderID, &orderNo, &totalCents, &status, &createdAt); err != nil {
+		var orderNo, status, orderType, tableArea, tableName, tableCode, createdAt string
+		if err = recentRows.Scan(&orderID, &orderNo, &totalCents, &status, &orderType, &tableArea, &tableName, &tableCode, &createdAt); err != nil {
 			recentRows.Close()
 			handleSQLError(w, err)
 			return
 		}
-		recentOrders = append(recentOrders, map[string]any{"id": orderID, "pickupNo": fmt.Sprintf("%04d", orderID%10000), "orderNo": orderNo, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []any{}})
+		row := map[string]any{"id": orderID, "pickupNo": fmt.Sprintf("%04d", orderID%10000), "orderNo": orderNo, "orderType": orderType, "order_type": orderType, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []any{}}
+		if orderType == orderTypeDineIn {
+			row["table"] = map[string]any{"areaName": tableArea, "name": tableName, "tableCode": tableCode}
+		}
+		recentOrders = append(recentOrders, row)
 	}
 	recentRows.Close()
 	averageOrderValue := 0.0

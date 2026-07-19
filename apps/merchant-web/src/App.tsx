@@ -18,6 +18,8 @@ import { ProductsPage } from './pages/ProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StaffPage } from './pages/StaffPage';
 import { StoredValuePage } from './pages/StoredValuePage';
+import { TableCodesPage } from './pages/TableCodesPage';
+import { BusinessPrintTemplatePage } from './pages/BusinessPrintTemplatePage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -38,7 +40,12 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders" element={<Navigate to="/dine-in/orders" replace />} />
+        <Route path="/dine-in/orders" element={<OrdersPage businessType="DINE_IN" />} />
+        <Route path="/dine-in/table-codes" element={<ManagementOnly><TableCodesPage /></ManagementOnly>} />
+        <Route path="/dine-in/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="dine-in-print-template" businessType="DINE_IN" /></ManagementOnly>} />
+        <Route path="/delivery/orders" element={<ManagementOnly><OrdersPage businessType="DELIVERY" unavailable /></ManagementOnly>} />
+        <Route path="/delivery/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="delivery-print-template" businessType="DELIVERY" /></ManagementOnly>} />
         <Route path="/print-jobs" element={<PrintersPage jobsOnly />} />
         <Route path="/products" element={<ManagementOnly><ProductsPage /></ManagementOnly>} />
         <Route path="/catalog" element={<ManagementOnly><CatalogConfigPage /></ManagementOnly>} />

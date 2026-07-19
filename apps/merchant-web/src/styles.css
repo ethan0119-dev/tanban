@@ -55,6 +55,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .merchant-menu .ant-menu-sub { background: rgba(255,255,255,.025) !important; }
 .merchant-menu .ant-menu-item .anticon { font-size: 17px; }
 .merchant-menu .ant-menu-item-selected { color: #fff !important; background: linear-gradient(135deg, #a76c45, #845137) !important; box-shadow: 0 8px 22px rgba(112,65,37,.22); }
+.menu-label-with-status { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 7px; }
+.menu-label-with-status > span { overflow: hidden; text-overflow: ellipsis; }
+.menu-label-with-status em { flex: 0 0 auto; padding: 0 5px; border-radius: 7px; color: #ebc3a7; background: rgba(255,255,255,.09); font-size: 9px; font-style: normal; line-height: 17px; }
 .sider-store-card { position: absolute; right: 13px; bottom: 16px; left: 13px; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 11px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.035); }
 .sider-store-card > .anticon { color: #d49a6f; font-size: 18px; }
 .sider-store-card small, .sider-store-card strong { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -152,11 +155,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pickup-no.large { font-size: 19px; }
 
 .order-filter-card { margin-bottom: 16px; }
+.order-domain-alert { margin-bottom: 16px; }
 .order-filter-card .ant-card-body { padding-top: 6px; }
 .order-filter-card .ant-tabs-nav { margin-bottom: 18px; }
+.order-service-mode { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 12px 14px; border-radius: 10px; background: #faf7f4; }
+.order-service-mode .ant-segmented { max-width: 100%; }
 .tab-count { margin-left: 5px; padding: 0 6px; min-width: 20px; display: inline-block; border-radius: 10px; background: #f3ebe5; color: #a05d37; font-style: normal; font-size: 11px; text-align: center; }
 .order-product-cell { max-width: 420px; }
 .order-product-cell .ant-tag { margin-top: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.table-context-cell strong, .table-context-cell small { display: block; }
+.table-context-cell strong { color: #825236; font-size: 15px; }
+.table-context-cell small { margin-top: 3px; color: #9b8d84; }
 .drawer-footer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .detail-hero { padding: 20px; margin-bottom: 24px; border-radius: 16px; text-align: center; color: #fff; background: radial-gradient(circle at 50% 0, #c98d61 0, #8c5637 76%); box-shadow: 0 12px 30px rgba(120,70,40,.18); }
 .detail-hero span, .detail-hero small { display: block; opacity: .8; }
@@ -198,6 +207,32 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .printer-info { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px 12px; padding: 18px 0; margin: 16px 0; border-block: 1px dashed #ece5e0; font-size: 13px; }
 .printer-info span { color: #948982; }
 .printer-info strong, .printer-info code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.table-code-flow-alert { margin-bottom: 16px; }
+.table-number { color: #8f5736; font-size: 16px; }
+.table-code-preview > .ant-alert { margin-bottom: 18px; }
+.table-code-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.table-code-image { min-height: 285px; display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 17px; border: 1px solid #eee5df; border-radius: 14px; background: #fcfaf8; }
+.table-code-image > .anticon { color: #c5b5aa; font-size: 64px; }
+.table-code-image > .ant-typography { width: 100%; text-align: center; }
+.table-code-image canvas { border-radius: 8px; }
+.official-placeholder { color: #9b8f87; border-style: dashed; }
+.table-code-help { margin: 15px 0 0 !important; }
+
+.print-scene-switch { margin-bottom: 16px; }
+.print-scene-switch .ant-card-body { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-block: 15px; }
+.print-policy-card { margin-bottom: 16px; }
+.print-template-tabs .ant-card-body { padding-top: 8px; }
+.print-template-editor, .print-paper-preview { height: 100%; border-color: #eee7e2; box-shadow: none; }
+.print-template-switch-row { min-height: 58px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.print-template-switch-row p { margin: 4px 0 0 !important; }
+.template-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.7; }
+.print-paper-preview { background: #f8f5f1; }
+.print-paper-preview pre { min-height: 280px; margin: 0; padding: 22px 18px; overflow: auto; border: 1px solid #e8dfd8; background: #fff; color: #28211d; font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; box-shadow: 0 4px 18px rgba(64,44,32,.06); }
+.template-variable-box { padding: 15px; border-radius: 11px; background: #faf7f4; }
+.template-variable-box strong { display: block; margin-bottom: 10px; }
+.template-variable-box .ant-tag { margin-bottom: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.template-meta { margin: 12px 4px 0 !important; text-align: right; font-size: 12px; }
 
 .role-grid { margin-bottom: 16px; }
 .role-card { height: 100%; box-shadow: 0 3px 16px rgba(70,54,43,.045); }
