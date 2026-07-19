@@ -45,6 +45,10 @@ type orderItemDTO struct {
 	ProductName    string         `json:"product_name"`
 	SKUName        string         `json:"sku_name"`
 	Attributes     map[string]any `json:"attributes"`
+	Configuration  map[string]any `json:"configuration"`
+	ItemRemark     string         `json:"item_remark"`
+	BasePriceCents int64          `json:"base_price_cents"`
+	ModifierCents  int64          `json:"modifier_price_cents"`
 	UnitPriceCents int64          `json:"unit_price_cents"`
 	Quantity       int            `json:"quantity"`
 	SubtotalCents  int64          `json:"subtotal_cents"`
@@ -142,18 +146,22 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 		item.PaidAt = &paidAt.String
 	}
 	item.AvailableSteps = orderTransitions[item.Status]
-	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? ORDER BY id`, tenantID, item.ID)
+	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? ORDER BY id`, tenantID, item.ID)
 	if err != nil {
 		return item, err
 	}
 	item.Items = []orderItemDTO{}
 	for rows.Next() {
 		var row orderItemDTO
-		var attrs string
-		if err := rows.Scan(&row.ID, &row.ProductID, &row.SKUID, &row.ProductName, &row.SKUName, &attrs, &row.UnitPriceCents, &row.Quantity, &row.SubtotalCents); err != nil {
+		var attrs, configuration string
+		if err := rows.Scan(&row.ID, &row.ProductID, &row.SKUID, &row.ProductName, &row.SKUName, &attrs, &configuration, &row.ItemRemark, &row.BasePriceCents, &row.ModifierCents, &row.UnitPriceCents, &row.Quantity, &row.SubtotalCents); err != nil {
 			return item, err
 		}
 		_ = json.Unmarshal([]byte(attrs), &row.Attributes)
+		_ = json.Unmarshal([]byte(configuration), &row.Configuration)
+		if row.Configuration == nil {
+			row.Configuration = map[string]any{}
+		}
 		item.Items = append(item.Items, row)
 	}
 	if err = rows.Err(); err != nil {
@@ -246,7 +254,8 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var current, paymentStatus string
-	if err := tx.QueryRowContext(r.Context(), "SELECT status,payment_status FROM orders WHERE id=? AND tenant_id=? FOR UPDATE", id, identity.TenantID).Scan(&current, &paymentStatus); err != nil {
+	var inventoryReserved int
+	if err := tx.QueryRowContext(r.Context(), "SELECT status,payment_status,inventory_reserved FROM orders WHERE id=? AND tenant_id=? FOR UPDATE", id, identity.TenantID).Scan(&current, &paymentStatus, &inventoryReserved); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -275,40 +284,18 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		closedExpr = "NOW(3)"
-		rows, restoreErr := tx.QueryContext(r.Context(), "SELECT sku_id,quantity FROM order_items WHERE order_id=?", id)
-		if restoreErr != nil {
-			handleSQLError(w, restoreErr)
-			return
-		}
-		type stockRestore struct {
-			skuID    int64
-			quantity int
-		}
-		var restores []stockRestore
-		for rows.Next() {
-			var skuID int64
-			var quantity int
-			if restoreErr = rows.Scan(&skuID, &quantity); restoreErr != nil {
-				rows.Close()
-				handleSQLError(w, restoreErr)
-				return
-			}
-			restores = append(restores, stockRestore{skuID: skuID, quantity: quantity})
-		}
-		if restoreErr = rows.Err(); restoreErr != nil {
-			rows.Close()
-			handleSQLError(w, restoreErr)
-			return
-		}
-		rows.Close()
-		for _, restore := range restores {
-			if _, restoreErr = tx.ExecContext(r.Context(), "UPDATE inventory SET stock=stock+? WHERE sku_id=? AND tenant_id=?", restore.quantity, restore.skuID, identity.TenantID); restoreErr != nil {
+		if inventoryReserved == 1 {
+			if restoreErr := restoreOrderInventory(r.Context(), tx, identity.TenantID, id); restoreErr != nil {
 				handleSQLError(w, restoreErr)
 				return
 			}
 		}
 	}
-	query := fmt.Sprintf("UPDATE orders SET status=?,completed_at=%s,closed_at=%s WHERE id=? AND tenant_id=? AND status=?", completedExpr, closedExpr)
+	reservationUpdate := ""
+	if input.Status == "CLOSED" {
+		reservationUpdate = ",inventory_reserved=0,stock_reserved_at=NULL"
+	}
+	query := fmt.Sprintf("UPDATE orders SET status=?,completed_at=%s,closed_at=%s%s WHERE id=? AND tenant_id=? AND status=?", completedExpr, closedExpr, reservationUpdate)
 	result, err := tx.ExecContext(r.Context(), query, input.Status, id, identity.TenantID, current)
 	if err != nil {
 		handleSQLError(w, err)
@@ -335,7 +322,8 @@ const paymentStatusCreating = "CREATING"
 
 type paymentCreationIntent struct {
 	ID, TenantID, StoreID, OrderID, Amount int64
-	OrderNo, MerchantNo, SubAppID, OpenID  string
+	BusinessOrderNo, ProviderRequestNo     string
+	MerchantNo, SubAppID, OpenID           string
 }
 
 func (s *Server) acquirePaymentOrderLock(ctx context.Context, tenantID, orderID int64) (*sql.Conn, func(), error) {
@@ -363,8 +351,8 @@ func (s *Server) acquirePaymentOrderLock(ctx context.Context, tenantID, orderID 
 	return conn, release, nil
 }
 
-func localPaymentReference(orderNo string) string {
-	return "LOCAL-" + orderNo
+func localPaymentReference(providerRequestNo string) string {
+	return "LOCAL-" + providerRequestNo
 }
 
 func (s *Server) paymentAcceptanceEnabled(ctx context.Context) (bool, error) {
@@ -385,12 +373,12 @@ func (s *Server) paymentAcceptanceEnabled(ctx context.Context) (bool, error) {
 
 func (s *Server) loadPaymentCreationIntent(ctx context.Context, queryer sqlQueryer, paymentID int64) (paymentCreationIntent, error) {
 	var intent paymentCreationIntent
-	err := queryer.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.amount_cents,o.order_no,
+	err := queryer.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.amount_cents,o.order_no,p.provider_request_no,
 		p.merchant_no,p.sub_appid,p.customer_openid
 		FROM payment_transactions p
 		JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
 		WHERE p.id=?`, paymentID).
-		Scan(&intent.ID, &intent.TenantID, &intent.StoreID, &intent.OrderID, &intent.Amount, &intent.OrderNo, &intent.MerchantNo, &intent.SubAppID, &intent.OpenID)
+		Scan(&intent.ID, &intent.TenantID, &intent.StoreID, &intent.OrderID, &intent.Amount, &intent.BusinessOrderNo, &intent.ProviderRequestNo, &intent.MerchantNo, &intent.SubAppID, &intent.OpenID)
 	return intent, err
 }
 
@@ -404,7 +392,7 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 	defer cancel()
 	result, err := s.Payment.Create(providerCtx, provider.CreatePaymentRequest{
 		MerchantNo: intent.MerchantNo,
-		OrderNo:    intent.OrderNo,
+		OrderNo:    intent.ProviderRequestNo,
 		Amount:     intent.Amount,
 		OpenID:     intent.OpenID,
 		SubAppID:   intent.SubAppID,
@@ -428,7 +416,7 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 		return result, errors.New("payment intent changed while provider creation was in progress")
 	}
 	if result.Status == provider.PaymentSuccess {
-		if err = s.markPaymentPaid(ctx, s.Payment.Name(), result.ProviderOrderNo, time.Now()); err != nil {
+		if err = s.markPaymentPaidLocked(ctx, conn, s.Payment.Name(), result.ProviderOrderNo, time.Now()); err != nil {
 			return result, err
 		}
 	}
@@ -464,6 +452,19 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 	defer release()
+	expired, allowLate, err := s.expireOrderReservationLocked(r.Context(), conn, tenantID, orderID)
+	if errors.Is(err, errPaymentAlreadyPaid) {
+		writeError(w, http.StatusConflict, "ORDER_ALREADY_PAID", "a successful payment already exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "PAYMENT_CLOSE_FAILED", err.Error())
+		return
+	}
+	if expired && !allowLate {
+		writeError(w, http.StatusConflict, "ORDER_PAYMENT_EXPIRED", "the payment window expired and the order was closed")
+		return
+	}
 
 	var orderNo, orderStatus, merchantNo, subAppID, storedOpenID string
 	var storeID, amount int64
@@ -481,6 +482,19 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
 		return
 	}
+	newReservation, reserveErr := ensureOrderStockReservationLocked(r.Context(), conn, tenantID, orderID)
+	if errors.Is(reserveErr, errInsufficientStock) {
+		writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "inventory changed while this order was waiting for late payment")
+		return
+	}
+	if errors.Is(reserveErr, errOrderNotPayable) {
+		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
+		return
+	}
+	if reserveErr != nil {
+		handleSQLError(w, reserveErr)
+		return
+	}
 	if input.OpenID == "" {
 		input.OpenID = storedOpenID
 	} else if storedOpenID == "" {
@@ -492,12 +506,13 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	var existingID int64
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
-	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? LIMIT 1", tenantID, orderID).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
-	isNew := errors.Is(err, sql.ErrNoRows)
+	renewReservation := newReservation
+	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? ORDER BY id DESC LIMIT 1", tenantID, orderID).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
+	createAttempt := errors.Is(err, sql.ErrNoRows)
 	if err == nil {
 		switch existingStatus {
 		case string(provider.PaymentSuccess):
-			if err = s.markPaymentPaid(r.Context(), existingProvider, existingNo, time.Now()); err != nil {
+			if err = s.markPaymentPaidLocked(r.Context(), conn, existingProvider, existingNo, time.Now()); err != nil {
 				handleSQLError(w, err)
 				return
 			}
@@ -515,9 +530,12 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			// caller's OpenID may have changed since the first provider attempt.
 			intent, err = s.loadPaymentCreationIntent(r.Context(), conn, existingID)
 		case string(provider.PaymentFailed), string(provider.PaymentClosed):
-			existingNo = localPaymentReference(orderNo)
-			_, err = conn.ExecContext(r.Context(), `UPDATE payment_transactions SET provider=?,merchant_no=?,sub_appid=?,customer_openid=?,provider_order_no=?,amount_cents=?,status='CREATING',raw_response='{}',paid_at=NULL
-				WHERE id=? AND tenant_id=?`, s.Payment.Name(), merchantNo, subAppID, input.OpenID, existingNo, amount, existingID, tenantID)
+			// Payment attempts are append-only. A fresh provider request number is
+			// essential because providers retain CLOSED/FAILED idempotency keys,
+			// and preserving the prior row keeps delayed callbacks auditable.
+			createAttempt = true
+			intent = paymentCreationIntent{}
+			renewReservation = true
 		default:
 			writeError(w, http.StatusConflict, "PAYMENT_STATE_UNSUPPORTED", "payment is in an unsupported state")
 			return
@@ -527,11 +545,13 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		handleSQLError(w, err)
 		return
 	}
-	if isNew {
-		existingNo = localPaymentReference(orderNo)
+	if createAttempt {
+		renewReservation = true
+		providerRequestNo := newBusinessNo("PY")
+		existingNo = localPaymentReference(providerRequestNo)
 		var dbResult sql.Result
-		dbResult, err = conn.ExecContext(r.Context(), `INSERT INTO payment_transactions(tenant_id,store_id,order_id,provider,merchant_no,sub_appid,customer_openid,provider_order_no,amount_cents,status,raw_response)
-			VALUES(?,?,?,?,?,?,?,?,?,'CREATING','{}')`, tenantID, storeID, orderID, s.Payment.Name(), merchantNo, subAppID, input.OpenID, existingNo, amount)
+		dbResult, err = conn.ExecContext(r.Context(), `INSERT INTO payment_transactions(tenant_id,store_id,order_id,provider,merchant_no,sub_appid,customer_openid,provider_request_no,provider_order_no,amount_cents,status,raw_response)
+			VALUES(?,?,?,?,?,?,?,?,?,?,'CREATING','{}')`, tenantID, storeID, orderID, s.Payment.Name(), merchantNo, subAppID, input.OpenID, providerRequestNo, existingNo, amount)
 		if err == nil {
 			existingID, _ = dbResult.LastInsertId()
 		}
@@ -541,16 +561,27 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 	if intent.ID == 0 {
-		intent = paymentCreationIntent{ID: existingID, TenantID: tenantID, StoreID: storeID, OrderID: orderID, Amount: amount, OrderNo: orderNo, MerchantNo: merchantNo, SubAppID: subAppID, OpenID: input.OpenID}
+		intent, err = s.loadPaymentCreationIntent(r.Context(), conn, existingID)
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	}
+	if renewReservation && !newReservation {
+		if _, err = conn.ExecContext(r.Context(), `UPDATE orders SET stock_reserved_at=NOW(3)
+			WHERE id=? AND tenant_id=? AND status='PENDING_PAYMENT' AND payment_status='UNPAID' AND inventory_reserved=1`, orderID, tenantID); err != nil {
+			handleSQLError(w, err)
+			return
+		}
 	}
 	result, submitErr := s.submitPaymentIntent(r.Context(), conn, intent)
 	if submitErr != nil {
 		s.Logger.Warn("payment creation outcome is pending reconciliation", "payment_id", existingID, "order_id", orderID, "error", submitErr)
-		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(orderNo), paymentStatusCreating, map[string]string{"mode": "processing"})
+		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"})
 		return
 	}
 	statusCode := http.StatusOK
-	if isNew {
+	if createAttempt {
 		statusCode = http.StatusCreated
 	}
 	writePaymentResponse(w, statusCode, existingID, s.Payment.Name(), result.ProviderOrderNo, string(result.Status), result.PayParams)
@@ -563,7 +594,7 @@ func writePaymentResponse(w http.ResponseWriter, statusCode int, id int64, provi
 func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, tenantID, orderID int64) error {
 	var id int64
 	var providerName, providerNo, status string
-	err := conn.QueryRowContext(ctx, "SELECT id,provider,provider_order_no,status FROM payment_transactions WHERE tenant_id=? AND order_id=? LIMIT 1", tenantID, orderID).Scan(&id, &providerName, &providerNo, &status)
+	err := conn.QueryRowContext(ctx, "SELECT id,provider,provider_order_no,status FROM payment_transactions WHERE tenant_id=? AND order_id=? ORDER BY id DESC LIMIT 1", tenantID, orderID).Scan(&id, &providerName, &providerNo, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -658,38 +689,98 @@ func (s *Server) tianQueCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) markPaymentPaid(ctx context.Context, providerName, providerNo string, paidAt time.Time) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
+	var tenantID, orderID int64
+	if err := s.DB.QueryRowContext(ctx, "SELECT tenant_id,order_id FROM payment_transactions WHERE provider=? AND provider_order_no=?", providerName, providerNo).Scan(&tenantID, &orderID); err != nil {
+		return err
+	}
+	conn, release, err := s.acquirePaymentOrderLock(ctx, tenantID, orderID)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return s.markPaymentPaidLocked(ctx, conn, providerName, providerNo, paidAt)
+}
+
+// markPaymentPaidLocked must only be called while the per-order named lock is
+// held. Payment creation/renewal and callbacks consequently share one order
+// state machine instead of racing through separate database transactions.
+func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, providerName, providerNo string, paidAt time.Time) error {
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var paymentID, tenantID, storeID, orderID int64
 	var paymentStatus, orderStatus, orderPaymentStatus string
-	err = tx.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status
+	var inventoryReserved int
+	err = tx.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.inventory_reserved
 		FROM payment_transactions p JOIN orders o ON o.id=p.order_id
 		WHERE p.provider=? AND p.provider_order_no=? FOR UPDATE`, providerName, providerNo).
-		Scan(&paymentID, &tenantID, &storeID, &orderID, &paymentStatus, &orderStatus, &orderPaymentStatus)
+		Scan(&paymentID, &tenantID, &storeID, &orderID, &paymentStatus, &orderStatus, &orderPaymentStatus, &inventoryReserved)
 	if err != nil {
 		return err
 	}
-	if paymentStatus != string(provider.PaymentSuccess) {
+	newlySucceeded := paymentStatus != string(provider.PaymentSuccess)
+	var newerActiveID int64
+	var newerActiveProvider, newerActiveNo, newerActiveStatus, newerCloseError string
+	if newlySucceeded {
+		queryErr := tx.QueryRowContext(ctx, `SELECT id,provider,provider_order_no,status FROM payment_transactions
+			WHERE tenant_id=? AND order_id=? AND id>? AND status IN ('CREATING','PENDING')
+			ORDER BY id DESC LIMIT 1 FOR UPDATE`, tenantID, orderID, paymentID).
+			Scan(&newerActiveID, &newerActiveProvider, &newerActiveNo, &newerActiveStatus)
+		if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
+			return queryErr
+		}
+		if queryErr == nil {
+			switch {
+			case newerActiveStatus != string(provider.PaymentPending):
+				newerCloseError = "newer payment creation is still unresolved"
+			case newerActiveProvider != s.Payment.Name():
+				newerCloseError = "newer payment belongs to an inactive provider"
+			default:
+				closeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				closeErr := s.Payment.Close(closeCtx, newerActiveNo)
+				cancel()
+				if closeErr != nil {
+					newerCloseError = truncateError(closeErr)
+				} else {
+					result, updateErr := tx.ExecContext(ctx, "UPDATE payment_transactions SET status='CLOSED' WHERE id=? AND tenant_id=? AND status='PENDING'", newerActiveID, tenantID)
+					if updateErr != nil {
+						return updateErr
+					}
+					if changed, _ := result.RowsAffected(); changed != 1 {
+						newerCloseError = "newer payment changed while it was being closed"
+					}
+				}
+			}
+		}
+	}
+	if newlySucceeded {
 		if _, err = tx.ExecContext(ctx, "UPDATE payment_transactions SET status='SUCCESS',paid_at=? WHERE id=?", paidAt, paymentID); err != nil {
 			return err
 		}
 	}
 	if orderPaymentStatus == "UNPAID" {
 		targetStatus := "PAID"
-		if orderStatus == "CLOSED" {
+		if orderStatus == "CLOSED" || inventoryReserved != 1 || newerActiveID != 0 {
 			targetStatus = "PAYMENT_EXCEPTION"
 		}
-		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status=?,payment_status='PAID',paid_cents=total_cents,paid_at=? WHERE id=?", targetStatus, paidAt, orderID); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?", targetStatus, paidAt, orderID); err != nil {
 			return err
 		}
 		if targetStatus == "PAYMENT_EXCEPTION" {
-			s.Logger.Error("payment succeeded after order closure", "order_id", orderID, "provider_order_no", providerNo)
+			s.Logger.Error("payment succeeded on an exceptional order path", "order_id", orderID, "provider_order_no", providerNo, "previous_order_status", orderStatus, "newer_payment_id", newerActiveID, "newer_payment_close_error", newerCloseError)
 		} else if err = s.enqueueOrderPrintsWith(ctx, tx, tenantID, storeID, orderID, "PAYMENT_SUCCESS", false, 0, ""); err != nil {
 			return err
 		}
+	} else if newlySucceeded {
+		// A different attempt already paid this order. Preserve both provider
+		// transactions, surface an exception, and require an operator to refund
+		// the duplicate receipt instead of silently treating it as idempotent.
+		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status='PAYMENT_EXCEPTION' WHERE id=?", orderID); err != nil {
+			return err
+		}
+		s.Logger.Error("additional payment attempt succeeded for an already paid order", "order_id", orderID, "payment_id", paymentID, "provider_order_no", providerNo, "order_payment_status", orderPaymentStatus)
 	}
 	if err = tx.Commit(); err != nil {
 		return err
@@ -709,8 +800,8 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if input.OrderID <= 0 || input.AmountCents <= 0 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "order_id and positive amount_cents are required")
+	if input.OrderID <= 0 || input.AmountCents <= 0 || input.AmountCents > maxBusinessAmountCents {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "order_id and amount_cents inside the supported range are required")
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -760,7 +851,7 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	if reserved+input.AmountCents > totalCents {
+	if totalCents < 0 || reserved < 0 || reserved > totalCents || input.AmountCents > totalCents-reserved {
 		writeError(w, http.StatusConflict, "REFUND_EXCEEDS_PAID_AMOUNT", "cumulative refund exceeds paid amount")
 		return
 	}
@@ -855,10 +946,10 @@ func (s *Server) finalizeRefund(ctx context.Context, refundID int64, providerRef
 	if status != "PENDING" {
 		return fmt.Errorf("refund %d is not pending", refundID)
 	}
-	newRefunded := refunded + amount
-	if newRefunded > paid {
+	if paid < 0 || refunded < 0 || refunded > paid || amount <= 0 || amount > paid-refunded {
 		return fmt.Errorf("refund %d exceeds paid amount", refundID)
 	}
+	newRefunded := refunded + amount
 	if _, err = tx.ExecContext(ctx, "UPDATE refunds SET status='SUCCESS',provider_refund_no=?,last_error='' WHERE id=? AND status='PENDING'", providerRefundNo, refundID); err != nil {
 		return err
 	}

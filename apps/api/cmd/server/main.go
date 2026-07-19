@@ -48,6 +48,7 @@ func main() {
 	server.StartPrintWorker(workerCtx)
 	server.StartPaymentReconciler(workerCtx)
 	server.StartRefundReconciler(workerCtx)
+	server.StartOrderExpirationWorker(workerCtx)
 	httpServer := &http.Server{Addr: cfg.HTTPAddr, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		logger.Info("tanban api started", "addr", cfg.HTTPAddr, "payment_provider", server.Payment.Name(), "printer_provider", server.Printer.Name())

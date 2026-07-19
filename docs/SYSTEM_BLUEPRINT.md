@@ -520,7 +520,8 @@ DRAFT 草稿
   -> READY 待取餐/待配送
   -> COMPLETED 已完成
 
-PENDING_PAYMENT -> CLOSED 超时关闭
+PENDING_PAYMENT -> CLOSED 超时关闭（门店禁止迟付）
+PENDING_PAYMENT -> PENDING_PAYMENT 超时归还库存（门店允许迟付；再次付款先重新预占）
 PAID/ACCEPTED -> REFUNDING 退款中 -> REFUNDED 已退款
 PAID/ACCEPTED -> CANCELLED 已取消（需保留退款关系）
 ```

@@ -13,11 +13,12 @@ export function isMerchantStaff(user: MerchantUser | null | undefined): boolean 
 }
 
 export function canManageMerchant(user: MerchantUser | null | undefined): boolean {
-  return !isMerchantStaff(user);
+  const role = primaryMerchantRole(user);
+  return OWNER_ROLES.has(role) || MANAGER_ROLES.has(role);
 }
 
 export function canViewMerchantFinancials(user: MerchantUser | null | undefined): boolean {
-  return !isMerchantStaff(user);
+  return canManageMerchant(user);
 }
 
 export function isMerchantManager(user: MerchantUser | null | undefined): boolean {
@@ -36,5 +37,5 @@ export function assignableMerchantRoles(user: MerchantUser | null | undefined): 
 
 export function canManageStaffRole(user: MerchantUser | null | undefined, targetRole: string): boolean {
   if (isMerchantManager(user)) return STAFF_ROLES.has(String(targetRole).trim().toUpperCase());
-  return canManageMerchant(user);
+  return isMerchantOwner(user);
 }

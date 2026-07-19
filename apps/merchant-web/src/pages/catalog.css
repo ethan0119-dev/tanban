@@ -1,0 +1,14 @@
+.catalog-tabs .ant-tabs-nav { margin-bottom: 18px; }
+.catalog-overview { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.catalog-overview .ant-card-body { padding: 16px; }
+.catalog-overview strong { display: block; margin-top: 6px; font-size: 24px; color: #4b382e; }
+.catalog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.catalog-type-tip { margin-bottom: 16px; color: #81756e; line-height: 1.7; }
+.catalog-config-json { min-height: 100px !important; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.modifier-items { display: flex; flex-wrap: wrap; gap: 6px; max-width: 520px; }
+.modifier-item-chip { padding: 3px 8px; border-radius: 999px; color: #76523e; background: #f6eee8; font-size: 12px; }
+
+@media (max-width: 900px) {
+  .catalog-overview { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+  .catalog-toolbar { align-items: stretch; flex-direction: column; }
+}

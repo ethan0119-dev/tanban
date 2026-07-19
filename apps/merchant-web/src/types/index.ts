@@ -30,6 +30,11 @@ export interface OrderItem {
   unitPrice: number;
   amount?: number;
   remark?: string;
+  itemRemark?: string;
+  configuration?: {
+    options?: Array<{ groupName?: string; valueName?: string }>;
+    modifiers?: Array<{ groupName?: string; name?: string; quantity?: number }>;
+  };
 }
 
 export interface Order {
@@ -64,6 +69,7 @@ export interface Sku {
   name: string;
   price: number;
   stock: number;
+  expectedStock?: number;
   originalStock?: number;
   code?: string;
   attributes?: Record<string, string>;

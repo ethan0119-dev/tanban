@@ -2,13 +2,14 @@ package provider
 
 import (
 	"context"
+	"math"
 	"testing"
 )
 
 func TestMockPaymentLifecycle(t *testing.T) {
 	t.Parallel()
 	provider := NewMockPayment()
-	created, err := provider.Create(context.Background(), CreatePaymentRequest{OrderNo: "TB001", Amount: 1200})
+	created, err := provider.Create(context.Background(), CreatePaymentRequest{MerchantNo: "M001", OrderNo: "TB001", Amount: 1200})
 	if err != nil || created.Status != PaymentPending {
 		t.Fatalf("create: result=%+v err=%v", created, err)
 	}
@@ -29,6 +30,22 @@ func TestMockPaymentLifecycle(t *testing.T) {
 	}
 }
 
+func TestMockPaymentRejectsCumulativeRefundOverflow(t *testing.T) {
+	t.Parallel()
+	mock := NewMockPayment()
+	request := CreatePaymentRequest{MerchantNo: "M-LIMIT", OrderNo: "TB-LIMIT", Amount: 100}
+	created, err := mock.Create(context.Background(), request)
+	if err != nil || !mock.Confirm(created.ProviderOrderNo) {
+		t.Fatalf("prepare payment: result=%+v err=%v", created, err)
+	}
+	if _, err = mock.Refund(context.Background(), RefundRequest{MerchantNo: request.MerchantNo, ProviderOrderNo: created.ProviderOrderNo, RefundNo: "RF-1", Amount: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mock.Refund(context.Background(), RefundRequest{MerchantNo: request.MerchantNo, ProviderOrderNo: created.ProviderOrderNo, RefundNo: "RF-MAX", Amount: math.MaxInt64}); err == nil {
+		t.Fatal("refund larger than the remaining paid amount must be rejected")
+	}
+}
+
 func TestMockPaymentCannotConfirmAfterClose(t *testing.T) {
 	t.Parallel()
 	mock := NewMockPayment()
@@ -41,6 +58,31 @@ func TestMockPaymentCannotConfirmAfterClose(t *testing.T) {
 	}
 	if mock.Confirm(created.ProviderOrderNo) {
 		t.Fatal("closed payment must not be confirmed")
+	}
+}
+
+func TestMockPaymentClosedAttemptCanBeReplacedByFreshAttempt(t *testing.T) {
+	t.Parallel()
+	mock := NewMockPayment()
+	first, err := mock.Create(context.Background(), CreatePaymentRequest{MerchantNo: "M-RETRY", OrderNo: "PY-ATTEMPT-1", Amount: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.Close(context.Background(), first.ProviderOrderNo); err != nil {
+		t.Fatal(err)
+	}
+	second, err := mock.Create(context.Background(), CreatePaymentRequest{MerchantNo: "M-RETRY", OrderNo: "PY-ATTEMPT-2", Amount: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ProviderOrderNo == second.ProviderOrderNo {
+		t.Fatalf("fresh attempts must use distinct provider keys: %s", first.ProviderOrderNo)
+	}
+	if !mock.Confirm(second.ProviderOrderNo) {
+		t.Fatal("the fresh attempt should remain payable")
+	}
+	if mock.Confirm(first.ProviderOrderNo) {
+		t.Fatal("the closed prior attempt must remain closed")
 	}
 }
 

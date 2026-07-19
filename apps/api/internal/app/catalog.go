@@ -34,15 +34,16 @@ type productDTO struct {
 }
 
 type skuInput struct {
-	ID          int64          `json:"id"`
-	Name        string         `json:"name"`
-	Attributes  map[string]any `json:"attributes"`
-	PriceCents  int64          `json:"price_cents"`
-	Status      string         `json:"status"`
-	Stock       int            `json:"stock"`
-	AutoSoldOut *bool          `json:"auto_sold_out"`
-	AutoRefill  bool           `json:"auto_refill"`
-	RefillStock int            `json:"refill_stock"`
+	ID            int64          `json:"id"`
+	Name          string         `json:"name"`
+	Attributes    map[string]any `json:"attributes"`
+	PriceCents    int64          `json:"price_cents"`
+	Status        string         `json:"status"`
+	Stock         int            `json:"stock"`
+	ExpectedStock *int           `json:"expected_stock"`
+	AutoSoldOut   *bool          `json:"auto_sold_out"`
+	AutoRefill    bool           `json:"auto_refill"`
+	RefillStock   int            `json:"refill_stock"`
 }
 
 type productInput struct {
@@ -129,8 +130,11 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func insertSKU(ctx context.Context, tx *sql.Tx, tenantID, storeID, productID int64, input skuInput) error {
-	if input.Name == "" || input.PriceCents < 0 || input.Stock < 0 {
-		return errors.New("sku name and non-negative price_cents/stock are required")
+	if input.Name == "" || input.PriceCents < 0 || input.PriceCents > maxCatalogUnitPriceCents || input.Stock < 0 {
+		return errors.New("sku name, stock and a price inside the allowed range are required")
+	}
+	if input.AutoRefill {
+		return errors.New("daily inventory refill is reserved but not enabled yet")
 	}
 	if input.Status == "" {
 		input.Status = "ACTIVE"
@@ -220,6 +224,7 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	retainedSKU := make(map[int64]bool, len(input.SKUs))
+	existingSKUSet := make(map[int64]bool)
 	existingRows, err := tx.QueryContext(r.Context(), "SELECT id FROM skus WHERE product_id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -234,6 +239,7 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		existingSKU = append(existingSKU, skuID)
+		existingSKUSet[skuID] = true
 	}
 	if err = existingRows.Err(); err != nil {
 		existingRows.Close()
@@ -242,7 +248,7 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	existingRows.Close()
 	for _, sku := range input.SKUs {
-		if strings.TrimSpace(sku.Name) == "" || sku.PriceCents < 0 || sku.Stock < 0 || sku.RefillStock < 0 {
+		if strings.TrimSpace(sku.Name) == "" || sku.PriceCents < 0 || sku.PriceCents > maxCatalogUnitPriceCents || sku.Stock < 0 || sku.RefillStock < 0 {
 			writeError(w, http.StatusBadRequest, "INVALID_SKU", "sku name and non-negative price_cents/stock/refill_stock are required")
 			return
 		}
@@ -253,25 +259,35 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
+		if sku.ExpectedStock == nil || *sku.ExpectedStock < 0 {
+			writeError(w, http.StatusBadRequest, "EXPECTED_STOCK_REQUIRED", "expected_stock is required for every existing sku")
+			return
+		}
+		if !existingSKUSet[sku.ID] {
+			writeError(w, http.StatusBadRequest, "INVALID_SKU", "sku does not belong to this product")
+			return
+		}
+		if sku.AutoRefill {
+			writeError(w, http.StatusConflict, "FEATURE_NOT_READY", "daily inventory refill is reserved but not enabled yet")
+			return
+		}
 		retainedSKU[sku.ID] = true
 		if sku.Status == "" {
 			sku.Status = "ACTIVE"
 		}
 		attrs, _ := json.Marshal(sku.Attributes)
-		var skuResult sql.Result
-		if skuResult, err = tx.ExecContext(r.Context(), `UPDATE skus SET name=?,attributes_json=?,price_cents=?,status=? WHERE id=? AND product_id=? AND tenant_id=? AND deleted_at IS NULL`, sku.Name, string(attrs), sku.PriceCents, strings.ToUpper(sku.Status), sku.ID, id, identity.TenantID); err != nil {
+		if _, err = tx.ExecContext(r.Context(), `UPDATE skus SET name=?,attributes_json=?,price_cents=?,status=? WHERE id=? AND product_id=? AND tenant_id=? AND deleted_at IS NULL`, sku.Name, string(attrs), sku.PriceCents, strings.ToUpper(sku.Status), sku.ID, id, identity.TenantID); err != nil {
 			handleSQLError(w, err)
-			return
-		}
-		if updated, _ := skuResult.RowsAffected(); updated != 1 {
-			writeError(w, http.StatusBadRequest, "INVALID_SKU", "sku does not belong to this product")
 			return
 		}
 		autoSoldOut := true
 		if sku.AutoSoldOut != nil {
 			autoSoldOut = *sku.AutoSoldOut
 		}
-		if _, err = tx.ExecContext(r.Context(), `UPDATE inventory SET stock=?,auto_sold_out=?,auto_refill=?,refill_stock=? WHERE sku_id=? AND tenant_id=?`, sku.Stock, autoSoldOut, sku.AutoRefill, sku.RefillStock, sku.ID, identity.TenantID); err != nil {
+		if err = updateInventoryOptimistic(r.Context(), tx, identity.TenantID, sku.ID, *sku.ExpectedStock, sku.Stock, autoSoldOut, sku.AutoRefill, sku.RefillStock); errors.Is(err, errStockConflict) {
+			writeError(w, http.StatusConflict, "STOCK_CONFLICT", "inventory changed while this product was being edited; refresh and retry")
+			return
+		} else if err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -329,10 +345,11 @@ func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 type inventoryInput struct {
-	Stock       int  `json:"stock"`
-	AutoSoldOut bool `json:"auto_sold_out"`
-	AutoRefill  bool `json:"auto_refill"`
-	RefillStock int  `json:"refill_stock"`
+	Stock         int  `json:"stock"`
+	ExpectedStock *int `json:"expected_stock"`
+	AutoSoldOut   bool `json:"auto_sold_out"`
+	AutoRefill    bool `json:"auto_refill"`
+	RefillStock   int  `json:"refill_stock"`
 }
 
 func (s *Server) updateInventory(w http.ResponseWriter, r *http.Request) {
@@ -344,22 +361,48 @@ func (s *Server) updateInventory(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if input.Stock < 0 || input.RefillStock < 0 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "stock cannot be negative")
+	if input.Stock < 0 || input.RefillStock < 0 || input.ExpectedStock == nil || *input.ExpectedStock < 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "stock/refill_stock must be non-negative and expected_stock is required")
+		return
+	}
+	if input.AutoRefill {
+		writeError(w, http.StatusConflict, "FEATURE_NOT_READY", "daily inventory refill is reserved but not enabled yet")
 		return
 	}
 	identity := currentIdentity(r.Context())
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE inventory SET stock=?,auto_sold_out=?,auto_refill=?,refill_stock=? WHERE sku_id=? AND tenant_id=?`, input.Stock, input.AutoSoldOut, input.AutoRefill, input.RefillStock, id, identity.TenantID)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "sku inventory not found")
+	defer tx.Rollback()
+	if err = updateInventoryOptimistic(r.Context(), tx, identity.TenantID, id, *input.ExpectedStock, input.Stock, input.AutoSoldOut, input.AutoRefill, input.RefillStock); errors.Is(err, errStockConflict) {
+		writeError(w, http.StatusConflict, "STOCK_CONFLICT", "inventory changed; refresh and retry")
+		return
+	} else if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
 		return
 	}
 	s.audit(r.Context(), identity, "inventory.update", "sku", int64String(id), input, r)
 	writeData(w, http.StatusOK, map[string]any{"sku_id": id, "stock": input.Stock, "auto_sold_out": input.AutoSoldOut, "auto_refill": input.AutoRefill, "refill_stock": input.RefillStock})
+}
+
+var errStockConflict = errors.New("inventory stock changed")
+
+func updateInventoryOptimistic(ctx context.Context, tx *sql.Tx, tenantID, skuID int64, expectedStock, stock int, autoSoldOut, autoRefill bool, refillStock int) error {
+	var currentStock int
+	if err := tx.QueryRowContext(ctx, `SELECT stock FROM inventory WHERE sku_id=? AND tenant_id=? FOR UPDATE`, skuID, tenantID).Scan(&currentStock); err != nil {
+		return err
+	}
+	if currentStock != expectedStock {
+		return errStockConflict
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE inventory SET stock=?,auto_sold_out=?,auto_refill=?,refill_stock=? WHERE sku_id=? AND tenant_id=?`, stock, autoSoldOut, autoRefill, refillStock, skuID, tenantID)
+	return err
 }
 
 func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publicOnly bool, productID int64) ([]productDTO, error) {
@@ -374,7 +417,7 @@ func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publ
 		args = append(args, productID)
 	}
 	if publicOnly {
-		query += " AND status='ACTIVE'"
+		query += " AND status='ACTIVE' AND EXISTS(SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.tenant_id=products.tenant_id AND c.store_id=products.store_id AND c.status='ACTIVE' AND c.deleted_at IS NULL)"
 	}
 	query += " ORDER BY sort_order,id"
 	rows, err := s.DB.QueryContext(ctx, query, args...)

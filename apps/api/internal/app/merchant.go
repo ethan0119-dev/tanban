@@ -39,7 +39,32 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Get("/products/{productID}", s.getProduct)
 		managers.Put("/products/{productID}", s.updateProduct)
 		managers.Delete("/products/{productID}", s.deleteProduct)
+		managers.Get("/products/{productID}/configuration", s.getProductConfiguration)
+		managers.Put("/products/{productID}/configuration", s.updateProductConfiguration)
 		managers.Put("/skus/{skuID}/inventory", s.updateInventory)
+		managers.Get("/catalog-resources", s.listCatalogResources)
+		managers.Post("/catalog-resources", s.createCatalogResource)
+		managers.Put("/catalog-resources/{resourceID}", s.updateCatalogResource)
+		managers.Delete("/catalog-resources/{resourceID}", s.deleteCatalogResource)
+		managers.Get("/modifier-items", s.listModifierItems)
+		managers.Post("/modifier-items", s.createModifierItem)
+		managers.Put("/modifier-items/{itemID}", s.updateModifierItem)
+		managers.Delete("/modifier-items/{itemID}", s.deleteModifierItem)
+		managers.Get("/modifier-groups", s.listModifierGroups)
+		managers.Post("/modifier-groups", s.createModifierGroup)
+		managers.Put("/modifier-groups/{groupID}", s.updateModifierGroup)
+		managers.Delete("/modifier-groups/{groupID}", s.deleteModifierGroup)
+		managers.Get("/decoration", s.getDecoration)
+		managers.Put("/decoration/draft", s.saveDecorationDraft)
+		managers.Post("/decoration/publish", s.publishDecoration)
+		managers.Get("/decoration/versions", s.listDecorationVersions)
+		managers.Get("/decoration/versions/{versionID}", s.getDecorationVersion)
+		managers.Post("/decoration/versions/{versionID}/rollback", s.rollbackDecoration)
+		managers.Get("/decoration/templates", s.getDecorationTemplates)
+		managers.Get("/media-assets", s.listMediaAssets)
+		managers.Post("/media-assets", s.createMediaAsset)
+		managers.Put("/media-assets/{assetID}", s.updateMediaAsset)
+		managers.Delete("/media-assets/{assetID}", s.deleteMediaAsset)
 		managers.Post("/orders/{orderID}/pay", s.createPayment)
 		managers.Post("/refunds", s.createRefund)
 		managers.Get("/refunds", s.listRefunds)
@@ -56,6 +81,10 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Put("/staff/{userID}", s.updateStaff)
 		managers.Delete("/staff/{userID}", s.deleteStaff)
 	})
+
+	// Customer, membership and stored-value administration has its own route
+	// group so financial write permissions remain explicit and fail closed.
+	s.memberRoutes(r)
 }
 
 func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +476,15 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
+	var productCount int
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM products WHERE category_id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID).Scan(&productCount); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if productCount > 0 {
+		writeError(w, http.StatusConflict, "CATEGORY_IN_USE", "move or delete products in this category first")
+		return
+	}
 	result, err := s.DB.ExecContext(r.Context(), "UPDATE categories SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)

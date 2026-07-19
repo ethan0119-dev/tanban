@@ -80,8 +80,26 @@ function normalizeOrder(value: Order): Order {
       unitPrice: item.unit_price_cents !== undefined ? Number(item.unit_price_cents) / 100 : Number(item.unitPrice ?? 0),
       amount: item.subtotal_cents !== undefined ? Number(item.subtotal_cents) / 100 : Number(item.amount ?? 0),
       remark: item.remark ? String(item.remark) : undefined,
+      itemRemark: item.item_remark ? String(item.item_remark) : undefined,
+      configuration: item.configuration && typeof item.configuration === 'object'
+        ? item.configuration as Order['items'][number]['configuration']
+        : undefined,
     })),
   };
+}
+
+function itemConfigurationSummary(item: Order['items'][number]): string[] {
+  const options = (item.configuration?.options || [])
+    .map((option) => [option.groupName, option.valueName].filter(Boolean).join('：'))
+    .filter(Boolean);
+  const modifiers = (item.configuration?.modifiers || [])
+    .map((modifier) => modifier.name ? `${modifier.name}${Number(modifier.quantity || 1) > 1 ? `×${modifier.quantity}` : ''}` : '')
+    .filter(Boolean);
+  return [
+    ...options,
+    ...(modifiers.length ? [`加料：${modifiers.join('、')}`] : []),
+    ...(item.itemRemark ? [`单品备注：${item.itemRemark}`] : []),
+  ];
 }
 
 export function OrdersPage() {
@@ -284,7 +302,7 @@ export function OrdersPage() {
                 <List.Item extra={<strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>}>
                   <List.Item.Meta
                     title={<Space>{item.productName}<Typography.Text type="secondary">× {item.quantity}</Typography.Text></Space>}
-                    description={[item.skuName, item.remark].filter(Boolean).join(' · ') || `单价 ${yuan(item.unitPrice)}`}
+                    description={[item.skuName, ...itemConfigurationSummary(item), item.remark].filter(Boolean).join(' · ') || `单价 ${yuan(item.unitPrice)}`}
                   />
                 </List.Item>
               )}

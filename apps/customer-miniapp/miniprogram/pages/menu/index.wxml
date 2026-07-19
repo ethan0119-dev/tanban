@@ -1,27 +1,32 @@
-<view class="page menu-page" wx:if="{{!loading}}">
-  <scroll-view class="categories" scroll-y>
+<view class="page menu-page {{menuLayoutClass}}" style="{{appearanceStyle}}" wx:if="{{!loading}}">
+  <scroll-view class="categories" scroll-y="{{decoration.menu.categoryLayout === 'LEFT'}}" scroll-x="{{decoration.menu.categoryLayout === 'TOP'}}" enhanced>
+    <view wx:if="{{decoration.menu.loadMode === 'ALL'}}" class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
     <view wx:for="{{categories}}" wx:key="id" class="category {{activeCategoryId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
   </scroll-view>
-  <scroll-view class="products" scroll-y>
+  <scroll-view class="products" scroll-y enhanced>
     <view class="menu-title"><text>今晚菜单</text><text class="muted">现点现做</text></view>
-    <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
-      <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
-      <view wx:else class="product-image placeholder">咖</view>
-      <view class="product-main">
-        <text class="product-name">{{item.name}}</text><text class="product-desc">{{item.description || '用心制作，口味可选'}}</text><text class="price">¥{{item.price / 100}}</text>
-        <view class="selected-skus" wx:if="{{item.selectedItems.length}}">
-          <view class="selected-sku" wx:for="{{item.selectedItems}}" wx:for-item="selected" wx:key="lineKey">
-            <text>{{selected.skuName || '默认规格'}}</text>
-            <view class="line-stepper">
-              <button data-product-id="{{selected.productId}}" data-sku-id="{{selected.skuId}}" bindtap="decreaseCartItem">−</button>
-              <text>{{selected.quantity}}</text>
-              <button data-product-id="{{selected.productId}}" data-sku-id="{{selected.skuId}}" bindtap="incrementCartItem">＋</button>
+    <view class="product-list">
+      <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
+        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+        <view wx:else class="product-image placeholder">咖</view>
+        <view class="product-main">
+          <text class="product-name">{{item.name}}</text>
+          <text class="product-desc" wx:if="{{decoration.menu.showDescription}}">{{item.description || '用心制作，口味可选'}}</text>
+          <view class="product-meta"><text class="price">¥{{item.price / 100}}</text><text wx:if="{{decoration.menu.showStock}}">库存 {{item.stock}}</text><text wx:if="{{decoration.menu.showSales && item.sales !== undefined}}">已售 {{item.sales}}</text></view>
+          <view class="selected-skus" wx:if="{{item.selectedItems.length}}">
+            <view class="selected-sku" wx:for="{{item.selectedItems}}" wx:for-item="selected" wx:key="lineKey">
+              <text>{{selected.optionSummary || selected.skuName || '默认规格'}}</text>
+              <view class="line-stepper">
+                <button data-line-key="{{selected.lineKey}}" bindtap="decreaseCartItem">−</button>
+                <text>{{selected.quantity}}</text>
+                <button data-line-key="{{selected.lineKey}}" bindtap="incrementCartItem">＋</button>
+              </view>
             </view>
           </view>
         </view>
+        <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
+        <text wx:else class="sold-out">售罄</text>
       </view>
-      <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button class="plus {{item.hasMultipleSkus ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.hasMultipleSkus ? '选规格' : '＋'}}</button></view>
-      <text wx:else class="sold-out">售罄</text>
     </view>
   </scroll-view>
   <view class="cart-bar"><view><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><button bindtap="checkout">去结算</button></view>
@@ -29,7 +34,27 @@
 <view class="empty" wx:else>正在准备菜单…</view>
 <view class="sku-mask" wx:if="{{selectingProduct}}" bindtap="closeSkuPicker">
   <view class="sku-picker" catchtap="noop">
-    <view class="sku-picker-title"><view><text>选择规格</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>
-    <button class="sku-option" wx:for="{{selectableSkus}}" wx:key="id" data-sku-id="{{item.id}}" bindtap="chooseSku"><text>{{item.name}}</text><text>¥{{item.price / 100}}</text></button>
+    <view class="sku-picker-title"><view><text>选择规格与口味</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>
+    <scroll-view class="configuration-scroll" scroll-y enhanced>
+      <view class="configuration-group" wx:if="{{selectableSkus.length > 1}}">
+        <view class="configuration-heading"><text>规格</text><text>请选择 1 项</text></view>
+        <view class="configuration-options">
+          <button class="configuration-option {{selectedSkuId === item.id ? 'selected' : ''}}" wx:for="{{selectableSkus}}" wx:key="id" data-sku-id="{{item.id}}" bindtap="chooseSku"><text>{{item.name}}</text><text>¥{{item.price / 100}}</text></button>
+        </view>
+      </view>
+      <view class="configuration-group" wx:for="{{pickerOptionGroups}}" wx:for-item="group" wx:key="id">
+        <view class="configuration-heading"><text>{{group.name}}</text><text>{{group.minSelect > 0 ? '必选' : '可选'}} · {{group.selectionMode === 'SINGLE' ? '单选' : '多选'}} {{group.minSelect}}–{{group.maxSelect}} 项</text></view>
+        <view class="configuration-options">
+          <button class="configuration-option {{value.selected ? 'selected' : ''}}" wx:for="{{group.values}}" wx:for-item="value" wx:key="id" data-group-id="{{group.id}}" data-value-id="{{value.id}}" bindtap="toggleOption"><text>{{value.name}}</text><text wx:if="{{value.priceDeltaCents}}">+¥{{value.priceDeltaCents / 100}}</text></button>
+        </view>
+      </view>
+      <view class="configuration-group" wx:for="{{pickerModifierGroups}}" wx:for-item="group" wx:key="id">
+        <view class="configuration-heading"><text>{{group.name}}</text><text>{{group.minSelect > 0 ? '必选' : '可选'}} · 最多{{group.maxSelect}}项</text></view>
+        <view class="configuration-options">
+          <button class="configuration-option {{modifier.selected ? 'selected' : ''}}" wx:for="{{group.items}}" wx:for-item="modifier" wx:key="id" data-group-id="{{group.id}}" data-item-id="{{modifier.id}}" bindtap="toggleModifier"><text>{{modifier.name}}</text><text wx:if="{{modifier.priceCents}}">+¥{{modifier.priceCents / 100}}</text></button>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="configuration-confirm"><view><text>本份预计</text><text class="configuration-price">¥{{pickerPrice / 100}}</text></view><button bindtap="confirmConfiguredProduct">加入购物车</button></view>
   </view>
 </view>

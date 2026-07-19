@@ -31,7 +31,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	writeData(w, http.StatusOK, publicStoreView(store))
+	writeData(w, http.StatusOK, s.publicStoreView(r.Context(), store))
 }
 
 func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
@@ -76,13 +76,50 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 			}
 			publicSKUs = append(publicSKUs, map[string]any{"id": sku.ID, "name": sku.Name, "price": sku.PriceCents, "stock": sku.Stock, "soldOut": sku.Stock <= 0})
 		}
-		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "skus": publicSKUs})
+		configuration, configErr := s.loadProductConfiguration(r.Context(), store.TenantID, store.ID, product.ID, true)
+		if configErr != nil {
+			handleSQLError(w, configErr)
+			return
+		}
+		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
 	}
-	writeData(w, http.StatusOK, map[string]any{"store": publicStoreView(store), "categories": publicCategories, "products": publicProducts})
+	writeData(w, http.StatusOK, map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts})
+}
+
+func publicOptionGroups(groups []productOptionGroupDTO) []map[string]any {
+	result := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
+		values := make([]map[string]any, 0, len(group.Values))
+		for _, value := range group.Values {
+			values = append(values, map[string]any{"id": value.ID, "name": value.Name, "priceDeltaCents": value.PriceDeltaCents, "isDefault": value.IsDefault})
+		}
+		result = append(result, map[string]any{"id": group.ID, "name": group.Name, "selectionMode": group.SelectionMode, "minSelect": group.MinSelect, "maxSelect": group.MaxSelect, "values": values})
+	}
+	return result
+}
+
+func publicModifierGroups(groups []modifierGroupDTO) []map[string]any {
+	result := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
+		items := make([]map[string]any, 0, len(group.Items))
+		for _, item := range group.Items {
+			items = append(items, map[string]any{"id": item.ModifierItemID, "name": item.Name, "priceCents": item.PriceCents, "isDefault": item.IsDefault})
+		}
+		result = append(result, map[string]any{"id": group.ID, "name": group.Name, "minSelect": group.MinSelect, "maxSelect": group.MaxSelect, "items": items})
+	}
+	return result
 }
 
 func publicStoreView(store storeDTO) map[string]any {
 	return map[string]any{"id": store.ID, "code": store.Code, "name": store.Name, "logoUrl": store.LogoURL, "address": store.Address, "businessStatus": "OPEN", "theme": map[string]any{"bannerUrl": store.BannerURL, "announcement": store.Notice}}
+}
+
+func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string]any {
+	view := publicStoreView(store)
+	decoration, version := s.publicDecorationConfig(ctx, store)
+	view["decoration"] = decoration
+	view["decorationVersion"] = version
+	return view
 }
 
 func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, error) {
@@ -94,15 +131,20 @@ func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, er
 
 type publicOrderInput struct {
 	OpenID        string `json:"openid"`
+	CustomerKey   string `json:"customerKey"`
 	CustomerName  string `json:"customer_name"`
 	CustomerPhone string `json:"customer_phone"`
 	Fulfillment   string `json:"fulfillmentType"`
 	Remark        string `json:"remark"`
 	Items         []struct {
-		ProductID int64 `json:"productId"`
-		SKUID     int64 `json:"skuId"`
-		LegacySKU int64 `json:"sku_id"`
-		Quantity  int   `json:"quantity"`
+		ProductID         int64                   `json:"productId"`
+		SKUID             int64                   `json:"skuId"`
+		LegacySKU         int64                   `json:"sku_id"`
+		Quantity          int                     `json:"quantity"`
+		OptionValueIDs    []int64                 `json:"optionValueIds"`
+		AttributeValueIDs []int64                 `json:"attributeValueIds"`
+		Modifiers         []selectedModifierInput `json:"modifiers"`
+		ItemRemark        string                  `json:"itemRemark"`
 	} `json:"items"`
 }
 
@@ -148,6 +190,14 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if input.Fulfillment == "" {
 		input.Fulfillment = "PICKUP"
 	}
+	input.OpenID = strings.TrimSpace(input.OpenID)
+	input.CustomerKey = strings.TrimSpace(input.CustomerKey)
+	input.CustomerName = strings.TrimSpace(input.CustomerName)
+	input.CustomerPhone = strings.TrimSpace(input.CustomerPhone)
+	if len(input.OpenID) > 128 || len(input.CustomerKey) > 128 || len([]rune(input.CustomerName)) > 80 || len(input.CustomerPhone) > 32 || len([]rune(input.Remark)) > 500 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "customer identity or order remark is too long")
+		return
+	}
 	fingerprint := requestFingerprint(input)
 	var existingID int64
 	var existingFingerprint string
@@ -176,9 +226,9 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	type resolvedItem struct {
-		productID, skuID, unitPrice int64
-		productName, skuName, attrs string
-		quantity                    int
+		productID, skuID, basePrice, modifierPrice, unitPrice               int64
+		productName, skuName, productType, attrs, configuration, itemRemark string
+		quantity                                                            int
 	}
 	resolved := make([]resolvedItem, 0, len(input.Items))
 	var total int64
@@ -192,12 +242,33 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		var row resolvedItem
 		var stock int
-		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,s.attributes_json,s.price_cents,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND s.deleted_at IS NULL AND p.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
-			Scan(&row.productID, &row.skuID, &row.productName, &row.skuName, &row.attrs, &row.unitPrice, &stock)
+		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,p.product_type,s.attributes_json,s.price_cents,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN categories c ON c.id=p.category_id AND c.tenant_id=p.tenant_id AND c.store_id=p.store_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND c.status='ACTIVE' AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
+			Scan(&row.productID, &row.skuID, &row.productName, &row.skuName, &row.productType, &row.attrs, &row.basePrice, &stock)
 		if err != nil || stock < requested.Quantity {
 			writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "an item is sold out or unavailable")
 			return
 		}
+		if requested.ProductID > 0 && requested.ProductID != row.productID {
+			writeError(w, http.StatusBadRequest, "INVALID_ITEM", "sku does not belong to the requested product")
+			return
+		}
+		selectedOptions := requested.OptionValueIDs
+		if len(selectedOptions) == 0 {
+			selectedOptions = requested.AttributeValueIDs
+		}
+		resolvedConfiguration, configurationErr := resolveProductConfiguration(r.Context(), tx, store.TenantID, store.ID, row.productID, selectedOptions, requested.Modifiers, requested.ItemRemark)
+		if configurationErr != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_CONFIGURATION", configurationErr.Error())
+			return
+		}
+		row.modifierPrice = resolvedConfiguration.PriceDeltaCents
+		if row.basePrice < 0 || row.basePrice > maxCatalogUnitPriceCents || row.modifierPrice > maxCatalogUnitPriceCents-row.basePrice {
+			writeError(w, http.StatusConflict, "INVALID_PRICE", "configured unit price is outside the allowed range")
+			return
+		}
+		row.unitPrice = row.basePrice + row.modifierPrice
+		row.configuration = resolvedConfiguration.SnapshotJSON
+		row.itemRemark = requested.ItemRemark
 		if stockErr := reserveStock(r.Context(), tx, store.TenantID, requested.SKUID, requested.Quantity); errors.Is(stockErr, errInsufficientStock) {
 			writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "an item was just sold out")
 			return
@@ -206,11 +277,25 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		row.quantity = requested.Quantity
-		total += row.unitPrice * int64(row.quantity)
+		if row.unitPrice > maxCatalogOrderCents/int64(row.quantity) {
+			writeError(w, http.StatusConflict, "ORDER_AMOUNT_LIMIT", "order amount exceeds the allowed range")
+			return
+		}
+		subtotal := row.unitPrice * int64(row.quantity)
+		if subtotal > maxCatalogOrderCents-total {
+			writeError(w, http.StatusConflict, "ORDER_AMOUNT_LIMIT", "order amount exceeds the allowed range")
+			return
+		}
+		total += subtotal
 		resolved = append(resolved, row)
 	}
+	customerID, err := upsertPublicOrderCustomer(r.Context(), tx, store, input)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	orderNo := newBusinessNo("TB")
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_name,customer_phone,remark,fulfillment_type,total_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, total)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,inventory_reserved,stock_reserved_at,total_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, total)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -233,7 +318,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	orderID, _ := result.LastInsertId()
 	for _, row := range resolved {
-		_, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,attributes_json,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?)`, store.TenantID, orderID, row.productID, row.skuID, row.productName, row.skuName, row.attrs, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity))
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, orderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity))
 		if err != nil {
 			handleSQLError(w, err)
 			return
@@ -253,6 +338,43 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusCreated, publicOrderView(item))
+}
+
+// upsertPublicOrderCustomer links a checkout to a stable CRM customer without
+// treating a client-provided identifier as authentication. A verified WeChat
+// OpenID wins when present; otherwise an install-scoped guest key groups repeat
+// anonymous orders until the real wx.login flow is connected.
+func upsertPublicOrderCustomer(ctx context.Context, tx *sql.Tx, store storeDTO, input publicOrderInput) (int64, error) {
+	identityColumn := "guest_key"
+	identityValue := input.CustomerKey
+	source := "MINIPROGRAM_GUEST"
+	if input.OpenID != "" {
+		identityColumn = "wechat_openid"
+		identityValue = input.OpenID
+		source = "MINIPROGRAM"
+	}
+	if identityValue == "" {
+		return 0, nil
+	}
+	publicID := "CU" + strings.ToUpper(requestFingerprint(map[string]any{"tenantId": store.TenantID, "identityType": identityColumn, "identityValue": identityValue})[:32])
+	name := input.CustomerName
+	if name == "" {
+		suffix := identityValue
+		if len(suffix) > 6 {
+			suffix = suffix[len(suffix)-6:]
+		}
+		name = "小程序顾客 " + suffix
+	}
+	query := `INSERT INTO customers(tenant_id,source_store_id,public_id,` + identityColumn + `,name,phone,source,status,last_seen_at)
+		VALUES(?,?,?,?,?,?,?,'ACTIVE',NOW(3))
+		ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),source_store_id=COALESCE(source_store_id,VALUES(source_store_id)),
+		name=IF(name='',VALUES(name),name),phone=IF(phone='',VALUES(phone),phone),
+		status=IF(deleted_at IS NOT NULL,'ACTIVE',status),deleted_at=NULL,last_seen_at=NOW(3)`
+	result, err := tx.ExecContext(ctx, query, store.TenantID, store.ID, publicID, identityValue, name, input.CustomerPhone, source)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
 }
 
 func (s *Server) publicGetOrder(w http.ResponseWriter, r *http.Request) {
@@ -333,11 +455,11 @@ func (s *Server) publicCustomerOrders(w http.ResponseWriter, _ *http.Request) {
 func publicOrderView(order orderDTO) map[string]any {
 	items := make([]map[string]any, 0, len(order.Items))
 	for _, item := range order.Items {
-		items = append(items, map[string]any{"productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName, "price": item.UnitPriceCents, "quantity": item.Quantity, "amount": item.SubtotalCents})
+		items = append(items, map[string]any{"productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName, "configuration": item.Configuration, "itemRemark": item.ItemRemark, "price": item.UnitPriceCents, "quantity": item.Quantity, "amount": item.SubtotalCents})
 	}
 	paymentStatus := order.PaymentStatus
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	return map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": fmt.Sprintf("%04d", order.ID%10000), "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	return map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": fmt.Sprintf("%04d", order.ID%10000), "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
 }

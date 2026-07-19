@@ -49,8 +49,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .brand-word strong, .brand-word small { display: block; }
 .brand-word strong { font-size: 20px; letter-spacing: 2px; }
 .brand-word small { margin-top: 1px; color: rgba(255,255,255,.38); font-size: 8px; letter-spacing: 2.5px; }
-.merchant-menu { padding: 10px 9px; border-inline-end: 0 !important; background: transparent !important; }
+.merchant-menu { height: calc(100vh - 145px); overflow-x: hidden; overflow-y: auto; padding: 10px 9px 78px; border-inline-end: 0 !important; background: transparent !important; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
 .merchant-menu .ant-menu-item { height: 46px; margin-block: 5px; border-radius: 9px; color: rgba(255,255,255,.7); }
+.merchant-menu .ant-menu-submenu-title { height: 46px; margin-block: 5px; border-radius: 9px; color: rgba(255,255,255,.7); }
+.merchant-menu .ant-menu-sub { background: rgba(255,255,255,.025) !important; }
 .merchant-menu .ant-menu-item .anticon { font-size: 17px; }
 .merchant-menu .ant-menu-item-selected { color: #fff !important; background: linear-gradient(135deg, #a76c45, #845137) !important; box-shadow: 0 8px 22px rgba(112,65,37,.22); }
 .sider-store-card { position: absolute; right: 13px; bottom: 16px; left: 13px; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 11px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.035); }

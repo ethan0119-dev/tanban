@@ -15,6 +15,15 @@ function clearLegacyCart(): void {
   if (wx.getStorageSync(LEGACY_CART_KEY)) wx.removeStorageSync(LEGACY_CART_KEY);
 }
 
+export function cartLineKey(item: Pick<CartItem, "productId" | "skuId" | "optionValueIds" | "modifiers" | "itemRemark">): string {
+  const optionIds = [...(item.optionValueIds || [])].sort((a, b) => a - b).join(",");
+  const modifiers = [...(item.modifiers || [])]
+    .sort((a, b) => a.groupId - b.groupId || a.modifierItemId - b.modifierItemId)
+    .map((entry) => `${entry.groupId}.${entry.modifierItemId}.${entry.quantity}`)
+    .join(",");
+  return `${item.productId}:${item.skuId ?? 0}:o=${optionIds}:m=${modifiers}:r=${item.itemRemark || ""}`;
+}
+
 export function readCart(storeCode: string): CartItem[] {
   clearLegacyCart();
   const stored = wx.getStorageSync<CartItem[]>(cartKey(storeCode));
@@ -28,11 +37,20 @@ export function writeCart(storeCode: string, items: CartItem[]): void {
 
 export function addCartItem(storeCode: string, item: CartItem): CartItem[] {
   const items = readCart(storeCode);
-  const current = items.find((entry) => entry.productId === item.productId && entry.skuId === item.skuId);
+  const key = cartLineKey(item);
+  const current = items.find((entry) => cartLineKey(entry) === key);
   if (current) current.quantity += item.quantity;
   else items.push(item);
   writeCart(storeCode, items);
   return items;
+}
+
+export function changeCartLineQuantity(storeCode: string, lineKey: string, delta: number): CartItem[] {
+  const items = readCart(storeCode);
+  const current = items.find((entry) => cartLineKey(entry) === lineKey);
+  if (current) current.quantity += delta;
+  writeCart(storeCode, items);
+  return readCart(storeCode);
 }
 
 export function changeCartItemQuantity(

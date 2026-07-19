@@ -93,7 +93,7 @@ func isAlreadyAppliedDDL(err error) bool {
 	if !errors.As(err, &mysqlErr) {
 		return false
 	}
-	return mysqlErr.Number == 1060 || mysqlErr.Number == 1061
+	return mysqlErr.Number == 1060 || mysqlErr.Number == 1061 || mysqlErr.Number == 1091
 }
 
 func splitSQL(input string) []string {

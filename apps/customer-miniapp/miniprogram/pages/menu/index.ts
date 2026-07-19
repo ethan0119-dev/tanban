@@ -1,27 +1,26 @@
-import type { CartItem, Category, Product, Sku } from "../../types/domain";
+import type { CartItem, Category, DecorationConfig, ModifierGroup, Product, ProductOptionGroup, Sku, Store } from "../../types/domain";
 import type { TanbanAppOption } from "../../app";
-import { addCartItem, changeCartItemQuantity, readCart } from "../../utils/cart";
+import { addCartItem, cartLineKey, changeCartLineQuantity, readCart } from "../../utils/cart";
+import { applyDecorationChrome, decorationStyle, defaultDecoration, normalizeDecoration } from "../../utils/decoration";
 import { request } from "../../utils/request";
 
-interface Catalog { categories: Category[]; products: Product[]; }
+interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
   hasMultipleSkus: boolean;
+  requiresConfiguration: boolean;
   selectedQuantity: number;
   selectedItems: CartItem[];
-}
-
-function lineKey(item: CartItem): string {
-  return `${item.productId}:${item.skuId ?? 0}`;
 }
 
 function decorateProducts(products: Product[], cart: CartItem[]): MenuProduct[] {
   return products.map((product) => {
     const selectedItems = cart
       .filter((item) => item.productId === product.id)
-      .map((item) => ({ ...item, lineKey: lineKey(item) }));
+      .map((item) => ({ ...item, lineKey: cartLineKey(item) }));
     return {
       ...product,
       hasMultipleSkus: (product.skus?.filter((sku) => !sku.soldOut).length ?? 0) > 1,
+      requiresConfiguration: (product.skus?.filter((sku) => !sku.soldOut).length ?? 0) > 1 || Boolean(product.optionGroups?.length || product.modifierGroups?.length),
       selectedQuantity: selectedItems.reduce((sum, item) => sum + item.quantity, 0),
       selectedItems,
     };
@@ -39,6 +38,13 @@ Page({
     cartAmount: 0,
     selectingProduct: null as MenuProduct | null,
     selectableSkus: [] as Sku[],
+    selectedSkuId: 0,
+    pickerOptionGroups: [] as ProductOptionGroup[],
+    pickerModifierGroups: [] as ModifierGroup[],
+    pickerPrice: 0,
+    decoration: defaultDecoration() as DecorationConfig,
+    appearanceStyle: "",
+    menuLayoutClass: "category-left product-list-view density-comfortable",
   },
   onShow() {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
@@ -50,12 +56,22 @@ Page({
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     try {
       const catalog = await request<Catalog>({ url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`, method: "GET" });
+      const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
+      const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);
       this.setData({
         categories: catalog.categories || [],
-        products: decorateProducts(catalog.products || [], this.data.cart),
-        activeCategoryId: catalog.categories?.[0]?.id || 0,
+        products: decorateProducts(visibleProducts, this.data.cart),
+        activeCategoryId: decoration.menu.loadMode === "ALL" ? 0 : catalog.categories?.[0]?.id || 0,
+        decoration,
+        appearanceStyle: decorationStyle(decoration),
+        menuLayoutClass: [
+          decoration.menu.categoryLayout === "TOP" ? "category-top" : "category-left",
+          decoration.menu.productLayout === "GRID" ? "product-grid-view" : "product-list-view",
+          decoration.menu.density === "COMPACT" ? "density-compact" : "density-comfortable",
+        ].join(" "),
         loading: false,
       });
+      applyDecorationChrome(decoration);
     } catch (error) {
       this.setData({ loading: false });
       wx.showToast({ title: error instanceof Error ? error.message : "菜单加载失败", icon: "none" });
@@ -70,18 +86,101 @@ Page({
       wx.showToast({ title: "该商品规格已售罄", icon: "none" });
       return;
     }
-    if (availableSkus.length > 1) {
-      this.setData({ selectingProduct: product, selectableSkus: availableSkus });
+    const shouldOpenSheet = availableSkus.length > 1 || Boolean(product.optionGroups?.length || product.modifierGroups?.length) || this.data.decoration.menu.productActionMode === "SKU_SHEET";
+    if (shouldOpenSheet) {
+      const optionGroups = (product.optionGroups || []).map((group) => ({
+        ...group,
+        values: group.values.map((value) => ({ ...value, selected: Boolean(value.isDefault) })),
+      }));
+      const modifierGroups = (product.modifierGroups || []).map((group) => ({
+        ...group,
+        items: group.items.map((item) => ({ ...item, selected: Boolean(item.isDefault) })),
+      }));
+      const selectedSkuId = availableSkus[0]?.id || 0;
+      this.setData({ selectingProduct: product, selectableSkus: availableSkus, selectedSkuId, pickerOptionGroups: optionGroups, pickerModifierGroups: modifierGroups });
+      this.refreshPickerPrice();
       return;
     }
     const sku = availableSkus[0] || product.skus?.[0];
     this.addSkuToCart(product, sku);
   },
   chooseSku(event: WechatMiniprogram.BaseEvent) {
-    const product = this.data.selectingProduct;
     const sku = this.data.selectableSkus.find((item) => item.id === Number(event.currentTarget.dataset.skuId));
+    if (!sku) return;
+    this.setData({ selectedSkuId: sku.id });
+    this.refreshPickerPrice();
+  },
+  toggleOption(event: WechatMiniprogram.BaseEvent) {
+    const groupId = Number(event.currentTarget.dataset.groupId);
+    const valueId = Number(event.currentTarget.dataset.valueId);
+    const groups = this.data.pickerOptionGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      const target = group.values.find((value) => value.id === valueId);
+      if (!target) return group;
+      if (group.selectionMode === "SINGLE") {
+        if (target.selected && group.minSelect === 0) {
+          return { ...group, values: group.values.map((value) => ({ ...value, selected: false })) };
+        }
+        return { ...group, values: group.values.map((value) => ({ ...value, selected: value.id === valueId })) };
+      }
+      const selectedCount = group.values.filter((value) => value.selected).length;
+      if (!target.selected && selectedCount >= group.maxSelect) {
+        wx.showToast({ title: `最多选择 ${group.maxSelect} 项`, icon: "none" });
+        return group;
+      }
+      return { ...group, values: group.values.map((value) => value.id === valueId ? { ...value, selected: !value.selected } : value) };
+    });
+    this.setData({ pickerOptionGroups: groups });
+    this.refreshPickerPrice();
+  },
+  toggleModifier(event: WechatMiniprogram.BaseEvent) {
+    const groupId = Number(event.currentTarget.dataset.groupId);
+    const itemId = Number(event.currentTarget.dataset.itemId);
+    const groups = this.data.pickerModifierGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      const target = group.items.find((item) => item.id === itemId);
+      if (!target) return group;
+      const selectedCount = group.items.filter((item) => item.selected).length;
+      if (!target.selected && selectedCount >= group.maxSelect) {
+        wx.showToast({ title: `最多选择 ${group.maxSelect} 项`, icon: "none" });
+        return group;
+      }
+      return { ...group, items: group.items.map((item) => item.id === itemId ? { ...item, selected: !item.selected } : item) };
+    });
+    this.setData({ pickerModifierGroups: groups });
+    this.refreshPickerPrice();
+  },
+  refreshPickerPrice() {
+    const product = this.data.selectingProduct;
+    if (!product) return;
+    const sku = this.data.selectableSkus.find((item) => item.id === this.data.selectedSkuId);
+    const optionDelta = this.data.pickerOptionGroups.reduce((sum, group) => sum + group.values.filter((value) => value.selected).reduce((valueSum, value) => valueSum + value.priceDeltaCents, 0), 0);
+    const modifierDelta = this.data.pickerModifierGroups.reduce((sum, group) => sum + group.items.filter((item) => item.selected).reduce((itemSum, item) => itemSum + item.priceCents, 0), 0);
+    this.setData({ pickerPrice: (sku?.price ?? product.price) + optionDelta + modifierDelta });
+  },
+  confirmConfiguredProduct() {
+    const product = this.data.selectingProduct;
+    const sku = this.data.selectableSkus.find((item) => item.id === this.data.selectedSkuId);
     if (!product || !sku) return;
-    this.addSkuToCart(product, sku);
+    for (const group of this.data.pickerOptionGroups) {
+      const count = group.values.filter((value) => value.selected).length;
+      if (count < group.minSelect || count > group.maxSelect) {
+        wx.showToast({ title: `${group.name}需选择 ${group.minSelect}–${group.maxSelect} 项`, icon: "none" });
+        return;
+      }
+    }
+    for (const group of this.data.pickerModifierGroups) {
+      const count = group.items.filter((item) => item.selected).length;
+      if (count < group.minSelect || count > group.maxSelect) {
+        wx.showToast({ title: `${group.name}需选择 ${group.minSelect}–${group.maxSelect} 项`, icon: "none" });
+        return;
+      }
+    }
+    const optionValueIds = this.data.pickerOptionGroups.flatMap((group) => group.values.filter((value) => value.selected).map((value) => value.id));
+    const modifiers = this.data.pickerModifierGroups.flatMap((group) => group.items.filter((item) => item.selected).map((item) => ({ groupId: group.id, modifierItemId: item.id, quantity: 1 })));
+    const optionSummary = [sku.name, ...this.data.pickerOptionGroups.flatMap((group) => group.values.filter((value) => value.selected).map((value) => value.name)), ...this.data.pickerModifierGroups.flatMap((group) => group.items.filter((item) => item.selected).map((item) => `加${item.name}`))].filter(Boolean).join(' / ');
+    const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+    this.setCart(addCartItem(storeCode, { productId: product.id, skuId: sku.id, name: product.name, skuName: sku.name, price: this.data.pickerPrice, quantity: 1, optionValueIds, modifiers, optionSummary }));
     this.closeSkuPicker();
   },
   addSkuToCart(product: Product, sku?: Sku) {
@@ -90,20 +189,16 @@ Page({
   },
   incrementCartItem(event: WechatMiniprogram.BaseEvent) {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-    const productId = Number(event.currentTarget.dataset.productId);
-    const skuIdValue = event.currentTarget.dataset.skuId;
-    const skuId = skuIdValue === undefined || skuIdValue === "" ? undefined : Number(skuIdValue);
-    this.setCart(changeCartItemQuantity(storeCode, productId, skuId, 1));
+    const key = String(event.currentTarget.dataset.lineKey || '');
+    this.setCart(changeCartLineQuantity(storeCode, key, 1));
   },
   decreaseCartItem(event: WechatMiniprogram.BaseEvent) {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-    const productId = Number(event.currentTarget.dataset.productId);
-    const skuIdValue = event.currentTarget.dataset.skuId;
-    const skuId = skuIdValue === undefined || skuIdValue === "" ? undefined : Number(skuIdValue);
-    this.setCart(changeCartItemQuantity(storeCode, productId, skuId, -1));
+    const key = String(event.currentTarget.dataset.lineKey || '');
+    this.setCart(changeCartLineQuantity(storeCode, key, -1));
   },
   closeSkuPicker() {
-    this.setData({ selectingProduct: null, selectableSkus: [] });
+    this.setData({ selectingProduct: null, selectableSkus: [], selectedSkuId: 0, pickerOptionGroups: [], pickerModifierGroups: [], pickerPrice: 0 });
   },
   noop() {},
   setCart(cart: CartItem[]) {

@@ -1,19 +1,56 @@
-<view class="page" wx:if="{{!loading && store}}">
-  <view class="hero">
-    <image wx:if="{{store.theme.bannerUrl}}" class="banner" src="{{store.theme.bannerUrl}}" mode="aspectFill" />
-    <view wx:else class="banner banner-placeholder"><text>TANBAN</text><text>今晚，来一杯认真做的咖啡</text></view>
-    <view class="store-row">
-      <image wx:if="{{store.logoUrl}}" class="logo" src="{{store.logoUrl}}" />
-      <view wx:else class="logo logo-placeholder">伴</view>
-      <view class="store-copy"><text class="store-name">{{store.name}}</text><text class="muted">{{store.businessStatus === 'OPEN' ? '营业中' : '已打烊'}} · {{store.address || '欢迎扫码点单'}}</text></view>
+<view class="page decorated-page" style="{{appearanceStyle}}" wx:if="{{!loading && store}}">
+  <block wx:for="{{modules}}" wx:key="id">
+    <view wx:if="{{item.type === 'HERO_BANNER'}}" class="decor-module decor-hero">
+      <swiper wx:if="{{item.config.items.length}}" class="hero-swiper" autoplay="{{item.config.items.length > 1}}" circular="{{item.config.items.length > 1}}" indicator-dots="{{item.config.items.length > 1}}">
+        <swiper-item wx:for="{{item.config.items}}" wx:for-item="banner" wx:key="imageUrl">
+          <view class="banner-hit" data-action-type="{{banner.action.type}}" data-action-phone="{{banner.action.phone}}" bindtap="onDecorationAction">
+            <image class="banner" src="{{banner.imageUrl}}" mode="aspectFill" />
+            <view class="banner-copy" wx:if="{{banner.title || banner.subtitle}}"><text>{{banner.title}}</text><text>{{banner.subtitle}}</text></view>
+          </view>
+        </swiper-item>
+      </swiper>
+      <view wx:else class="banner banner-placeholder"><text>TANBAN</text><text>今晚，来一杯认真做的咖啡</text></view>
     </view>
-    <view class="notice">公告 · {{store.theme.announcement || '下单后请留意取餐码，咖啡做好会提醒你。'}}</view>
-  </view>
-  <view class="actions card">
-    <button class="action primary" bindtap="goMenu"><text class="action-title">堂食 / 自提点单</text><text>选好口味，在线下单</text></button>
-    <button class="action secondary" bindtap="goOrders"><text class="action-title">查看我的订单</text><text>支付与制作进度</text></button>
-  </view>
-  <view class="card feature"><text class="eyebrow">FOR SMALL BUSINESS</text><text class="feature-title">认真经营每一个小摊</text><text class="muted">商品、订单、支付和打印由摊伴协同处理。</text></view>
+
+    <view wx:elif="{{item.type === 'STORE_HEADER'}}" class="decor-module store-row">
+      <image wx:if="{{item.config.showLogo && store.logoUrl}}" class="logo" src="{{store.logoUrl}}" />
+      <view wx:elif="{{item.config.showLogo}}" class="logo logo-placeholder">伴</view>
+      <view class="store-copy">
+        <text class="store-name">{{store.name}}</text>
+        <text class="muted" wx:if="{{item.config.showStatus || item.config.showAddress}}">
+          {{item.config.showStatus ? (store.businessStatus === 'OPEN' ? '营业中' : '已打烊') : ''}}{{item.config.showStatus && item.config.showAddress ? ' · ' : ''}}{{item.config.showAddress ? (store.address || '欢迎扫码点单') : ''}}
+        </text>
+      </view>
+    </view>
+
+    <view wx:elif="{{item.type === 'ANNOUNCEMENT'}}" class="decor-module notice">{{item.config.prefix || '公告'}} · {{store.theme.announcement || '下单后请留意取餐码，咖啡做好会提醒你。'}}</view>
+
+    <view wx:elif="{{item.type === 'QUICK_ACTIONS'}}" class="decor-module actions card">
+      <button wx:for="{{item.config.items}}" wx:for-item="actionItem" wx:key="title" class="action {{index === 0 ? 'primary' : 'secondary'}}" data-action-type="{{actionItem.action.type}}" data-action-phone="{{actionItem.action.phone}}" bindtap="onDecorationAction">
+        <text class="action-title">{{actionItem.title}}</text><text>{{actionItem.subtitle}}</text>
+      </button>
+    </view>
+
+    <view wx:elif="{{item.type === 'IMAGE'}}" class="decor-module card image-module" data-action-type="{{item.config.action.type}}" data-action-phone="{{item.config.action.phone}}" bindtap="onDecorationAction">
+      <image src="{{item.config.imageUrl}}" mode="widthFix" aria-label="{{item.config.alt}}" />
+    </view>
+
+    <view wx:elif="{{item.type === 'TEXT'}}" class="decor-module card text-module" style="text-align: {{item.config.textAlign}}">
+      <text class="text-module-title" wx:if="{{item.config.title}}">{{item.config.title}}</text><text class="muted">{{item.config.body}}</text>
+    </view>
+
+    <view wx:elif="{{item.type === 'SPACER'}}" class="decor-module" style="height: {{item.config.height}}rpx" />
+  </block>
 </view>
-<view class="empty" wx:elif="{{loading}}">正在进入门店…</view>
-<view class="empty" wx:else><text>{{error}}</text><button class="primary" bindtap="onPullDownRefresh">重新加载</button></view>
+
+<view class="splash-mask {{decoration.splash.displayMode === 'FULLSCREEN' ? 'fullscreen' : 'popup'}}" wx:if="{{splashVisible}}" bindtap="closeSplash">
+  <view class="splash-card" catchtap="noop">
+    <button class="splash-close" bindtap="closeSplash">×</button>
+    <image class="splash-image" src="{{decoration.splash.imageUrl}}" mode="aspectFill" />
+    <view class="splash-copy" wx:if="{{decoration.splash.title || decoration.splash.subtitle}}"><text>{{decoration.splash.title}}</text><text>{{decoration.splash.subtitle}}</text></view>
+    <button wx:if="{{decoration.splash.action.type !== 'NONE'}}" class="splash-action" bindtap="onSplashAction">立即查看</button>
+  </view>
+</view>
+
+<view class="empty" wx:if="{{loading}}">正在进入门店…</view>
+<view class="empty" wx:elif="{{!store}}"><text>{{error}}</text><button class="primary" bindtap="onPullDownRefresh">重新加载</button></view>

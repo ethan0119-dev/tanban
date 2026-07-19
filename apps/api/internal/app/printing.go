@@ -315,6 +315,44 @@ func renderTicket(template string, order orderDTO, extra string, reprint bool) s
 	var itemLines []string
 	for _, item := range order.Items {
 		itemLines = append(itemLines, fmt.Sprintf("%s %s x%d", item.ProductName, item.SKUName, item.Quantity))
+		if options, ok := item.Configuration["options"].([]any); ok {
+			for _, raw := range options {
+				option, _ := raw.(map[string]any)
+				groupName := printableText(fmt.Sprint(option["groupName"]))
+				valueName := printableText(fmt.Sprint(option["valueName"]))
+				if valueName != "" && valueName != "<nil>" {
+					if groupName != "" && groupName != "<nil>" {
+						itemLines = append(itemLines, fmt.Sprintf("  %s：%s", groupName, valueName))
+					} else {
+						itemLines = append(itemLines, "  "+valueName)
+					}
+				}
+			}
+		}
+		if modifiers, ok := item.Configuration["modifiers"].([]any); ok {
+			var names []string
+			for _, raw := range modifiers {
+				modifier, _ := raw.(map[string]any)
+				name := printableText(fmt.Sprint(modifier["name"]))
+				if name == "" || name == "<nil>" {
+					continue
+				}
+				quantity := 1
+				if value, ok := modifier["quantity"].(float64); ok && value > 1 {
+					quantity = int(value)
+				}
+				if quantity > 1 {
+					name += fmt.Sprintf("x%d", quantity)
+				}
+				names = append(names, name)
+			}
+			if len(names) > 0 {
+				itemLines = append(itemLines, "  加料："+strings.Join(names, "、"))
+			}
+		}
+		if remark := printableText(item.ItemRemark); remark != "" {
+			itemLines = append(itemLines, "  单品备注："+remark)
+		}
 	}
 	replacer := strings.NewReplacer("{{order_no}}", order.OrderNo, "{{items}}", strings.Join(itemLines, "\n"), "{{total_cents}}", int64String(order.TotalCents), "{{remark}}", order.Remark)
 	content := replacer.Replace(template)
@@ -325,6 +363,10 @@ func renderTicket(template string, order orderDTO, extra string, reprint bool) s
 		content += "\n" + extra
 	}
 	return content
+}
+
+func printableText(value string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value))
 }
 
 func (s *Server) reprintOrder(w http.ResponseWriter, r *http.Request) {

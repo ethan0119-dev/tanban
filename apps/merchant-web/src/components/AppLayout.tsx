@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  BgColorsOutlined,
   BellOutlined,
   CoffeeOutlined,
   DashboardOutlined,
@@ -12,6 +13,7 @@ import {
   ShoppingCartOutlined,
   TeamOutlined,
   TransactionOutlined,
+  UsergroupAddOutlined,
 } from '@ant-design/icons';
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
@@ -25,12 +27,37 @@ const { Header, Sider, Content } = Layout;
 const managementNavigationItems: MenuProps['items'] = [
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
   { key: '/orders', label: '订单管理', icon: <ShoppingCartOutlined /> },
-  { key: '/products', label: '商品与库存', icon: <AppstoreOutlined /> },
+  {
+    key: 'catalog-domain', label: '商品管理', icon: <AppstoreOutlined />,
+    children: [
+      { key: '/products', label: '商品与库存' },
+      { key: '/catalog', label: '分类·套餐·加料·配置库' },
+    ],
+  },
+  {
+    key: 'customer-domain', label: '用户管理', icon: <UsergroupAddOutlined />,
+    children: [
+      { key: '/customers', label: '用户列表·标签·余额' },
+      { key: '/membership', label: '会员管理' },
+      { key: '/stored-value', label: '储值管理' },
+    ],
+  },
+  { key: '/decoration', label: '店铺装修', icon: <BgColorsOutlined /> },
   { key: '/payments', label: '支付与退款', icon: <TransactionOutlined /> },
   { key: '/printers', label: '打印中心', icon: <PrinterOutlined /> },
   { key: '/staff', label: '员工与角色', icon: <TeamOutlined /> },
   { key: '/settings', label: '门店设置', icon: <SettingOutlined /> },
 ];
+
+function navigationRouteKeys(items: MenuProps['items']): string[] {
+  const keys: string[] = [];
+  for (const item of items || []) {
+    if (!item || 'type' in item) continue;
+    if (typeof item.key === 'string' && item.key.startsWith('/')) keys.push(item.key);
+    if ('children' in item && item.children) keys.push(...navigationRouteKeys(item.children));
+  }
+  return keys;
+}
 
 const staffNavigationItems: MenuProps['items'] = [
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
@@ -53,8 +80,7 @@ export function AppLayout() {
     if (mobile) setCollapsed(true);
   }, [location.pathname, mobile]);
 
-  const selectedKey = useMemo(() => navigationItems
-    ?.map((item) => String(item?.key))
+  const selectedKey = useMemo(() => navigationRouteKeys(navigationItems)
     .find((key) => location.pathname.startsWith(key)) ?? '/dashboard', [location.pathname, navigationItems]);
 
   const accountMenu: MenuProps['items'] = [
@@ -87,6 +113,7 @@ export function AppLayout() {
           theme="dark"
           items={navigationItems}
           selectedKeys={[selectedKey]}
+          defaultOpenKeys={['catalog-domain', 'customer-domain']}
           onClick={({ key }) => navigate(key)}
         />
         {!collapsed && <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>}

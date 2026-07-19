@@ -39,8 +39,10 @@ describe('merchant role permissions', () => {
     expect(canManageMerchant(user(role))).toBe(true);
   });
 
-  it('normalizes the primary role without changing legacy users with no role', () => {
+  it('normalizes the primary role and fails closed when role is missing or unknown', () => {
     expect(primaryMerchantRole(user(' merchant_manager '))).toBe('MERCHANT_MANAGER');
-    expect(canManageMerchant(user())).toBe(true);
+    expect(canManageMerchant(user())).toBe(false);
+    expect(canManageMerchant(user('UNKNOWN'))).toBe(false);
+    expect(canViewMerchantFinancials(user('UNKNOWN'))).toBe(false);
   });
 });

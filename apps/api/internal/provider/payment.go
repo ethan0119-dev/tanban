@@ -168,6 +168,23 @@ func (m *MockPayment) Refund(_ context.Context, req RefundRequest) (RefundResult
 	if status != PaymentSuccess && status != PaymentRefunded {
 		return RefundResult{}, errors.New("payment is not refundable")
 	}
+	original, ok := m.requests[req.ProviderOrderNo]
+	if !ok || original.Amount <= 0 || req.Amount <= 0 || req.MerchantNo != original.MerchantNo {
+		return RefundResult{}, errors.New("invalid refund identity or amount")
+	}
+	refunded := int64(0)
+	for _, prior := range m.refundStatuses {
+		if prior.ProviderOrderNo != req.ProviderOrderNo || prior.Status != PaymentSuccess {
+			continue
+		}
+		if prior.Amount < 0 || prior.Amount > original.Amount-refunded {
+			return RefundResult{}, errors.New("mock refund history exceeds payment amount")
+		}
+		refunded += prior.Amount
+	}
+	if refunded > original.Amount || req.Amount > original.Amount-refunded {
+		return RefundResult{}, errors.New("refund exceeds payment amount")
+	}
 	result := QueryRefundResult{
 		RefundNo: req.RefundNo, ProviderRefundNo: "MOCKREF-" + req.RefundNo,
 		ProviderOrderNo: req.ProviderOrderNo, MerchantNo: req.MerchantNo,

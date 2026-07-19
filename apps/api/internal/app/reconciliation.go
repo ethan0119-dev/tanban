@@ -27,7 +27,7 @@ func (s *Server) StartPaymentReconciler(ctx context.Context) {
 }
 
 func (s *Server) reconcilePayments(ctx context.Context) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider_order_no,p.status,o.payment_status,o.order_no,p.amount_cents,p.merchant_no
+	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider_order_no,p.status,o.payment_status,p.provider_request_no,p.amount_cents,p.merchant_no
 		FROM payment_transactions p
 		JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
 		WHERE p.provider=? AND (p.status IN ('CREATING','PENDING') OR (p.status='SUCCESS' AND o.payment_status='UNPAID'))
@@ -37,13 +37,13 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 		return
 	}
 	type pendingPayment struct {
-		id, tenantID, orderID, amount                               int64
-		providerNo, status, orderPaymentStatus, orderNo, merchantNo string
+		id, tenantID, orderID, amount                                         int64
+		providerNo, status, orderPaymentStatus, providerRequestNo, merchantNo string
 	}
 	var pending []pendingPayment
 	for rows.Next() {
 		var item pendingPayment
-		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.orderNo, &item.amount, &item.merchantNo) == nil {
+		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.providerRequestNo, &item.amount, &item.merchantNo) == nil {
 			pending = append(pending, item)
 		}
 	}
@@ -98,7 +98,7 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 			s.Logger.Warn("query payment during reconciliation", "provider_order_no", item.providerNo, "error", queryErr)
 			continue
 		}
-		if result.ProviderOrderNo != item.providerNo || result.OrderNo != item.orderNo || result.Amount != item.amount || result.MerchantNo != item.merchantNo {
+		if result.ProviderOrderNo != item.providerNo || result.OrderNo != item.providerRequestNo || result.Amount != item.amount || result.MerchantNo != item.merchantNo {
 			_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=? AND status='PENDING'", item.id)
 			s.Logger.Error("provider payment identity mismatch", "payment_id", item.id, "provider_order_no", item.providerNo)
 			continue

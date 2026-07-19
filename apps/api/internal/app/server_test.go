@@ -46,3 +46,28 @@ func TestReserveStockIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestInventoryEditRejectsStaleExpectedStock(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery(`SELECT stock FROM inventory`).WithArgs(int64(10), int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"stock"}).AddRow(9))
+	mock.ExpectRollback()
+	if err = updateInventoryOptimistic(context.Background(), tx, 3, 10, 10, 10, true, false, 0); !errors.Is(err, errStockConflict) {
+		t.Fatalf("expected stock conflict, got %v", err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -6,9 +6,12 @@ import {
   checkoutNeedsFreshOrder,
   checkoutOrderIsClosed,
   clearCheckoutFlow,
+  markCheckoutSubmitted,
+  rememberCheckoutDetails,
   rememberCheckoutOrder,
 } from '../miniprogram/utils/checkout';
 import { ApiError } from '../miniprogram/utils/request';
+import { customerGuestKey } from '../miniprogram/utils/customer';
 
 describe('miniapp scoped storage', () => {
   let storage: Map<string, unknown>;
@@ -49,6 +52,51 @@ describe('miniapp scoped storage', () => {
     expect(readCart('coffee-b')).toHaveLength(1);
   });
 
+  it('keeps option and modifier variants as separate cart lines', () => {
+    addCartItem('coffee-a', {
+      productId: 8,
+      skuId: 81,
+      name: '拿铁',
+      price: 18,
+      quantity: 1,
+      optionValueIds: [101],
+      modifiers: [{ groupId: 3, modifierItemId: 31, quantity: 1 }],
+    });
+    addCartItem('coffee-a', {
+      productId: 8,
+      skuId: 81,
+      name: '拿铁',
+      price: 18,
+      quantity: 1,
+      optionValueIds: [102],
+      modifiers: [{ groupId: 3, modifierItemId: 31, quantity: 1 }],
+    });
+
+    expect(readCart('coffee-a')).toHaveLength(2);
+  });
+
+  it('creates a fresh checkout idempotency key when configuration changes', () => {
+    const base = { productId: 8, skuId: 81, name: '拿铁', price: 18, quantity: 1 };
+    const first = checkoutFlowFor('coffee-a', [{ ...base, optionValueIds: [101] }]);
+    const second = checkoutFlowFor('coffee-a', [{ ...base, optionValueIds: [102] }]);
+    const third = checkoutFlowFor('coffee-a', [{
+      ...base,
+      optionValueIds: [102],
+      modifiers: [{ groupId: 3, modifierItemId: 31, quantity: 1 }],
+    }]);
+
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
+    expect(third.idempotencyKey).not.toBe(second.idempotencyKey);
+  });
+
+  it('persists one install-scoped anonymous customer key', () => {
+    const first = customerGuestKey();
+    const second = customerGuestKey();
+
+    expect(first).toMatch(/^guest_/);
+    expect(second).toBe(first);
+  });
+
   it('expires an abandoned checkout flow and generates a fresh key', () => {
     const now = 1_700_000_000_000;
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -65,6 +113,26 @@ describe('miniapp scoped storage', () => {
     clearCheckoutFlow(next.idempotencyKey);
     expect(storage.has('tanban_checkout_flow_v1')).toBe(false);
     nowSpy.mockRestore();
+  });
+
+  it('persists checkout details and freezes them after the first submission', () => {
+    const cart = [{ productId: 1, name: '美式', price: 12, quantity: 1 }];
+    const flow = checkoutFlowFor('coffee-a', cart);
+    rememberCheckoutDetails(flow.idempotencyKey, 'DINE_IN', '送到 B02');
+
+    expect(checkoutFlowFor('coffee-a', cart)).toMatchObject({
+      fulfillmentType: 'DINE_IN',
+      remark: '送到 B02',
+      submitted: false,
+    });
+
+    markCheckoutSubmitted(flow.idempotencyKey);
+    rememberCheckoutDetails(flow.idempotencyKey, 'PICKUP', '不应覆盖');
+    expect(checkoutFlowFor('coffee-a', cart)).toMatchObject({
+      fulfillmentType: 'DINE_IN',
+      remark: '送到 B02',
+      submitted: true,
+    });
   });
 
   it('recognizes terminal order and payment outcomes that require a fresh order', () => {
