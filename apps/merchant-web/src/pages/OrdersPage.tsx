@@ -1,0 +1,309 @@
+import {
+  CloseCircleOutlined,
+  EyeOutlined,
+  PrinterOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Descriptions,
+  Divider,
+  Drawer,
+  Empty,
+  Input,
+  List,
+  Modal,
+  Row,
+  Space,
+  Steps,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import type { TablePaginationConfig } from 'antd';
+import type { Dayjs } from 'dayjs';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { api, errorMessage } from '../api/client';
+import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
+import { PageHeading } from '../components/PageHeading';
+import type { ListResult, Order, OrderStatus } from '../types';
+import { dateTime, pickupCode, yuan } from '../utils/format';
+
+const { RangePicker } = DatePicker;
+const statusTabs: Array<{ key: 'ALL' | OrderStatus; label: string }> = [
+  { key: 'ALL', label: '全部' },
+  { key: 'PENDING_PAYMENT', label: '待付款' },
+  { key: 'PAID', label: '已付款' },
+  { key: 'PREPARING', label: '制作中' },
+  { key: 'READY', label: '待取餐' },
+  { key: 'COMPLETED', label: '已完成' },
+  { key: 'CLOSED', label: '已关闭' },
+];
+
+const timelineStatuses: OrderStatus[] = ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'COMPLETED'];
+const nextStatus: Partial<Record<OrderStatus, { status: OrderStatus; text: string }>> = {
+  PAID: { status: 'PREPARING', text: '开始制作' },
+  PREPARING: { status: 'READY', text: '通知取餐' },
+  READY: { status: 'COMPLETED', text: '完成订单' },
+};
+
+function normalizeOrder(value: Order): Order {
+  const raw = value as unknown as Record<string, unknown>;
+  const rawItems = (raw.items ?? []) as Array<Record<string, unknown>>;
+  const orderNo = value.orderNo ?? String(raw.order_no ?? '');
+  const existingPickupNo = String(value.pickupNo ?? raw.pickup_no ?? '').trim();
+  return {
+    ...value,
+    id: value.id ?? String(raw.orderId ?? raw.order_id ?? value.orderNo),
+    orderNo,
+    pickupNo: existingPickupNo || pickupCode(value.id ?? raw.id),
+    amount: raw.total_cents !== undefined ? Number(raw.total_cents) / 100 : Number(value.amount ?? raw.totalAmount ?? raw.total_amount ?? 0),
+    paidAmount: raw.paid_cents !== undefined ? Number(raw.paid_cents) / 100 : Number(value.paidAmount ?? raw.paid_amount ?? value.amount ?? 0),
+    refundAmount: raw.refunded_cents !== undefined ? Number(raw.refunded_cents) / 100 : Number(value.refundAmount ?? raw.refund_amount ?? 0),
+    customerName: value.customerName ?? String(raw.customer_name ?? ''),
+    customerPhone: value.customerPhone ?? String(raw.customer_phone ?? ''),
+    fulfillmentType: (value.fulfillmentType ?? raw.fulfillment_type ?? 'PICKUP') as Order['fulfillmentType'],
+    paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
+    createdAt: value.createdAt ?? String(raw.created_at ?? ''),
+    items: rawItems.map((item) => ({
+      id: item.id as string | number,
+      productName: String(item.productName ?? item.product_name ?? ''),
+      skuName: String(item.skuName ?? item.sku_name ?? ''),
+      quantity: Number(item.quantity ?? 0),
+      unitPrice: item.unit_price_cents !== undefined ? Number(item.unit_price_cents) / 100 : Number(item.unitPrice ?? 0),
+      amount: item.subtotal_cents !== undefined ? Number(item.subtotal_cents) / 100 : Number(item.amount ?? 0),
+      remark: item.remark ? String(item.remark) : undefined,
+    })),
+  };
+}
+
+export function OrdersPage() {
+  const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL');
+  const [keyword, setKeyword] = useState('');
+  const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [result, setResult] = useState<ListResult<Order>>({ items: [], meta: { page: 1, pageSize: 20, total: 0 } });
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<Order | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  const load = useCallback(async (page = 1, pageSize = result.meta.pageSize ?? 20) => {
+    setLoading(true);
+    try {
+      const normalized = await api.getList<Order>('/merchant/orders', {
+        status: status === 'ALL' ? undefined : status,
+        keyword: keyword || undefined,
+        startAt: dates?.[0]?.startOf('day').toISOString(),
+        endAt: dates?.[1]?.endOf('day').toISOString(),
+        page,
+        page_size: pageSize,
+      });
+      setResult({ ...normalized, items: normalized.items.map(normalizeOrder), meta: { page, pageSize, ...normalized.meta } });
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [dates, keyword, messageApi, result.meta.pageSize, status]);
+
+  useEffect(() => { void load(1); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openDetail = async (order: Order) => {
+    setSelected(order);
+    setDrawerOpen(true);
+    try {
+      setSelected(normalizeOrder(await api.get<Order>(`/merchant/orders/${order.id}`)));
+    } catch {
+      // 列表信息已经足够展示；详情接口失败不阻断现场处理订单。
+    }
+  };
+
+  const updateStatus = async (target: OrderStatus) => {
+    if (!selected) return;
+    setActionLoading(true);
+    try {
+      const updated = await api.post<Order>(`/merchant/orders/${selected.id}/status`, { status: target });
+      const next = Object.keys(updated ?? {}).length ? normalizeOrder(updated) : { ...selected, status: target };
+      setSelected(next);
+      setResult((current) => ({ ...current, items: current.items.map((order) => order.id === selected.id ? next : order) }));
+      messageApi.success(`订单已更新为${orderStatusMap[target].text}`);
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const reprint = async () => {
+    if (!selected) return;
+    setActionLoading(true);
+    try {
+      await api.post(`/merchant/orders/${selected.id}/reprint`, { type: 'RECEIPT', markAsReprint: true });
+      messageApi.success('补打任务已提交，小票将标记“补打”');
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const closeOrder = () => {
+    if (!selected) return;
+    Modal.confirm({
+      title: '确认关闭订单？',
+      content: '关闭后顾客不能继续付款，此操作会保留审计记录。',
+      okText: '确认关闭',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => updateStatus('CLOSED'),
+    });
+  };
+
+  const counts = useMemo(() => result.items.reduce<Record<string, number>>((acc, item) => {
+    acc[item.status] = (acc[item.status] ?? 0) + 1;
+    return acc;
+  }, {}), [result.items]);
+
+  const columns = [
+    { title: '取餐号', dataIndex: 'pickupNo', width: 105, render: (value: string) => <strong className="pickup-no large">#{value || '--'}</strong> },
+    { title: '订单号', dataIndex: 'orderNo', width: 190, ellipsis: true },
+    {
+      title: '商品', key: 'items', minWidth: 240,
+      render: (_: unknown, order: Order) => (
+        <div className="order-product-cell">
+          <Typography.Text>{order.items?.slice(0, 2).map((item) => `${item.productName} ×${item.quantity}`).join('、') || '--'}</Typography.Text>
+          {(order.items?.length ?? 0) > 2 && <Typography.Text type="secondary"> 等 {order.items.length} 件</Typography.Text>}
+          {order.remark && <div><Tag color="orange">备注：{order.remark}</Tag></div>}
+        </div>
+      ),
+    },
+    { title: '实付金额', dataIndex: 'paidAmount', width: 125, render: (value: number, order: Order) => <strong>{yuan(value ?? order.amount)}</strong> },
+    { title: '状态', dataIndex: 'status', width: 110, render: (value: OrderStatus) => <OrderStatusTag status={value} /> },
+    { title: '下单时间', dataIndex: 'createdAt', width: 180, render: dateTime },
+    {
+      title: '操作', key: 'action', width: 105, fixed: 'right' as const,
+      render: (_: unknown, order: Order) => <Button type="link" icon={<EyeOutlined />} onClick={() => void openDetail(order)}>详情</Button>,
+    },
+  ];
+
+  return (
+    <div className="page-shell">
+      {contextHolder}
+      <PageHeading
+        title="订单管理"
+        description="统一查看点单、支付、制作和打印状态"
+        extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button>}
+      />
+      <Card bordered={false} className="content-card order-filter-card">
+        <Tabs
+          activeKey={status}
+          onChange={(key) => setStatus(key as typeof status)}
+          items={statusTabs.map((tab) => ({
+            key: tab.key,
+            label: <span>{tab.label}{tab.key !== 'ALL' && counts[tab.key] ? <em className="tab-count">{counts[tab.key]}</em> : null}</span>,
+          }))}
+        />
+        <Row gutter={[12, 12]}>
+          <Col xs={24} lg={9}>
+            <Input
+              allowClear
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              onPressEnter={() => void load(1)}
+              prefix={<SearchOutlined />}
+              placeholder="搜索订单号、取餐号或顾客手机号"
+            />
+          </Col>
+          <Col xs={24} sm={16} lg={9}><RangePicker value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
+          <Col xs={24} sm={8} lg={6}><Button type="primary" block icon={<SearchOutlined />} onClick={() => void load(1)}>查询订单</Button></Col>
+        </Row>
+      </Card>
+      <Card bordered={false} className="content-card table-card">
+        <Table<Order>
+          rowKey="id"
+          loading={loading}
+          dataSource={result.items}
+          columns={columns}
+          scroll={{ x: 1050 }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有符合条件的订单" /> }}
+          pagination={{
+            current: result.meta.page,
+            pageSize: result.meta.pageSize,
+            total: result.meta.total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 笔订单`,
+          }}
+          onChange={(pagination: TablePaginationConfig) => void load(pagination.current, pagination.pageSize)}
+        />
+      </Card>
+
+      <Drawer
+        title={selected ? <Space><span>订单详情</span><OrderStatusTag status={selected.status} /></Space> : '订单详情'}
+        width={680}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        extra={<Button icon={<PrinterOutlined />} loading={actionLoading} onClick={() => void reprint()}>补打小票</Button>}
+        footer={selected && (
+          <div className="drawer-footer-actions">
+            {selected.status === 'PENDING_PAYMENT' && <Button danger icon={<CloseCircleOutlined />} onClick={closeOrder}>关闭订单</Button>}
+            {nextStatus[selected.status] && (
+              <Button type="primary" size="large" loading={actionLoading} icon={<SyncOutlined />} onClick={() => void updateStatus(nextStatus[selected.status]!.status)}>
+                {nextStatus[selected.status]!.text}
+              </Button>
+            )}
+          </div>
+        )}
+      >
+        {selected ? (
+          <div className="order-detail">
+            <div className="detail-hero">
+              <span>取餐号</span><strong>#{selected.pickupNo || '--'}</strong>
+              <small>{selected.orderNo}</small>
+            </div>
+            {selected.status !== 'CLOSED' ? (
+              <Steps
+                size="small"
+                current={Math.max(timelineStatuses.indexOf(selected.status), 0)}
+                items={timelineStatuses.map((item) => ({ title: orderStatusMap[item].text }))}
+              />
+            ) : <Tag color="error">该订单已关闭</Tag>}
+            <Divider />
+            <Typography.Title level={5}>商品明细</Typography.Title>
+            <List
+              dataSource={selected.items ?? []}
+              locale={{ emptyText: '暂无商品明细' }}
+              renderItem={(item) => (
+                <List.Item extra={<strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>}>
+                  <List.Item.Meta
+                    title={<Space>{item.productName}<Typography.Text type="secondary">× {item.quantity}</Typography.Text></Space>}
+                    description={[item.skuName, item.remark].filter(Boolean).join(' · ') || `单价 ${yuan(item.unitPrice)}`}
+                  />
+                </List.Item>
+              )}
+            />
+            <div className="order-total-row"><span>订单金额</span><strong>{yuan(selected.amount)}</strong></div>
+            {(selected.refundAmount ?? 0) > 0 && <div className="order-total-row refund"><span>已退款</span><strong>-{yuan(selected.refundAmount)}</strong></div>}
+            <Divider />
+            <Descriptions title="订单信息" column={1} size="small">
+              <Descriptions.Item label="下单时间">{dateTime(selected.createdAt)}</Descriptions.Item>
+              <Descriptions.Item label="支付时间">{dateTime(selected.paidAt)}</Descriptions.Item>
+              <Descriptions.Item label="支付方式">{selected.paymentMethod || '--'}</Descriptions.Item>
+              <Descriptions.Item label="取餐方式">{selected.fulfillmentType === 'DINE_IN' ? '堂食' : '门店自取'}</Descriptions.Item>
+              <Descriptions.Item label="顾客">{selected.customerName || '微信顾客'} {selected.customerPhone}</Descriptions.Item>
+              <Descriptions.Item label="订单备注">{selected.remark || '无'}</Descriptions.Item>
+              <Descriptions.Item label="打印次数">{selected.printCount ?? 0} 次</Descriptions.Item>
+            </Descriptions>
+          </div>
+        ) : <Empty />}
+      </Drawer>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -30,6 +31,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.production.example
+!**/.env.example
+
+# WeChat developer local settings
+**/project.private.config.json
 
 # vercel
 .vercel
@@ -37,6 +44,16 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /dist/
+**/dist/
+*.tsbuildinfo
+apps/*/vite.config.js
+apps/*/vite.config.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# Go build/test artifacts
+*.test
+*.out
+apps/api/bin/
+apps/api/server

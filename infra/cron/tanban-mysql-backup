@@ -1,0 +1,3 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 3 * * * root /bin/bash -o pipefail -c '/bin/bash /root/works/tanban/scripts/mysql-backup.sh 2>&1 | /usr/bin/logger -t tanban-mysql-backup'

@@ -1,0 +1,35 @@
+<view class="page menu-page" wx:if="{{!loading}}">
+  <scroll-view class="categories" scroll-y>
+    <view wx:for="{{categories}}" wx:key="id" class="category {{activeCategoryId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
+  </scroll-view>
+  <scroll-view class="products" scroll-y>
+    <view class="menu-title"><text>今晚菜单</text><text class="muted">现点现做</text></view>
+    <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
+      <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+      <view wx:else class="product-image placeholder">咖</view>
+      <view class="product-main">
+        <text class="product-name">{{item.name}}</text><text class="product-desc">{{item.description || '用心制作，口味可选'}}</text><text class="price">¥{{item.price / 100}}</text>
+        <view class="selected-skus" wx:if="{{item.selectedItems.length}}">
+          <view class="selected-sku" wx:for="{{item.selectedItems}}" wx:for-item="selected" wx:key="lineKey">
+            <text>{{selected.skuName || '默认规格'}}</text>
+            <view class="line-stepper">
+              <button data-product-id="{{selected.productId}}" data-sku-id="{{selected.skuId}}" bindtap="decreaseCartItem">−</button>
+              <text>{{selected.quantity}}</text>
+              <button data-product-id="{{selected.productId}}" data-sku-id="{{selected.skuId}}" bindtap="incrementCartItem">＋</button>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button class="plus {{item.hasMultipleSkus ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.hasMultipleSkus ? '选规格' : '＋'}}</button></view>
+      <text wx:else class="sold-out">售罄</text>
+    </view>
+  </scroll-view>
+  <view class="cart-bar"><view><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><button bindtap="checkout">去结算</button></view>
+</view>
+<view class="empty" wx:else>正在准备菜单…</view>
+<view class="sku-mask" wx:if="{{selectingProduct}}" bindtap="closeSkuPicker">
+  <view class="sku-picker" catchtap="noop">
+    <view class="sku-picker-title"><view><text>选择规格</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>
+    <button class="sku-option" wx:for="{{selectableSkus}}" wx:key="id" data-sku-id="{{item.id}}" bindtap="chooseSku"><text>{{item.name}}</text><text>¥{{item.price / 100}}</text></button>
+  </view>
+</view>

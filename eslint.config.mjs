@@ -11,8 +11,19 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "dist/**",
+    "**/dist/**",
+    ".vinext/**",
+    ".wrangler/**",
     "next-env.d.ts",
+    "**/*.tsbuildinfo",
   ]),
+  {
+    // All three clients load their initial remote state in effects. React's
+    // experimental rule treats these intentional async loaders as cascading
+    // synchronous state updates, even though the updates happen after I/O.
+    rules: { "react-hooks/set-state-in-effect": "off" },
+  },
 ]);
 
 export default eslintConfig;

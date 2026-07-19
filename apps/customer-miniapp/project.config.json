@@ -1,0 +1,18 @@
+{
+  "appid": "touristappid",
+  "projectname": "tanban-customer-miniapp",
+  "description": "摊伴顾客点单小程序",
+  "miniprogramRoot": "miniprogram/",
+  "compileType": "miniprogram",
+  "libVersion": "3.7.12",
+  "setting": {
+    "useCompilerPlugins": ["typescript"],
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true
+  },
+  "simulatorType": "wechat",
+  "condition": {}
+}

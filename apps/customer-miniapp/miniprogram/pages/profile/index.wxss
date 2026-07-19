@@ -1,0 +1,8 @@
+.profile-head { display: flex; align-items: center; padding: 80rpx 40rpx 50rpx; background: var(--cream); }
+.avatar { display: flex; align-items: center; justify-content: center; width: 108rpx; height: 108rpx; margin-right: 24rpx; border-radius: 32rpx; background: var(--green); color: var(--lime); font-size: 45rpx; font-weight: 800; }
+.profile-head > view:last-child { display: flex; flex-direction: column; gap: 10rpx; }
+.name { font-size: 36rpx; font-weight: 800; }
+.profile-head .muted { font-size: 23rpx; }
+.menu > view { display: flex; justify-content: space-between; padding: 28rpx 4rpx; border-bottom: 1rpx solid #eeeae2; }
+.menu > view:last-child { border: 0; }
+.version { margin-top: 60rpx; color: #a2a6a1; font-size: 21rpx; text-align: center; }

@@ -1,0 +1,9 @@
+.success { display: flex; flex-direction: column; align-items: center; padding-top: 45rpx; }
+.check { display: flex; align-items: center; justify-content: center; width: 104rpx; height: 104rpx; border-radius: 50%; background: var(--green); color: white; font-size: 56rpx; }
+.status-title { margin-top: 22rpx; font-size: 38rpx; font-weight: 800; }
+.success .muted { margin-top: 10rpx; font-size: 23rpx; }
+.pickup { display: flex; width: 100%; flex-direction: column; align-items: center; margin-top: 36rpx; padding: 30rpx 0; border-radius: 22rpx; background: var(--cream); }
+.pickup text:last-child { margin-top: 6rpx; font-family: Georgia, serif; font-size: 82rpx; font-weight: 800; }
+.detail-line { display: flex; justify-content: space-between; padding: 20rpx 0; border-bottom: 1rpx solid #eeeae2; color: var(--muted); font-size: 24rpx; }
+.detail-line text:last-child { max-width: 65%; color: var(--ink); text-align: right; }
+.back { margin: 32rpx 28rpx; }

@@ -1,0 +1,2 @@
+-- Provider routing snapshots are historical transaction evidence and are
+-- intentionally not erased by a down migration.

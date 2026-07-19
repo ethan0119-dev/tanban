@@ -1,0 +1,36 @@
+.menu-page { display: grid; grid-template-columns: 170rpx 1fr; height: calc(100vh - 100rpx); padding-bottom: 100rpx; box-sizing: border-box; }
+.categories { height: 100%; background: #eceae3; }
+.category { padding: 34rpx 18rpx; color: #70756f; font-size: 25rpx; text-align: center; }
+.category.active { border-left: 7rpx solid var(--coffee); background: #fffefa; color: var(--ink); font-weight: 800; }
+.products { height: 100%; background: #fffefa; }
+.menu-title { display: flex; justify-content: space-between; padding: 32rpx 28rpx 12rpx; font-weight: 800; }
+.menu-title .muted { font-size: 22rpx; font-weight: 400; }
+.product { position: relative; display: grid; grid-template-columns: 150rpx 1fr auto; gap: 20rpx; align-items: center; margin: 0 26rpx; padding: 26rpx 0; border-bottom: 1rpx solid #eeeae0; }
+.product-image { width: 150rpx; height: 150rpx; border-radius: 22rpx; }
+.placeholder { display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, #6f563f, #214d3f); color: var(--lime); font-size: 48rpx; font-weight: 800; }
+.product-main { display: flex; min-width: 0; flex-direction: column; gap: 10rpx; }
+.product-name { font-size: 29rpx; font-weight: 800; }
+.product-desc { overflow: hidden; color: var(--muted); font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
+.product-action { display: flex; flex-direction: column; align-self: flex-end; align-items: flex-end; gap: 10rpx; }
+.product-action > text { color: var(--muted); font-size: 20rpx; }
+.product-action button { min-width: 52rpx; height: 52rpx; margin: 0; padding: 0; border: 1rpx solid var(--green); border-radius: 26rpx; background: var(--green); color: white; line-height: 50rpx; }
+.product-action button.with-text { padding: 0 18rpx; font-size: 21rpx; }
+.selected-skus { display: flex; flex-direction: column; gap: 10rpx; margin-top: 8rpx; }
+.selected-sku { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; padding: 9rpx 12rpx; border-radius: 12rpx; background: #f4f2ec; color: #59605a; font-size: 21rpx; }
+.line-stepper { display: flex; align-items: center; gap: 10rpx; }
+.line-stepper button { width: 40rpx; height: 40rpx; margin: 0; padding: 0; border: 1rpx solid #d2d7d0; border-radius: 50%; background: white; font-size: 24rpx; line-height: 38rpx; }
+.sold-out { color: #aaa; font-size: 22rpx; }
+.cart-bar { position: fixed; right: 22rpx; bottom: 118rpx; left: 22rpx; z-index: 10; display: flex; align-items: center; justify-content: space-between; min-height: 92rpx; padding: 10rpx 12rpx 10rpx 28rpx; border-radius: 25rpx; background: var(--ink); color: white; box-shadow: 0 20rpx 40rpx rgba(23,32,27,.25); }
+.cart-bar > view { display: flex; align-items: baseline; gap: 14rpx; font-size: 21rpx; color: #b5bcb6; }
+.cart-count { display: flex; align-items: center; justify-content: center; width: 42rpx; height: 42rpx; border-radius: 50%; background: var(--lime); color: var(--ink); font-weight: 800; }
+.cart-price { color: white; font-size: 34rpx; font-weight: 800; }
+.cart-bar button { margin: 0; padding: 0 34rpx; border-radius: 20rpx; background: var(--lime); color: var(--ink); font-weight: 800; }
+.sku-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 30; display: flex; align-items: flex-end; background: rgba(18, 26, 22, .48); }
+.sku-picker { width: 100%; max-height: 70vh; padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom)); border-radius: 30rpx 30rpx 0 0; background: #fffefa; box-sizing: border-box; }
+.sku-picker-title { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24rpx; }
+.sku-picker-title > view { display: flex; flex-direction: column; gap: 6rpx; }
+.sku-picker-title > view text:first-child { font-size: 31rpx; font-weight: 800; }
+.sku-picker-title > view text:last-child { color: var(--muted); font-size: 22rpx; }
+.sku-picker-title button { width: 52rpx; height: 52rpx; margin: 0; padding: 0; border-radius: 50%; background: #f0eee7; color: var(--ink); line-height: 52rpx; }
+.sku-option { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 14rpx 0 0; padding: 22rpx 24rpx; border: 2rpx solid #e5e2d8; border-radius: 18rpx; background: white; font-size: 26rpx; }
+.sku-option text:last-child { color: var(--coffee); font-weight: 800; }

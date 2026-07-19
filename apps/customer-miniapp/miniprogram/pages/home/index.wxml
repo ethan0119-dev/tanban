@@ -1,0 +1,19 @@
+<view class="page" wx:if="{{!loading && store}}">
+  <view class="hero">
+    <image wx:if="{{store.theme.bannerUrl}}" class="banner" src="{{store.theme.bannerUrl}}" mode="aspectFill" />
+    <view wx:else class="banner banner-placeholder"><text>TANBAN</text><text>今晚，来一杯认真做的咖啡</text></view>
+    <view class="store-row">
+      <image wx:if="{{store.logoUrl}}" class="logo" src="{{store.logoUrl}}" />
+      <view wx:else class="logo logo-placeholder">伴</view>
+      <view class="store-copy"><text class="store-name">{{store.name}}</text><text class="muted">{{store.businessStatus === 'OPEN' ? '营业中' : '已打烊'}} · {{store.address || '欢迎扫码点单'}}</text></view>
+    </view>
+    <view class="notice">公告 · {{store.theme.announcement || '下单后请留意取餐码，咖啡做好会提醒你。'}}</view>
+  </view>
+  <view class="actions card">
+    <button class="action primary" bindtap="goMenu"><text class="action-title">堂食 / 自提点单</text><text>选好口味，在线下单</text></button>
+    <button class="action secondary" bindtap="goOrders"><text class="action-title">查看我的订单</text><text>支付与制作进度</text></button>
+  </view>
+  <view class="card feature"><text class="eyebrow">FOR SMALL BUSINESS</text><text class="feature-title">认真经营每一个小摊</text><text class="muted">商品、订单、支付和打印由摊伴协同处理。</text></view>
+</view>
+<view class="empty" wx:elif="{{loading}}">正在进入门店…</view>
+<view class="empty" wx:else><text>{{error}}</text><button class="primary" bindtap="onPullDownRefresh">重新加载</button></view>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 type Surface = "platform" | "merchant" | "customer";
 type MerchantPage = "dashboard" | "orders" | "products" | "members" | "marketing";
@@ -264,20 +264,20 @@ const platformModules: Record<string, { summary: string; actions: string[]; rows
 };
 
 function PlatformModule({ name }: { name: string }) {
-  const module = platformModules[name] ?? platformModules["商户管理"];
+  const moduleConfig = platformModules[name] ?? platformModules["商户管理"];
   return (
     <div className="module-layout">
       <article className="panel module-hero">
-        <div><span className="module-icon">{navIcons[name]}</span><small>PLATFORM MODULE</small><h3>{name}</h3><p>{module.summary}</p></div>
+        <div><span className="module-icon">{navIcons[name]}</span><small>PLATFORM MODULE</small><h3>{name}</h3><p>{moduleConfig.summary}</p></div>
         <button className="button primary">进入配置</button>
       </article>
       <div className="action-cards">
-        {module.actions.map((action, index) => <button key={action}><i>0{index + 1}</i><b>{action}</b><span>查看与管理 →</span></button>)}
+        {moduleConfig.actions.map((action, index) => <button key={action}><i>0{index + 1}</i><b>{action}</b><span>查看与管理 →</span></button>)}
       </div>
       <article className="panel table-panel">
         <div className="panel-title"><div><small>LATEST RECORDS</small><h3>最近记录</h3></div><button className="text-button">筛选</button></div>
         <div className="simple-records">
-          {module.rows.map((row) => <div key={row.join("-")}>{row.map((cell, i) => <span key={cell}>{i === 0 ? <b>{cell}</b> : cell}</span>)}</div>)}
+          {moduleConfig.rows.map((row) => <div key={row.join("-")}>{row.map((cell, i) => <span key={cell}>{i === 0 ? <b>{cell}</b> : cell}</span>)}</div>)}
         </div>
       </article>
     </div>
@@ -412,7 +412,7 @@ function MemberCenter() {
     <>
       <div className="page-heading"><div><span className="kicker">MEMBER GROWTH</span><h2>用户会员</h2><p>沉淀扫码顾客，统一管理标签、等级、余额与积分。</p></div><div className="heading-actions"><button className="button primary">发放会员权益</button></div></div>
       <div className="metric-grid"><MetricCard label="累计顾客" value="1,842" change="本月 +126" tone="cream" /><MetricCard label="付费会员" value="286" change="会员占比 15.5%" tone="mint" /><MetricCard label="储值余额" value="¥38,420" change="待履约资金" tone="amber" /><MetricCard label="30 日复购率" value="32.8%" change="+4.2%" tone="violet" /></div>
-      <div className="dashboard-grid"><article className="panel member-list"><div className="panel-title"><div><small>RECENT CUSTOMERS</small><h3>最近到店顾客</h3></div></div>{[["林小满", "咖啡爱好者", "18 次", "¥426"], ["Kiki", "夜市常客", "11 次", "¥238"], ["Jason", "新客", "2 次", "¥42"], ["阿布", "高价值会员", "26 次", "¥682"]].map((r, i) => <div key={r[0]}><i>{r[0].slice(0, 1)}</i><span><b>{r[0]}</b><small>{r[1]}</small></span><span>{r[2]}</span><strong>{r[3]}</strong></div>)}</article><article className="panel retention-card"><div className="panel-title"><div><small>RETENTION</small><h3>会员复购漏斗</h3></div></div>{[["首次下单", "100%"], ["二次复购", "48%"], ["加入会员", "31%"], ["月度活跃", "18%"]].map((r, i) => <div key={r[0]}><span>{r[0]}<b>{r[1]}</b></span><i><em style={{ width: r[1] }} /></i></div>)}</article></div>
+      <div className="dashboard-grid"><article className="panel member-list"><div className="panel-title"><div><small>RECENT CUSTOMERS</small><h3>最近到店顾客</h3></div></div>{[["林小满", "咖啡爱好者", "18 次", "¥426"], ["Kiki", "夜市常客", "11 次", "¥238"], ["Jason", "新客", "2 次", "¥42"], ["阿布", "高价值会员", "26 次", "¥682"]].map((r) => <div key={r[0]}><i>{r[0].slice(0, 1)}</i><span><b>{r[0]}</b><small>{r[1]}</small></span><span>{r[2]}</span><strong>{r[3]}</strong></div>)}</article><article className="panel retention-card"><div className="panel-title"><div><small>RETENTION</small><h3>会员复购漏斗</h3></div></div>{[["首次下单", "100%"], ["二次复购", "48%"], ["加入会员", "31%"], ["月度活跃", "18%"]].map((r) => <div key={r[0]}><span>{r[0]}<b>{r[1]}</b></span><i><em style={{ width: r[1] }} /></i></div>)}</article></div>
     </>
   );
 }

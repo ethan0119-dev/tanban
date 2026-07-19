@@ -1,15 +1,27 @@
 {
-  "name": "tanban-saas-prototype",
+  "name": "tanban",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/platform-web",
+    "apps/merchant-web",
+    "apps/customer-miniapp"
+  ],
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
-    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
+    "dev": "npm run dev:prototype",
+    "dev:prototype": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
+    "dev:platform": "npm run dev --workspace @tanban/platform-web",
+    "dev:merchant": "npm run dev --workspace @tanban/merchant-web",
+    "build": "npm run build:prototype && npm run build:platform && npm run build:merchant && npm run typecheck:miniapp",
+    "build:prototype": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
+    "build:platform": "npm run build --workspace @tanban/platform-web",
+    "build:merchant": "npm run build --workspace @tanban/merchant-web",
+    "typecheck:miniapp": "npm run typecheck --workspace @tanban/customer-miniapp",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test --workspaces --if-present",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
@@ -36,6 +48,10 @@
     "vinext": "0.0.50",
     "vite": "8.0.13",
     "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "path-to-regexp": "8.4.0",
+    "postcss": "8.5.10"
   },
   "type": "module"
 }

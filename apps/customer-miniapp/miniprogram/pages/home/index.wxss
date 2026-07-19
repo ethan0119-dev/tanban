@@ -1,0 +1,19 @@
+.hero { padding: 28rpx; background: var(--cream); border-radius: 0 0 46rpx 46rpx; }
+.banner { width: 100%; height: 300rpx; border-radius: 30rpx; }
+.banner-placeholder { display: flex; flex-direction: column; justify-content: flex-end; box-sizing: border-box; padding: 38rpx; background: linear-gradient(135deg, #173d32, #806044); color: white; }
+.banner-placeholder text:first-child { color: var(--lime); letter-spacing: 10rpx; font-weight: 800; }
+.banner-placeholder text:last-child { margin-top: 18rpx; font-size: 36rpx; font-weight: 700; }
+.store-row { display: flex; align-items: center; margin-top: 28rpx; }
+.logo { width: 94rpx; height: 94rpx; border-radius: 24rpx; }
+.logo-placeholder { display: flex; align-items: center; justify-content: center; background: var(--green); color: var(--lime); font-size: 42rpx; font-weight: 800; }
+.store-copy { display: flex; flex: 1; flex-direction: column; margin-left: 20rpx; gap: 9rpx; }
+.store-name { font-size: 38rpx; font-weight: 800; }
+.store-copy .muted { font-size: 23rpx; }
+.notice { margin-top: 24rpx; padding: 18rpx 22rpx; border-radius: 18rpx; background: rgba(255,255,255,.55); color: #665f53; font-size: 24rpx; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; }
+.action { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 170rpx; padding: 28rpx; font-size: 22rpx; line-height: 1.7; }
+.action-title { font-size: 29rpx; font-weight: 800; }
+.secondary { background: #f0ddbd; color: var(--ink); border-radius: 26rpx; }
+.feature { display: flex; flex-direction: column; gap: 14rpx; }
+.eyebrow { color: var(--coffee); font-size: 20rpx; letter-spacing: 5rpx; }
+.feature-title { font-size: 34rpx; font-weight: 800; }
