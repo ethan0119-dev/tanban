@@ -75,6 +75,7 @@ go test ./...
 ## 文档
 
 - [产品结构、真实系统观摩与完整功能设计](docs/SYSTEM_BLUEPRINT.md)
+- [对标商户后台完整菜单清单](docs/REFERENCE_FIREPOS_MERCHANT_ADMIN_MENU.md)
 - [一期技术架构、交易链路和扩容边界](docs/TECHNICAL_ARCHITECTURE.md)
 - [支付 Provider 与天阙接入](docs/PAYMENT_PROVIDER.md)
 - [服务器部署](docs/DEPLOYMENT.md)
