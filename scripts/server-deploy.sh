@@ -393,7 +393,7 @@ echo "building static frontends"
 npm ci \
   --workspace @tanban/platform-web \
   --workspace @tanban/merchant-web \
-  --include-workspace-root=false
+  --include-workspace-root=true
 npm run build:platform
 npm run build:merchant
 
