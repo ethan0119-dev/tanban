@@ -260,7 +260,7 @@ func TestLoadPrintTemplatesReturnsEveryCopyRoleIncludingDisabledRows(t *testing.
 		t.Fatal(err)
 	}
 	defer db.Close()
-	query := regexp.QuoteMeta("SELECT id,template_type,copy_role,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")
+	query := regexp.QuoteMeta("SELECT id,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")
 	mock.ExpectQuery(query).WithArgs(int64(2), int64(5), orderTypeDineIn, "RECEIPT").WillReturnRows(
 		sqlmock.NewRows([]string{"id", "template_type", "copy_role", "content_text", "trigger_event", "copies", "paper_width", "layout_json", "status"}).
 			AddRow(1, "RECEIPT", "MERCHANT", "legacy", "PAYMENT_SUCCESS", 1, 58, `{}`, "ACTIVE").
@@ -313,7 +313,7 @@ func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.
 		WithArgs(int64(2), int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
 			AddRow(31, 5, "收银台", "mock", "virtual", "SN31", 58, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT,CUSTOMER", "legacy", "ACTIVE"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,template_type,copy_role,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")).
 		WithArgs(int64(2), int64(5), orderTypeDineIn, "RECEIPT").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "template_type", "copy_role", "content_text", "trigger_event", "copies", "paper_width", "layout_json", "status"}).
 			AddRow(41, "RECEIPT", "MERCHANT", "", "PAYMENT_SUCCESS", 1, 58, `{"schemaVersion":1,"headerStyle":"PROMINENT"}`, "ACTIVE").

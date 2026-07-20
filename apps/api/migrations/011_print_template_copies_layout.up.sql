@@ -1,5 +1,5 @@
 ALTER TABLE print_templates
-  ADD COLUMN copy_role VARCHAR(24) NOT NULL DEFAULT 'MERCHANT' AFTER template_type;
+  ADD COLUMN copy_role VARCHAR(24) NULL DEFAULT NULL AFTER template_type;
 
 ALTER TABLE print_templates
   ADD COLUMN paper_width INT NOT NULL DEFAULT 58 AFTER copies;
@@ -23,11 +23,30 @@ SET copy_role=CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END,
       ELSE '{}'
     END;
 
+-- Legacy API writers omit copy_role. A generated compatibility key maps those
+-- NULL writes to the historical single RECEIPT/LABEL roles without requiring
+-- a database trigger or elevated MySQL privileges.
+ALTER TABLE print_templates
+  MODIFY COLUMN copy_role VARCHAR(24) NULL DEFAULT NULL;
+
+ALTER TABLE print_templates
+  ADD COLUMN copy_role_key VARCHAR(24)
+    GENERATED ALWAYS AS (
+      CASE
+        WHEN copy_role IS NOT NULL THEN copy_role
+        WHEN template_type='LABEL' THEN 'ITEM'
+        ELSE 'MERCHANT'
+      END
+    ) STORED AFTER copy_role;
+
 ALTER TABLE print_templates
   DROP KEY uk_print_templates_scope;
 
 ALTER TABLE print_templates
-  ADD UNIQUE KEY uk_print_templates_role (tenant_id, store_id, business_type, template_type, copy_role);
+  DROP KEY uk_print_templates_role;
+
+ALTER TABLE print_templates
+  ADD UNIQUE KEY uk_print_templates_role_v2 (tenant_id, store_id, business_type, template_type, copy_role_key);
 
 ALTER TABLE print_jobs
   ADD COLUMN template_id BIGINT UNSIGNED NULL AFTER printer_id;
@@ -46,17 +65,3 @@ ALTER TABLE printer_devices
 
 UPDATE printer_devices
 SET copy_roles=CASE WHEN output_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END;
-
--- The previous API does not send copy_role. Keep its LABEL upsert mapped to
--- ITEM during the startup rollback window; RECEIPT continues to default to
--- MERCHANT. Additional disabled roles are seeded by the new API only after it
--- is serving, rather than inside this forward-only DDL migration.
-DROP TRIGGER IF EXISTS trg_print_templates_legacy_copy_role;
-
-CREATE TRIGGER trg_print_templates_legacy_copy_role
-BEFORE INSERT ON print_templates
-FOR EACH ROW
-SET NEW.copy_role=CASE
-  WHEN NEW.template_type='LABEL' AND NEW.copy_role='MERCHANT' THEN 'ITEM'
-  ELSE NEW.copy_role
-END;
