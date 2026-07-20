@@ -1,58 +1,43 @@
-# Design QA — hotspot decoration and structured thermal printing
+# Tanban product media visual QA
 
-Date: 2026-07-20
+- QA date: 2026-07-20
+- Production merchant console: https://mysales.666qwe.cn/products
+- Production media library: https://mysales.666qwe.cn/media-library
+- Production API readiness: https://tbapi.666qwe.cn/readyz
 
-## Reference sources
+## Reference inputs
 
-- Decoration editor: `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-c66c6a93-1c76-47b4-bdef-924ac42dd6aa.png` (1917 × 1169)
-- Print template editor: `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-64b8097c-49b1-4d85-8d14-1352c84cfed6.png` (1809 × 1139)
+- Brand source: `/Users/lxy/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/smarti_0fb6/temp/RWTemp/2026-07/0f1a5203bae72a6efcd9fa62a0396b14/e1c6d050b0b655403870d540c3611447.png`
+- Product operation reference: `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-38202558-8d5c-4214-9a3f-3077c7a89a70.png`
+- Image selector reference: `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-db140908-7d46-4625-8cda-d10196c2b9e5.png`
 
-## Production implementation evidence
+## Evidence
 
-- Hotspot editor focused state: `artifacts/design-qa/decoration-hotspot-production.png` (1265 × 712)
-- Merchant receipt, 58 mm: `artifacts/design-qa/print-template-merchant-58mm-full-production.png` (1265 × 2388 full page)
-- Customer receipt, 80 mm preview: `artifacts/design-qa/print-template-customer-80mm-preview-production.png` (1265 × 712)
-- Printer paper-width and copy-role routing: `artifacts/design-qa/printer-device-routing-production.png` (1265 × 712)
-- Normalized side-by-side decoration comparison: `artifacts/design-qa/comparison-decoration-hotspot.png`
-- Normalized side-by-side printing comparison: `artifacts/design-qa/comparison-structured-print.png`
+- `artifacts/product-media-qa.png`
+- `artifacts/product-media-qa-wide.png`
+- `artifacts/product-table-qa.png`
+- `artifacts/media-library-qa.png`
+- `artifacts/product-image-picker-qa.png`
 
-The reference and implementation captures are desktop states. For visual comparison, both sides were normalized into equal-size desktop panels without changing their aspect ratio. The production interaction captures use the in-app browser's 1265 × 712 viewport.
+## Comparison result
 
-## Interaction and functional checks
+- The cleaned transparent Tanban logo is readable on the dark merchant sidebar and uses the warm copper accent shared by the management UI.
+- Product rows expose the requested edit, shelf, recommend, statistics, copy, delete, sold-out, restock, display-channel and batch-operation controls.
+- Product editing supports one primary image and up to three gallery images through the shared merchant image selector.
+- The image selector follows the reference information architecture: groups, search, upload, asset grid, selected count and confirmation actions.
+- The same media library selector is reused by products, store decoration and hotspots, popup advertising and store logo settings.
+- The mini-program product detail renders the primary image and gallery as a swiper.
+- The Tanban visual theme deliberately differs from the blue reference system while retaining its task structure and interaction density.
+- At narrower desktop widths the product table scrolls horizontally and pins the operation column; this is an acceptable admin-table behavior.
+- The production media library currently has sparse content because QA preserved real tenant data and avoided destructive or artificial production mutations.
 
-### Decoration hotspot
+## Functional and accessibility checks
 
-- Opened the production merchant decoration editor.
-- Added the `单图热区` module.
-- Uploaded a 1731 × 909 PNG through the authenticated merchant upload API and confirmed its public HTTPS media URL renders in the editor and mini-program preview.
-- Entered draw mode and dragged a rectangle on the image. The editor produced percentage coordinates (`x`, `y`, `width`, `height`) and synchronized the overlay into the phone preview.
-- Opened the action selector and confirmed the safe action set: no action, menu, orders, profile, and phone call.
-- Changed the hotspot action from menu to orders and confirmed the preview state changed to `OPEN_ORDERS`.
-- The Codex in-app browser cannot attach files through an operating-system file picker. The production upload was therefore exercised against the same authenticated multipart endpoint with the real `public/og.png`; the visible upload control, returned asset, editor rendering, and mini-program preview were then verified on the live page.
-- No draft was published during QA.
-- Browser console errors: none.
-
-### Thermal print templates
-
-- Opened the production dine-in template editor.
-- Verified the four isolated copy roles: merchant, customer, kitchen, and per-item label.
-- Verified merchant receipt structure: store, scene, pickup number, order/table/time, item table, specifications/add-ons, totals, payment provider, notes, and footer.
-- Verified customer receipt adds customer data and order QR placeholder fields.
-- Verified kitchen receipt emphasizes products/specifications/notes and defaults to hiding prices.
-- Verified item label splits to product-level cup/food labels.
-- Switched customer receipt from 58 mm to 80 mm and confirmed preview width and dirty-state marker update.
-- Triggered reload with unsaved changes and confirmed the role-specific discard warning appears before state loss.
-- Opened printer configuration and confirmed physical 58/80 mm width plus allowed copy-role routing are explicit device settings.
-- Browser console errors: none.
-
-## Iteration history
-
-1. Initial functional implementation added image hotspots and structured ticket roles.
-2. Visual QA found that replacing a hotspot image could retain stale coordinates; image changes now confirm and clear old hotspots.
-3. Workflow QA found unsaved changes could be lost across receipt roles/scenes; dirty state is now tracked per role with guarded reload/scene switching.
-4. Release audit found payment/refund transactions could be coupled to printing; immutable `print_outbox` facts now decouple financial state from print delivery.
-5. Release audit found multi-printer role duplication and width mismatch risks; devices now route explicit copy roles and rendering always follows physical paper width.
-6. Production deployment exposed a MySQL 5.7 trigger privilege restriction; migration compatibility was changed to nullable legacy roles plus a generated unique key, requiring no elevated database privilege.
-7. Final production QA confirmed the live pages, interactions, health checks, schema, logs, and browser console.
+- Product list, product editor, media library, image selector and product statistics were exercised in the production browser.
+- Product statistics returned paid-order gross metrics and displayed the documented `PAID_ORDER_GROSS_BEFORE_REFUNDS` scope.
+- Dialogs expose named controls, keyboard-close behavior and visible focus/selection states.
+- Production browser console contained no errors or warnings during the checked flows.
+- API readiness, merchant site and platform site returned healthy responses after deployment.
+- Frontend tests/build/typecheck, Go tests, lint, formatting and OpenAPI structural validation passed.
 
 final result: passed
