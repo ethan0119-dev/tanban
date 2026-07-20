@@ -2,7 +2,18 @@ export type DecorationStatus = 'DRAFT' | 'PUBLISHED';
 
 export type HomeModuleType = 'HERO_BANNER' | 'STORE_HEADER' | 'ANNOUNCEMENT' | 'QUICK_ACTIONS' | 'IMAGE' | 'HOTSPOT_IMAGE' | 'TEXT' | 'SPACER';
 
-export type DecorationActionType = 'NONE' | 'OPEN_MENU' | 'OPEN_ORDERS' | 'OPEN_PROFILE' | 'CALL_PHONE';
+export type DecorationActionType =
+  | 'NONE'
+  | 'OPEN_MENU'
+  | 'OPEN_DINE_IN'
+  | 'OPEN_TAKEOUT'
+  | 'OPEN_DELIVERY'
+  | 'OPEN_ORDERS'
+  | 'OPEN_PROFILE'
+  | 'OPEN_RECHARGE'
+  | 'OPEN_MY_COUPONS'
+  | 'OPEN_COUPON_CENTER'
+  | 'CALL_PHONE';
 
 export interface DecorationAction {
   type: DecorationActionType;

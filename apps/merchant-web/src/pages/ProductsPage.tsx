@@ -58,6 +58,8 @@ interface ProductFormValues {
   description?: string;
   enabled: boolean;
   recommended: boolean;
+  inStoreEnabled: boolean;
+  deliveryEnabled: boolean;
   autoRestock: boolean;
   dailyStock?: number;
   skus: Sku[];
@@ -118,6 +120,8 @@ function normalizeCategory(value: Category): Category {
     ...value,
     sort: Number(value.sort ?? raw.sort_order ?? 0),
     enabled: value.enabled ?? String(raw.status ?? 'ACTIVE') === 'ACTIVE',
+    inStoreEnabled: value.inStoreEnabled ?? Boolean(raw.in_store_enabled ?? true),
+    deliveryEnabled: value.deliveryEnabled ?? Boolean(raw.delivery_enabled ?? false),
   };
 }
 
@@ -151,6 +155,8 @@ export function normalizeProduct(value: Product): Product {
     description: value.description ?? String(raw.description ?? ''),
     enabled: value.enabled ?? String(raw.status ?? 'ACTIVE') === 'ACTIVE',
     recommended: Boolean(value.recommended ?? raw.recommended),
+    inStoreEnabled: value.inStoreEnabled ?? Boolean(raw.in_store_enabled ?? true),
+    deliveryEnabled: value.deliveryEnabled ?? Boolean(raw.delivery_enabled ?? false),
     salesCount: Number(value.salesCount ?? raw.sales_count ?? 0),
     // The database shape is retained for forward compatibility, but no daily
     // idempotent refill job exists yet. Never present a stored flag as active.
@@ -176,6 +182,8 @@ export function productPayload(values: ProductFormValues | Product, enabled = va
     image_url: images[0]?.url ?? values.image ?? '',
     images,
     recommended: Boolean(values.recommended),
+    in_store_enabled: values.inStoreEnabled !== false,
+    delivery_enabled: Boolean(values.deliveryEnabled),
     sort_order: 0,
     status: enabled ? 'ACTIVE' : 'DISABLED',
     skus: values.skus.map((sku) => ({
@@ -206,6 +214,7 @@ export function ProductsPage() {
   const [configurationReady, setConfigurationReady] = useState(true);
   const [configurationLoadError, setConfigurationLoadError] = useState('');
   const [categoryModal, setCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<Array<string | number>>([]);
   const [actionLoading, setActionLoading] = useState<string>('');
@@ -218,7 +227,7 @@ export function ProductsPage() {
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupOption[]>([]);
   const [catalogResources, setCatalogResources] = useState<CatalogResourceOption[]>([]);
   const [form] = Form.useForm<ProductFormValues>();
-  const [categoryForm] = Form.useForm<{ name: string; sort?: number }>();
+  const [categoryForm] = Form.useForm<{ name: string; sort?: number; inStoreEnabled: boolean; deliveryEnabled: boolean }>();
   const [messageApi, contextHolder] = message.useMessage();
   const configurationRequest = useRef(0);
   const saveRequest = useRef(0);
@@ -268,6 +277,8 @@ export function ProductsPage() {
       description: product.description,
       enabled: product.enabled,
       recommended: product.recommended ?? false,
+      inStoreEnabled: product.inStoreEnabled !== false,
+      deliveryEnabled: Boolean(product.deliveryEnabled),
       autoRestock: product.autoRestock ?? false,
       dailyStock: product.dailyStock,
       skus: product.skus?.length ? product.skus : [{ name: '默认规格', price: product.price, stock: product.stock }],
@@ -277,6 +288,8 @@ export function ProductsPage() {
     } : {
       enabled: true,
       recommended: false,
+      inStoreEnabled: true,
+      deliveryEnabled: false,
       autoRestock: false,
       images: [],
       skus: [{ name: '默认规格', price: 0, stock: 0 }],
@@ -484,17 +497,64 @@ export function ProductsPage() {
     const values = await categoryForm.validateFields();
     setSaving(true);
     try {
-      const saved = normalizeCategory(await api.post<Category>('/merchant/categories', { name: values.name, sort_order: values.sort ?? 0, status: 'ACTIVE' }));
-      setCategories((items) => [...items, saved]);
+      const payload = { name: values.name, sort_order: values.sort ?? 0, status: editingCategory?.enabled === false ? 'DISABLED' : 'ACTIVE', in_store_enabled: values.inStoreEnabled !== false, delivery_enabled: false };
+      const saved = normalizeCategory(editingCategory
+        ? await api.put<Category>(`/merchant/categories/${editingCategory.id}`, payload)
+        : await api.post<Category>('/merchant/categories', payload));
+      setCategories((items) => editingCategory ? items.map((item) => item.id === editingCategory.id ? saved : item) : [...items, saved]);
       categoryForm.resetFields();
       setCategoryModal(false);
-      messageApi.success('分类已创建');
+      setEditingCategory(null);
+      messageApi.success(editingCategory ? '分类已更新' : '分类已创建');
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
       setSaving(false);
     }
   };
+
+  const openCategory = (category?: Category) => {
+    setEditingCategory(category ?? null);
+    categoryForm.setFieldsValue({
+      name: category?.name ?? '',
+      sort: category?.sort ?? categories.length + 1,
+      inStoreEnabled: category?.inStoreEnabled !== false,
+      deliveryEnabled: false,
+    });
+    setCategoryModal(true);
+  };
+
+  const toggleCategoryInStore = async (category: Category, enabled: boolean) => {
+    try {
+      const saved = normalizeCategory(await api.put<Category>(`/merchant/categories/${category.id}`, {
+        name: category.name,
+        sort_order: category.sort ?? 0,
+        status: category.enabled === false ? 'DISABLED' : 'ACTIVE',
+        in_store_enabled: enabled,
+        delivery_enabled: false,
+      }));
+      setCategories((items) => items.map((item) => item.id === category.id ? saved : item));
+      messageApi.success(enabled ? '分类已在店内显示' : '分类已从店内隐藏');
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    }
+  };
+
+  const toggleProductInStore = async (product: Product, enabled: boolean) => {
+    setActionLoading(`${product.id}:CHANNEL`);
+    try {
+      const saved = normalizeProduct(await api.put<Product>(`/merchant/products/${product.id}`, productPayload({ ...product, inStoreEnabled: enabled, deliveryEnabled: false })));
+      setProducts((items) => items.map((item) => item.id === product.id ? saved : item));
+      messageApi.success(enabled ? '商品已在店内销售' : '商品已从店内隐藏');
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+      await load();
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const deliveryUnavailable = () => messageApi.info('外卖暂未开放，当前版本仅支持堂食和门店自取');
 
   return (
     <div className="page-shell">
@@ -510,7 +570,7 @@ export function ProductsPage() {
             bordered={false}
             className="content-card category-card"
             title="商品分类"
-            extra={<Tooltip title="新增分类"><Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setCategoryModal(true)} /></Tooltip>}
+            extra={<Tooltip title="新增分类"><Button type="text" size="small" icon={<PlusOutlined />} onClick={() => openCategory()} /></Tooltip>}
           >
             <List
               dataSource={[{ id: 'ALL', name: '全部商品', productCount: products.length }, ...categories]}
@@ -518,7 +578,11 @@ export function ProductsPage() {
                 <List.Item
                   className={`category-item ${categoryId === String(category.id) ? 'active' : ''}`}
                   onClick={() => setCategoryId(String(category.id))}
-                  extra={<span>{category.productCount ?? products.filter((product) => String(product.categoryId) === String(category.id)).length}</span>}
+                  extra={String(category.id) === 'ALL' ? <span>{category.productCount}</span> : <Space size={4} onClick={(event) => event.stopPropagation()}>
+                    <Tooltip title="店内显示"><Switch size="small" checked={category.inStoreEnabled !== false} onChange={(checked) => void toggleCategoryInStore(category as Category, checked)} /></Tooltip>
+                    <Tooltip title="外卖暂未开放"><Switch size="small" checked={false} onChange={(checked) => checked && deliveryUnavailable()} /></Tooltip>
+                    <Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑分类" onClick={() => openCategory(category as Category)} />
+                  </Space>}
                 >
                   <Space><AppstoreAddOutlined /><span>{category.name}</span></Space>
                 </List.Item>
@@ -558,7 +622,7 @@ export function ProductsPage() {
               loading={loading}
               dataSource={visibleProducts}
               pagination={{ pageSize: 12, showTotal: (total) => `共 ${total} 个` }}
-              scroll={{ x: 1220 }}
+              scroll={{ x: 1370 }}
               locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有商品，先创建一个吧" /> }}
               columns={[
                 {
@@ -581,6 +645,13 @@ export function ProductsPage() {
                   render: (value: number) => <Space><strong className={value <= 5 ? 'stock-low' : ''}>{value}</strong>{value <= 0 ? <Tag color="error">售罄</Tag> : null}</Space>,
                 },
                 { title: '在售', dataIndex: 'enabled', width: 90, render: (value: boolean, product) => <Switch loading={actionLoading === `${product.id}:${value ? 'DEACTIVATE' : 'ACTIVATE'}`} checked={value} onChange={(checked) => void toggleProduct(product, checked)} /> },
+                {
+                  title: '销售渠道', key: 'channels', width: 170,
+                  render: (_, product) => <Space direction="vertical" size={3}>
+                    <Space size={6}><Typography.Text type="secondary">店内</Typography.Text><Switch size="small" loading={actionLoading === `${product.id}:CHANNEL`} checked={product.inStoreEnabled !== false} onChange={(checked) => void toggleProductInStore(product, checked)} /></Space>
+                    <Space size={6}><Typography.Text type="secondary">外卖</Typography.Text><Switch size="small" checked={false} onChange={(checked) => checked && deliveryUnavailable()} /></Space>
+                  </Space>,
+                },
                 {
                   title: '操作', key: 'action', width: 340, fixed: 'right',
                   render: (_, product) => (
@@ -663,6 +734,11 @@ export function ProductsPage() {
               </Form.Item>
             </Col>
           </Row>
+          <Divider orientation="left">销售渠道</Divider>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item label="店内" name="inStoreEnabled" valuePropName="checked" extra="同时用于堂食与门店自取"><Switch checkedChildren="显示" unCheckedChildren="隐藏" /></Form.Item></Col>
+            <Col span={12}><Form.Item label="外卖（暂未开放）" name="deliveryEnabled" valuePropName="checked" extra="外卖订单与配送能力接入后开放"><Switch checked={false} onChange={(checked) => { if (checked) deliveryUnavailable(); form.setFieldValue('deliveryEnabled', false); }} /></Form.Item></Col>
+          </Row>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.autoRestock !== current.autoRestock}>
             {({ getFieldValue }) => getFieldValue('autoRestock') ? <Form.Item label="每日初始库存" name="dailyStock" rules={[{ required: true, message: '请输入每日库存' }]}><InputNumber min={0} precision={0} addonAfter="份" style={{ width: 220 }} /></Form.Item> : null}
           </Form.Item>
@@ -724,10 +800,14 @@ export function ProductsPage() {
         </Form>
       </Drawer>
 
-      <Modal title="新增商品分类" open={categoryModal} onCancel={() => setCategoryModal(false)} onOk={() => void saveCategory()} confirmLoading={saving} okText="创建分类">
-        <Form form={categoryForm} layout="vertical" initialValues={{ sort: categories.length + 1 }}>
+      <Modal title={editingCategory ? '编辑商品分类' : '新增商品分类'} open={categoryModal} onCancel={() => { setCategoryModal(false); setEditingCategory(null); }} onOk={() => void saveCategory()} confirmLoading={saving} okText={editingCategory ? '保存分类' : '创建分类'}>
+        <Form form={categoryForm} layout="vertical" initialValues={{ sort: categories.length + 1, inStoreEnabled: true, deliveryEnabled: false }}>
           <Form.Item label="分类名称" name="name" rules={[{ required: true, message: '请输入分类名称' }]}><Input placeholder="例如：咖啡、气泡水" /></Form.Item>
           <Form.Item label="排序" name="sort"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item label="店内" name="inStoreEnabled" valuePropName="checked"><Switch checkedChildren="显示" unCheckedChildren="隐藏" /></Form.Item></Col>
+            <Col span={12}><Form.Item label="外卖（暂未开放）" name="deliveryEnabled" valuePropName="checked"><Switch checked={false} onChange={(checked) => { if (checked) deliveryUnavailable(); categoryForm.setFieldValue('deliveryEnabled', false); }} /></Form.Item></Col>
+          </Row>
         </Form>
       </Modal>
 

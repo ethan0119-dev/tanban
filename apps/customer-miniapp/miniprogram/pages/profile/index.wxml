@@ -1,2 +1,24 @@
-<view class="page"><view class="profile-head"><view class="avatar">客</view><view><text class="name">微信顾客</text><text class="muted">欢迎使用摊伴点单</text></view></view><view class="asset-grid"><view bindtap="goCoupons"><text class="asset-title">领券</text><text>优惠券中心</text></view><view bindtap="goLottery"><text class="asset-title">抽奖</text><text>门店活动</text></view></view><view class="card menu"><view bindtap="goOrders"><text>我的订单</text><text>›</text></view><view bindtap="goCoupons"><text>优惠券</text><text>›</text></view><view bindtap="goLottery"><text>抽奖活动</text><text>›</text></view><view bindtap="contact"><text>联系商家</text><text>›</text></view><view><text>隐私与协议</text><text>›</text></view></view><view class="version">摊伴 TANBAN {{version}}</view></view>
+<view class="page profile-page">
+  <view class="profile-hero">
+    <view class="welcome"><view><text>欢迎回来</text><text class="name">微信顾客</text></view><image src="/assets/icons/profile.png" mode="aspectFit" /></view>
+    <view class="asset-summary">
+      <view bindtap="goRecharge"><text>0.00</text><text>余额</text></view>
+      <view data-feature="积分" bindtap="unavailable"><text>0</text><text>积分</text></view>
+      <view bindtap="goCoupons"><text>{{couponCount}}</text><text>优惠券</text></view>
+    </view>
+    <view class="member-card" data-feature="会员卡" bindtap="unavailable"><view><text>普通会员</text><text>会员成长体系即将开放</text></view><view><text>领取会员卡</text><text>会员权益 ›</text></view></view>
+  </view>
+  <view class="service-card">
+    <view class="service-item" bindtap="goOrders"><image src="/assets/icons/file-text.png" mode="aspectFit" /><text>我的订单</text></view>
+    <view class="service-item" bindtap="goRecharge"><image src="/assets/icons/wallet.png" mode="aspectFit" /><text>充值中心</text></view>
+    <view class="service-item" bindtap="goCouponCenter"><image src="/assets/icons/tag.png" mode="aspectFit" /><text>领券中心</text></view>
+    <view class="service-item" bindtap="goCoupons"><image src="/assets/icons/gift.png" mode="aspectFit" /><text>我的优惠券</text></view>
+    <view class="service-item" bindtap="goLottery"><image src="/assets/icons/star.png" mode="aspectFit" /><text>门店活动</text></view>
+    <view class="service-item" data-feature="积分商城" bindtap="unavailable"><image src="/assets/icons/shopping.png" mode="aspectFit" /><text>积分商城</text></view>
+    <view class="service-item" data-feature="会员中心" bindtap="unavailable"><image src="/assets/icons/profile.png" mode="aspectFit" /><text>会员中心</text></view>
+    <view class="service-item" data-feature="门店服务" bindtap="unavailable"><image src="/assets/icons/shop.png" mode="aspectFit" /><text>门店服务</text></view>
+    <view class="service-item" bindtap="contact"><image src="/assets/icons/customer-service.png" mode="aspectFit" /><text>联系商家</text></view>
+  </view>
+  <view class="version">摊伴 TANBAN {{version}}</view>
+</view>
 <marketing-popup store-code="{{storeCode}}" placement-code="PROFILE_POPUP" channel-scope="{{channelScope}}" />

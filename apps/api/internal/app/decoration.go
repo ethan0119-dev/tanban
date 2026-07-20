@@ -563,7 +563,7 @@ func validateDecorationModule(module DecorationModule) error {
 }
 
 func validateDecorationAction(action DecorationAction) error {
-	if !oneOf(action.Type, "NONE", "OPEN_MENU", "OPEN_ORDERS", "OPEN_PROFILE", "CALL_PHONE") {
+	if !oneOf(action.Type, "NONE", "OPEN_MENU", "OPEN_DINE_IN", "OPEN_TAKEOUT", "OPEN_DELIVERY", "OPEN_ORDERS", "OPEN_PROFILE", "OPEN_RECHARGE", "OPEN_MY_COUPONS", "OPEN_COUPON_CENTER", "CALL_PHONE") {
 		return errors.New("unsupported action type")
 	}
 	if action.Type == "CALL_PHONE" {

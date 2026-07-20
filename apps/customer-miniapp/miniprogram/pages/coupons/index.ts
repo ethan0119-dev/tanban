@@ -3,6 +3,7 @@ import type { MarketingCoupon } from "../../types/domain";
 import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
+import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
 
 interface CouponView extends MarketingCoupon {
   amountText: string;
@@ -68,6 +69,7 @@ Page({
         header: { "Idempotency-Key": idempotencyKey("coupon") },
         data: { subject_key: customerGuestKey() },
       });
+      rememberClaimedCoupon(storeCode, coupon);
       wx.showModal({ title: "领取已记录", content: result.warning || "当前仅生成联调领取记录，暂不能抵扣真实订单。", showCancel: false });
       await this.loadCoupons();
     } catch (error) {

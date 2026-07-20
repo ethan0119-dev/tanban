@@ -1,4 +1,5 @@
 <view class="page menu-page {{menuLayoutClass}} {{store && store.businessStatus !== 'OPEN' ? 'store-closed' : ''}}" style="{{appearanceStyle}}" wx:if="{{!loading && !routeError}}">
+  <view class="order-mode-bar"><view class="{{orderMode === 'DINE_IN' ? 'active' : ''}}" data-mode="DINE_IN" bindtap="chooseMode">堂食</view><view class="{{orderMode === 'TAKEOUT' ? 'active' : ''}}" data-mode="TAKEOUT" bindtap="chooseMode">自取</view><view class="disabled" data-mode="DELIVERY" bindtap="chooseMode">外卖</view></view>
   <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间'}}</text></view><text wx:if="{{store.nextOpenAt}}">下次营业 {{store.nextOpenAt}}</text></view>
   <scroll-view class="categories" scroll-y="{{decoration.menu.categoryLayout === 'LEFT'}}" scroll-x="{{decoration.menu.categoryLayout === 'TOP'}}" enhanced>
     <view wx:if="{{decoration.menu.loadMode === 'ALL'}}" class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
@@ -8,8 +9,7 @@
     <view class="menu-title"><view><text>今晚菜单</text><text class="table-inline" wx:if="{{tableContext}}">堂食 · {{tableContext.tableName}}</text><text class="fast-food-inline" wx:elif="{{fastFoodContext}}">快餐 · {{fastFoodContext.plateName}}</text></view><text class="muted">现点现做</text></view>
     <view class="product-list">
       <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
-        <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
-        <view wx:else class="product-image placeholder">咖</view>
+        <image class="product-image {{!item.imageUrl ? 'fallback-image' : ''}}" src="{{item.imageUrl || '/assets/tanban-product-fallback.png'}}" mode="aspectFill" />
         <view class="product-main">
           <text class="product-name">{{item.name}}</text>
           <text class="product-desc" wx:if="{{decoration.menu.showDescription}}">{{item.description || '用心制作，口味可选'}}</text>
@@ -24,9 +24,12 @@
               </view>
             </view>
           </view>
+          <view class="product-purchase">
+            <text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text>
+            <view class="product-action" wx:if="{{!item.soldOut}}"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
+            <text wx:else class="sold-out">售罄</text>
+          </view>
         </view>
-        <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
-        <text wx:else class="sold-out">售罄</text>
       </view>
     </view>
   </scroll-view>

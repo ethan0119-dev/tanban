@@ -22,18 +22,20 @@ type skuDTO struct {
 }
 
 type productDTO struct {
-	ID          int64             `json:"id"`
-	StoreID     int64             `json:"store_id"`
-	CategoryID  int64             `json:"category_id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	ImageURL    string            `json:"image_url"`
-	Recommended bool              `json:"recommended"`
-	SalesCount  int               `json:"sales_count"`
-	Images      []productImageDTO `json:"images"`
-	SortOrder   int               `json:"sort_order"`
-	Status      string            `json:"status"`
-	SKUs        []skuDTO          `json:"skus"`
+	ID              int64             `json:"id"`
+	StoreID         int64             `json:"store_id"`
+	CategoryID      int64             `json:"category_id"`
+	Name            string            `json:"name"`
+	Description     string            `json:"description"`
+	ImageURL        string            `json:"image_url"`
+	Recommended     bool              `json:"recommended"`
+	InStoreEnabled  bool              `json:"in_store_enabled"`
+	DeliveryEnabled bool              `json:"delivery_enabled"`
+	SalesCount      int               `json:"sales_count"`
+	Images          []productImageDTO `json:"images"`
+	SortOrder       int               `json:"sort_order"`
+	Status          string            `json:"status"`
+	SKUs            []skuDTO          `json:"skus"`
 }
 
 type productImageDTO struct {
@@ -65,16 +67,33 @@ type skuInput struct {
 }
 
 type productInput struct {
-	StoreID     int64               `json:"store_id"`
-	CategoryID  int64               `json:"category_id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	ImageURL    string              `json:"image_url"`
-	Recommended *bool               `json:"recommended"`
-	Images      []productImageInput `json:"images"`
-	SortOrder   int                 `json:"sort_order"`
-	Status      string              `json:"status"`
-	SKUs        []skuInput          `json:"skus"`
+	StoreID         int64               `json:"store_id"`
+	CategoryID      int64               `json:"category_id"`
+	Name            string              `json:"name"`
+	Description     string              `json:"description"`
+	ImageURL        string              `json:"image_url"`
+	Recommended     *bool               `json:"recommended"`
+	InStoreEnabled  *bool               `json:"in_store_enabled"`
+	DeliveryEnabled *bool               `json:"delivery_enabled"`
+	Images          []productImageInput `json:"images"`
+	SortOrder       int                 `json:"sort_order"`
+	Status          string              `json:"status"`
+	SKUs            []skuInput          `json:"skus"`
+}
+
+func catalogChannelFlags(inStore, delivery *bool, currentInStore, currentDelivery bool) (bool, bool, error) {
+	resolvedInStore := currentInStore
+	if inStore != nil {
+		resolvedInStore = *inStore
+	}
+	resolvedDelivery := currentDelivery
+	if delivery != nil {
+		resolvedDelivery = *delivery
+	}
+	if resolvedDelivery {
+		return false, false, errors.New("delivery catalog is reserved but not available in this release")
+	}
+	return resolvedInStore, resolvedDelivery, nil
 }
 
 func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +169,12 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	if input.Recommended != nil {
 		recommended = *input.Recommended
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO products(tenant_id,store_id,category_id,name,description,image_url,recommended,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, input.SortOrder, strings.ToUpper(input.Status))
+	inStoreEnabled, deliveryEnabled, channelErr := catalogChannelFlags(input.InStoreEnabled, input.DeliveryEnabled, true, false)
+	if channelErr != nil {
+		writeError(w, http.StatusConflict, "DELIVERY_NOT_AVAILABLE", channelErr.Error())
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO products(tenant_id,store_id,category_id,name,description,image_url,recommended,in_store_enabled,delivery_enabled,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, inStoreEnabled, deliveryEnabled, input.SortOrder, strings.ToUpper(input.Status))
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -242,8 +266,8 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var storeID int64
-	var currentRecommended bool
-	if err = tx.QueryRowContext(r.Context(), "SELECT store_id,recommended FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&storeID, &currentRecommended); err != nil {
+	var currentRecommended, currentInStore, currentDelivery bool
+	if err = tx.QueryRowContext(r.Context(), "SELECT store_id,recommended,in_store_enabled,delivery_enabled FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&storeID, &currentRecommended, &currentInStore, &currentDelivery); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -263,6 +287,11 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	recommended := currentRecommended
 	if input.Recommended != nil {
 		recommended = *input.Recommended
+	}
+	inStoreEnabled, deliveryEnabled, channelErr := catalogChannelFlags(input.InStoreEnabled, input.DeliveryEnabled, currentInStore, currentDelivery)
+	if channelErr != nil {
+		writeError(w, http.StatusConflict, "DELIVERY_NOT_AVAILABLE", channelErr.Error())
+		return
 	}
 	mainImageURL := input.ImageURL
 	var resolvedImages []resolvedProductImage
@@ -293,7 +322,7 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,recommended=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
+	result, err := tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,recommended=?,in_store_enabled=?,delivery_enabled=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, inStoreEnabled, deliveryEnabled, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -501,7 +530,7 @@ func updateInventoryOptimistic(ctx context.Context, tx *sql.Tx, tenantID, skuID 
 }
 
 func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publicOnly bool, productID int64) ([]productDTO, error) {
-	query := `SELECT id,store_id,category_id,name,description,image_url,recommended,sort_order,status FROM products WHERE tenant_id=? AND deleted_at IS NULL`
+	query := `SELECT id,store_id,category_id,name,description,image_url,recommended,in_store_enabled,delivery_enabled,sort_order,status FROM products WHERE tenant_id=? AND deleted_at IS NULL`
 	args := []any{tenantID}
 	if storeID > 0 {
 		query += " AND store_id=?"
@@ -512,7 +541,7 @@ func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publ
 		args = append(args, productID)
 	}
 	if publicOnly {
-		query += " AND status='ACTIVE' AND EXISTS(SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.tenant_id=products.tenant_id AND c.store_id=products.store_id AND c.status='ACTIVE' AND c.deleted_at IS NULL)"
+		query += " AND status='ACTIVE' AND in_store_enabled=1 AND EXISTS(SELECT 1 FROM categories c WHERE c.id=products.category_id AND c.tenant_id=products.tenant_id AND c.store_id=products.store_id AND c.status='ACTIVE' AND c.in_store_enabled=1 AND c.deleted_at IS NULL)"
 	}
 	query += " ORDER BY sort_order,id"
 	rows, err := s.DB.QueryContext(ctx, query, args...)
@@ -523,7 +552,7 @@ func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publ
 	items := []productDTO{}
 	for rows.Next() {
 		var item productDTO
-		if err := rows.Scan(&item.ID, &item.StoreID, &item.CategoryID, &item.Name, &item.Description, &item.ImageURL, &item.Recommended, &item.SortOrder, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.StoreID, &item.CategoryID, &item.Name, &item.Description, &item.ImageURL, &item.Recommended, &item.InStoreEnabled, &item.DeliveryEnabled, &item.SortOrder, &item.Status); err != nil {
 			return nil, err
 		}
 		item.Images, err = s.loadProductImages(ctx, tenantID, item.StoreID, item.ID, item.ImageURL)

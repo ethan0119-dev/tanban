@@ -1,0 +1,18 @@
+<view class="page coupon-wallet-page">
+  <view class="wallet-hero"><text>我的优惠券</text><text>已领取的门店优惠都在这里</text></view>
+  <view class="coupon-tabs">
+    <view class="{{activeTab === 'USABLE' ? 'active' : ''}}" data-tab="USABLE" bindtap="chooseTab">可使用</view>
+    <view class="{{activeTab === 'USED' ? 'active' : ''}}" data-tab="USED" bindtap="chooseTab">已使用</view>
+    <view class="{{activeTab === 'EXPIRED' ? 'active' : ''}}" data-tab="EXPIRED" bindtap="chooseTab">已过期</view>
+  </view>
+  <view class="wallet-notice">当前券包为开发期联调记录；完成微信顾客登录与订单计价闭环后，才会成为可抵扣的正式优惠资产。</view>
+  <view class="coupon-list" wx:if="{{activeTab === 'USABLE' && coupons.length}}">
+    <view class="coupon-card" wx:for="{{coupons}}" wx:key="id">
+      <view class="coupon-value"><view><text>¥</text><text>{{item.amountText}}</text></view><text>{{item.thresholdText}}</text></view>
+      <view class="coupon-content"><text class="coupon-name">{{item.name}}</text><text>{{item.description || '门店点单优惠'}}</text><text>领取于 {{item.claimedDate}} · 联调券</text></view>
+      <button data-id="{{item.id}}" bindtap="goMenu">去使用</button>
+    </view>
+  </view>
+  <view class="empty" wx:elif="{{activeTab !== 'USABLE'}}"><text>这里暂时没有优惠券</text></view>
+  <view class="empty" wx:else><text>还没有领取优惠券</text><button class="primary" bindtap="goCouponCenter">去领券中心</button></view>
+</view>

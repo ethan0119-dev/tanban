@@ -6,8 +6,14 @@ import { MediaLibraryModal } from '../media/MediaLibraryModal';
 
 const ACTION_OPTIONS: Array<{ value: DecorationActionType; label: string }> = [
   { value: 'NONE', label: '无动作' },
-  { value: 'OPEN_MENU', label: '打开点单' },
+  { value: 'OPEN_DINE_IN', label: '堂食点餐（需扫描桌码）' },
+  { value: 'OPEN_TAKEOUT', label: '门店自取' },
+  { value: 'OPEN_DELIVERY', label: '外卖（暂未开放）' },
+  { value: 'OPEN_MENU', label: '打开点单（自动识别场景）' },
   { value: 'OPEN_ORDERS', label: '打开订单' },
+  { value: 'OPEN_RECHARGE', label: '储值中心' },
+  { value: 'OPEN_MY_COUPONS', label: '我的优惠券' },
+  { value: 'OPEN_COUPON_CENTER', label: '领券中心' },
   { value: 'OPEN_PROFILE', label: '打开我的' },
   { value: 'CALL_PHONE', label: '拨打电话' },
 ];
@@ -125,7 +131,7 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
         width: round(drawing.width),
         height: round(drawing.height),
         label: `热区 ${hotspots.length + 1}`,
-        action: { type: 'OPEN_MENU' },
+        action: { type: 'OPEN_TAKEOUT' },
       };
       onChange({ hotspots: [...hotspots, next] });
       setSelectedId(next.id);

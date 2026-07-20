@@ -90,7 +90,7 @@ function booleanValue(fallback: boolean, ...values: unknown[]): boolean {
 function actionView(payload: unknown): ImageHotspot['action'] {
   const value = record(payload);
   const rawType = stringValue(value.type).toUpperCase();
-  const type = ['NONE', 'OPEN_MENU', 'OPEN_ORDERS', 'OPEN_PROFILE', 'CALL_PHONE'].includes(rawType)
+  const type = ['NONE', 'OPEN_MENU', 'OPEN_DINE_IN', 'OPEN_TAKEOUT', 'OPEN_DELIVERY', 'OPEN_ORDERS', 'OPEN_PROFILE', 'OPEN_RECHARGE', 'OPEN_MY_COUPONS', 'OPEN_COUPON_CENTER', 'CALL_PHONE'].includes(rawType)
     ? rawType as ImageHotspot['action']['type']
     : 'NONE';
   return type === 'CALL_PHONE' ? { type, phone: stringValue(value.phone).slice(0, 20) } : { type };

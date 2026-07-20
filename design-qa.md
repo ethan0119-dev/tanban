@@ -41,3 +41,46 @@
 - Frontend tests/build/typecheck, Go tests, lint, formatting and OpenAPI structural validation passed.
 
 final result: passed
+
+---
+
+# Tanban mini-program ordering experience visual QA
+
+- QA date: 2026-07-20
+- Simulator: WeChat Developer Tools, iPhone viewport
+- Store: `manong-coffee`
+
+## Reference inputs
+
+- Order center: `/Users/lxy/Downloads/5093.JPG`
+- Profile center: `/Users/lxy/Downloads/IMG_1696.PNG`
+- Benchmark menu: `/Users/lxy/Downloads/IMG_1698.PNG`
+- Prior Tanban menu defect: `/Users/lxy/Downloads/IMG_1699.PNG`
+
+## Evidence
+
+- `artifacts/miniapp-menu-qa.png`
+- `artifacts/miniapp-orders-qa.png`
+- `artifacts/miniapp-profile-qa.png`
+- `artifacts/miniapp-recharge-qa.png`
+- `artifacts/miniapp-menu-comparison.png`
+- `artifacts/miniapp-orders-comparison.png`
+- `artifacts/miniapp-profile-comparison.png`
+
+## Comparison result
+
+- The menu keeps category names and product names horizontal; product controls no longer squeeze the name column or span the entire row.
+- Dine-in, pickup and the disabled delivery entry are visible above the catalog, with clear scan-table and unavailable-delivery behavior.
+- The order center follows the benchmark hierarchy with current/history primary tabs and scene-level secondary tabs.
+- The profile follows the benchmark balance, points, coupons, membership card and 3x3 service-grid hierarchy using converted Ant Design icon assets that render in the mini-program runtime.
+- Recharge and coupon-wallet routes are present. Recharge remains fail-closed until customer identity, payment, ledger and refund reconciliation are connected.
+- The simulator reported no mini-program runtime exceptions across menu, order, profile and recharge routes.
+
+## Functional checks
+
+- Mini-program TypeScript typecheck passed.
+- Mini-program production build passed and included the new pages and PNG assets.
+- Merchant production build passed with category and product channel switches.
+- Go API tests passed with the catalog-channel migration and public stored-value read endpoint.
+
+final result: passed

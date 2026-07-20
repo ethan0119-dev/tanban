@@ -169,6 +169,8 @@ export interface Category {
   sort?: number;
   productCount?: number;
   enabled?: boolean;
+  inStoreEnabled?: boolean;
+  deliveryEnabled?: boolean;
 }
 
 export interface Sku {
@@ -194,6 +196,8 @@ export interface Product {
   stock: number;
   enabled: boolean;
   recommended?: boolean;
+  inStoreEnabled?: boolean;
+  deliveryEnabled?: boolean;
   salesCount?: number;
   soldOut?: boolean;
   autoRestock?: boolean;

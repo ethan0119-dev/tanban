@@ -206,8 +206,8 @@ func copyProduct(ctx context.Context, tx *sql.Tx, tenantID, storeID, productID i
 	if len([]rune(copyName)) > 120 {
 		copyName = string([]rune(copyName)[:120])
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO products(tenant_id,store_id,category_id,product_type,unit_resource_id,name,description,image_url,sort_order,recommended,max_per_order,cashier_only,channels_json,sale_periods_json,print_label_resource_id,status)
-		SELECT tenant_id,store_id,category_id,product_type,unit_resource_id,?,description,image_url,sort_order+1,0,max_per_order,cashier_only,channels_json,sale_periods_json,print_label_resource_id,'DISABLED'
+	result, err := tx.ExecContext(ctx, `INSERT INTO products(tenant_id,store_id,category_id,product_type,unit_resource_id,name,description,image_url,sort_order,recommended,in_store_enabled,delivery_enabled,max_per_order,cashier_only,channels_json,sale_periods_json,print_label_resource_id,status)
+		SELECT tenant_id,store_id,category_id,product_type,unit_resource_id,?,description,image_url,sort_order+1,0,in_store_enabled,0,max_per_order,cashier_only,channels_json,sale_periods_json,print_label_resource_id,'DISABLED'
 		FROM products WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, copyName, productID, tenantID, storeID)
 	if err != nil {
 		return 0, err

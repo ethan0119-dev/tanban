@@ -7,6 +7,9 @@ import type {
   DecorationNavigationItem,
   Store,
 } from "../types/domain";
+import type { TanbanAppOption } from "../app";
+import { clearFastFoodContext } from "./fast-food-context";
+import { clearTableOrderingContext, tableContextForStore } from "./table-context";
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const MODULE_TYPES: DecorationModuleType[] = [
@@ -20,7 +23,7 @@ const MODULE_TYPES: DecorationModuleType[] = [
   "SPACER",
 ];
 const NAV_KEYS: DecorationNavigationItem["key"][] = ["home", "menu", "orders", "profile"];
-const ACTIONS: DecorationAction["type"][] = ["NONE", "OPEN_MENU", "OPEN_ORDERS", "OPEN_PROFILE", "CALL_PHONE"];
+const ACTIONS: DecorationAction["type"][] = ["NONE", "OPEN_MENU", "OPEN_DINE_IN", "OPEN_TAKEOUT", "OPEN_DELIVERY", "OPEN_ORDERS", "OPEN_PROFILE", "OPEN_RECHARGE", "OPEN_MY_COUPONS", "OPEN_COUPON_CENTER", "CALL_PHONE"];
 
 function color(value: unknown, fallback: string): string {
   return typeof value === "string" && COLOR.test(value) ? value : fallback;
@@ -318,6 +321,28 @@ export function rememberSplash(storeCode: string, version: number, now = Date.no
 
 export function runDecorationAction(action: DecorationAction): void {
   switch (action.type) {
+    case "OPEN_DINE_IN": {
+      const app = getApp<TanbanAppOption>();
+      if (tableContextForStore(app.globalData.storeCode)) {
+        wx.switchTab({ url: "/pages/menu/index" });
+      } else {
+        wx.showModal({ title: "请先扫描桌码", content: "堂食订单需要绑定当前桌台，请扫描桌面上的点餐二维码后继续。", showCancel: false });
+      }
+      break;
+    }
+    case "OPEN_TAKEOUT": {
+      const app = getApp<TanbanAppOption>();
+      clearTableOrderingContext();
+      clearFastFoodContext();
+      app.globalData.tableContext = null;
+      app.globalData.fastFoodContext = null;
+      app.globalData.routeError = "";
+      wx.switchTab({ url: "/pages/menu/index" });
+      break;
+    }
+    case "OPEN_DELIVERY":
+      wx.showModal({ title: "外卖暂未开放", content: "当前版本支持堂食和门店自取，外卖配送将在后续版本开放。", showCancel: false });
+      break;
     case "OPEN_MENU":
       wx.switchTab({ url: "/pages/menu/index" });
       break;
@@ -326,6 +351,15 @@ export function runDecorationAction(action: DecorationAction): void {
       break;
     case "OPEN_PROFILE":
       wx.switchTab({ url: "/pages/profile/index" });
+      break;
+    case "OPEN_RECHARGE":
+      wx.navigateTo({ url: "/pages/recharge/index" });
+      break;
+    case "OPEN_MY_COUPONS":
+      wx.navigateTo({ url: "/pages/my-coupons/index" });
+      break;
+    case "OPEN_COUPON_CENTER":
+      wx.navigateTo({ url: "/pages/coupons/index" });
       break;
     case "CALL_PHONE":
       if (action.phone) wx.makePhoneCall({ phoneNumber: action.phone });

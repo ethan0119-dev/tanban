@@ -393,18 +393,22 @@ func (s *Server) updateMerchantSettings(w http.ResponseWriter, r *http.Request) 
 }
 
 type categoryDTO struct {
-	ID        int64  `json:"id"`
-	StoreID   int64  `json:"store_id"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
-	Status    string `json:"status"`
+	ID              int64  `json:"id"`
+	StoreID         int64  `json:"store_id"`
+	Name            string `json:"name"`
+	SortOrder       int    `json:"sort_order"`
+	InStoreEnabled  bool   `json:"in_store_enabled"`
+	DeliveryEnabled bool   `json:"delivery_enabled"`
+	Status          string `json:"status"`
 }
 
 type categoryInput struct {
-	StoreID   int64  `json:"store_id"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
-	Status    string `json:"status"`
+	StoreID         int64  `json:"store_id"`
+	Name            string `json:"name"`
+	SortOrder       int    `json:"sort_order"`
+	InStoreEnabled  *bool  `json:"in_store_enabled"`
+	DeliveryEnabled *bool  `json:"delivery_enabled"`
+	Status          string `json:"status"`
 }
 
 func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
@@ -414,7 +418,7 @@ func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), "SELECT id,store_id,name,sort_order,status FROM categories WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY sort_order,id", identity.TenantID, storeID)
+	rows, err := s.DB.QueryContext(r.Context(), "SELECT id,store_id,name,sort_order,in_store_enabled,delivery_enabled,status FROM categories WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY sort_order,id", identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -423,7 +427,7 @@ func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
 	items := []categoryDTO{}
 	for rows.Next() {
 		var item categoryDTO
-		if err := rows.Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.InStoreEnabled, &item.DeliveryEnabled, &item.Status); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -454,12 +458,17 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "" {
 		input.Status = "ACTIVE"
 	}
+	inStoreEnabled, deliveryEnabled, channelErr := catalogChannelFlags(input.InStoreEnabled, input.DeliveryEnabled, true, false)
+	if channelErr != nil {
+		writeError(w, http.StatusConflict, "DELIVERY_NOT_AVAILABLE", channelErr.Error())
+		return
+	}
 	input.Status = strings.ToUpper(input.Status)
 	if !validStatus(input.Status, "ACTIVE", "DISABLED") {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE or DISABLED")
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), "INSERT INTO categories(tenant_id,store_id,name,sort_order,status) SELECT ?,id,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL", identity.TenantID, input.Name, input.SortOrder, strings.ToUpper(input.Status), storeID, identity.TenantID)
+	result, err := s.DB.ExecContext(r.Context(), "INSERT INTO categories(tenant_id,store_id,name,sort_order,in_store_enabled,delivery_enabled,status) SELECT ?,id,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL", identity.TenantID, input.Name, input.SortOrder, inStoreEnabled, deliveryEnabled, strings.ToUpper(input.Status), storeID, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -478,7 +487,7 @@ func (s *Server) getCategory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getCategoryByID(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
 	var item categoryDTO
-	err := s.DB.QueryRowContext(r.Context(), "SELECT id,store_id,name,sort_order,status FROM categories WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, tenantID).Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.Status)
+	err := s.DB.QueryRowContext(r.Context(), "SELECT id,store_id,name,sort_order,in_store_enabled,delivery_enabled,status FROM categories WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, tenantID).Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.InStoreEnabled, &item.DeliveryEnabled, &item.Status)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -499,7 +508,17 @@ func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
 		input.Status = "ACTIVE"
 	}
 	identity := currentIdentity(r.Context())
-	result, err := s.DB.ExecContext(r.Context(), "UPDATE categories SET name=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL", input.Name, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
+	var currentInStore, currentDelivery bool
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT in_store_enabled,delivery_enabled FROM categories WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID).Scan(&currentInStore, &currentDelivery); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	inStoreEnabled, deliveryEnabled, channelErr := catalogChannelFlags(input.InStoreEnabled, input.DeliveryEnabled, currentInStore, currentDelivery)
+	if channelErr != nil {
+		writeError(w, http.StatusConflict, "DELIVERY_NOT_AVAILABLE", channelErr.Error())
+		return
+	}
+	result, err := s.DB.ExecContext(r.Context(), "UPDATE categories SET name=?,sort_order=?,in_store_enabled=?,delivery_enabled=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL", input.Name, input.SortOrder, inStoreEnabled, deliveryEnabled, strings.ToUpper(input.Status), id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

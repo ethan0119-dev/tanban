@@ -18,6 +18,7 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)
 	r.Get("/stores/{storeCode}", s.publicStore)
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
+	r.Get("/stores/{storeCode}/stored-value", s.publicStoredValue)
 	r.Post("/stores/{storeCode}/orders", s.publicCreateOrder)
 	r.Get("/orders/{orderNo}", s.publicGetOrder)
 	r.Post("/orders/{orderNo}/pay", s.publicPayOrder)
@@ -25,6 +26,70 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Post("/payments/{paymentID}/mock-confirm", s.publicMockConfirm)
 	r.Get("/customer/orders", s.publicCustomerOrders)
 	s.registerPublicMarketingRoutes(r)
+}
+
+func (s *Server) publicStoredValue(w http.ResponseWriter, r *http.Request) {
+	store, err := s.findPublicStore(r.Context(), chi.URLParam(r, "storeCode"))
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	settings := storedValueSettingsInput{
+		MinRechargeCents: 100,
+		MaxRechargeCents: 1000000,
+		MaxBalanceCents:  1000000,
+		DeductionOrder:   "BONUS_FIRST",
+		RefundPolicy:     "MANUAL_REVIEW",
+	}
+	err = s.DB.QueryRowContext(r.Context(), `SELECT enabled,min_recharge_cents,max_recharge_cents,max_balance_cents,deduction_order,refund_policy,agreement_url,show_in_miniapp FROM stored_value_settings WHERE tenant_id=?`, store.TenantID).
+		Scan(&settings.Enabled, &settings.MinRechargeCents, &settings.MaxRechargeCents, &settings.MaxBalanceCents, &settings.DeductionOrder, &settings.RefundPolicy, &settings.AgreementURL, &settings.ShowInMiniapp)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
+	available := settings.Enabled && settings.ShowInMiniapp
+	rules := []map[string]any{}
+	if available {
+		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%dT%H:%i:%sZ')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%dT%H:%i:%sZ')) FROM stored_value_rules WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) ORDER BY recharge_cents,id`, store.TenantID)
+		if queryErr != nil {
+			handleSQLError(w, queryErr)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, recharge, gift, growth int64
+			var limit int
+			var name string
+			var starts, ends sql.NullString
+			if scanErr := rows.Scan(&id, &name, &recharge, &gift, &growth, &limit, &starts, &ends); scanErr != nil {
+				handleSQLError(w, scanErr)
+				return
+			}
+			item := map[string]any{"id": id, "name": name, "rechargeCents": recharge, "giftCents": gift, "giftGrowth": growth, "perCustomerLimit": limit}
+			if starts.Valid {
+				item["startsAt"] = starts.String
+			}
+			if ends.Valid {
+				item["endsAt"] = ends.String
+			}
+			rules = append(rules, item)
+		}
+	}
+	message := "储值支付暂未开放"
+	if available {
+		message = "请选择储值金额"
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"available": available,
+		"message":   message,
+		"settings": map[string]any{
+			"minRechargeCents": settings.MinRechargeCents,
+			"maxRechargeCents": settings.MaxRechargeCents,
+			"maxBalanceCents":  settings.MaxBalanceCents,
+			"agreementUrl":     settings.AgreementURL,
+		},
+		"rules": rules,
+	})
 }
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +112,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), "SELECT id,store_id,name,sort_order,status FROM categories WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND deleted_at IS NULL ORDER BY sort_order,id", store.TenantID, store.ID)
+	rows, err := s.DB.QueryContext(r.Context(), "SELECT id,store_id,name,sort_order,in_store_enabled,delivery_enabled,status FROM categories WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND in_store_enabled=1 AND deleted_at IS NULL ORDER BY sort_order,id", store.TenantID, store.ID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -56,7 +121,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 	categories := []categoryDTO{}
 	for rows.Next() {
 		var item categoryDTO
-		if err := rows.Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.StoreID, &item.Name, &item.SortOrder, &item.InStoreEnabled, &item.DeliveryEnabled, &item.Status); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -64,7 +129,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	publicCategories := make([]map[string]any, 0, len(categories))
 	for _, category := range categories {
-		publicCategories = append(publicCategories, map[string]any{"id": category.ID, "name": category.Name, "sortOrder": category.SortOrder})
+		publicCategories = append(publicCategories, map[string]any{"id": category.ID, "name": category.Name, "sortOrder": category.SortOrder, "inStoreEnabled": category.InStoreEnabled, "deliveryEnabled": category.DeliveryEnabled})
 	}
 	publicProducts := make([]map[string]any, 0, len(products))
 	for _, product := range products {
@@ -87,7 +152,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, configErr)
 			return
 		}
-		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
+		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "inStoreEnabled": product.InStoreEnabled, "deliveryEnabled": product.DeliveryEnabled, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
 	}
 	writeData(w, http.StatusOK, map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts})
 }
@@ -341,7 +406,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		var row resolvedItem
 		var stock int
-		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,p.product_type,s.attributes_json,s.price_cents,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN categories c ON c.id=p.category_id AND c.tenant_id=p.tenant_id AND c.store_id=p.store_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND c.status='ACTIVE' AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
+		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,p.product_type,s.attributes_json,s.price_cents,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN categories c ON c.id=p.category_id AND c.tenant_id=p.tenant_id AND c.store_id=p.store_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND p.in_store_enabled=1 AND c.status='ACTIVE' AND c.in_store_enabled=1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
 			Scan(&row.productID, &row.skuID, &row.productName, &row.skuName, &row.productType, &row.attrs, &row.basePrice, &stock)
 		if err != nil || stock < requested.Quantity {
 			writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "an item is sold out or unavailable")

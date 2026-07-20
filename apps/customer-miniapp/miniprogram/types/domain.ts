@@ -4,7 +4,18 @@ export interface StoreTheme {
   announcement?: string;
 }
 
-export type DecorationActionType = "NONE" | "OPEN_MENU" | "OPEN_ORDERS" | "OPEN_PROFILE" | "CALL_PHONE";
+export type DecorationActionType =
+  | "NONE"
+  | "OPEN_MENU"
+  | "OPEN_DINE_IN"
+  | "OPEN_TAKEOUT"
+  | "OPEN_DELIVERY"
+  | "OPEN_ORDERS"
+  | "OPEN_PROFILE"
+  | "OPEN_RECHARGE"
+  | "OPEN_MY_COUPONS"
+  | "OPEN_COUPON_CENTER"
+  | "CALL_PHONE";
 
 export interface DecorationAction {
   type: DecorationActionType;
@@ -227,6 +238,8 @@ export interface Category {
   id: number;
   name: string;
   sortOrder: number;
+  inStoreEnabled?: boolean;
+  deliveryEnabled?: boolean;
 }
 
 export interface Sku {
@@ -290,6 +303,8 @@ export interface Product {
   price: number;
   stock: number;
   soldOut: boolean;
+  inStoreEnabled?: boolean;
+  deliveryEnabled?: boolean;
   sales?: number;
   skus?: Sku[];
   optionGroups?: ProductOptionGroup[];

@@ -5,6 +5,8 @@ import { applyDecorationChrome, decorationStyle, defaultDecoration, normalizeDec
 import { request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
 import { fastFoodContextForStore } from "../../utils/fast-food-context";
+import { clearTableOrderingContext } from "../../utils/table-context";
+import { clearFastFoodContext } from "../../utils/fast-food-context";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -51,6 +53,7 @@ Page({
     menuLayoutClass: "category-left product-list-view density-comfortable",
     tableContext: null as TableOrderingContext | null,
     fastFoodContext: null as FastFoodOrderingContext | null,
+    orderMode: "TAKEOUT" as "DINE_IN" | "TAKEOUT",
     routeError: "",
   },
   async onShow() {
@@ -61,7 +64,9 @@ Page({
       return;
     }
     const storeCode = app.globalData.storeCode;
-    this.setData({ storeCode, routeError: "", tableContext: tableContextForStore(storeCode), fastFoodContext: fastFoodContextForStore(storeCode) });
+    const tableContext = tableContextForStore(storeCode);
+    const fastFoodContext = fastFoodContextForStore(storeCode);
+    this.setData({ storeCode, routeError: "", tableContext, fastFoodContext, orderMode: tableContext ? "DINE_IN" : "TAKEOUT" });
     this.setCart(readCart(storeCode));
     await this.loadCatalog();
   },
@@ -93,6 +98,30 @@ Page({
     }
   },
   chooseCategory(event: WechatMiniprogram.BaseEvent) { this.setData({ activeCategoryId: Number(event.currentTarget.dataset.id) }); },
+  chooseMode(event: WechatMiniprogram.BaseEvent) {
+    const mode = String(event.currentTarget.dataset.mode || "TAKEOUT");
+    if (mode === "DELIVERY") {
+      wx.showModal({ title: "外卖暂未开放", content: "当前版本支持堂食和门店自取，外卖配送将在后续版本开放。", showCancel: false });
+      return;
+    }
+    const app = getApp<TanbanAppOption>();
+    const storeCode = app.globalData.storeCode;
+    if (mode === "DINE_IN") {
+      const tableContext = tableContextForStore(storeCode);
+      if (!tableContext) {
+        wx.showModal({ title: "请先扫描桌码", content: "堂食点餐需要绑定桌台，请扫描桌面上的点餐二维码。", showCancel: false });
+        return;
+      }
+      this.setData({ orderMode: "DINE_IN", tableContext, fastFoodContext: null });
+      return;
+    }
+    clearTableOrderingContext();
+    clearFastFoodContext();
+    app.globalData.tableContext = null;
+    app.globalData.fastFoodContext = null;
+    app.globalData.routeError = "";
+    this.setData({ orderMode: "TAKEOUT", tableContext: null, fastFoodContext: null });
+  },
   addProduct(event: WechatMiniprogram.BaseEvent) {
     if (this.data.store?.businessStatus !== "OPEN") {
       wx.showToast({ title: this.data.store?.businessStatusMessage || "门店休息中，暂时不能下单", icon: "none" });
