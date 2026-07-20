@@ -22,15 +22,33 @@ type skuDTO struct {
 }
 
 type productDTO struct {
-	ID          int64    `json:"id"`
-	StoreID     int64    `json:"store_id"`
-	CategoryID  int64    `json:"category_id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	ImageURL    string   `json:"image_url"`
-	SortOrder   int      `json:"sort_order"`
-	Status      string   `json:"status"`
-	SKUs        []skuDTO `json:"skus"`
+	ID          int64             `json:"id"`
+	StoreID     int64             `json:"store_id"`
+	CategoryID  int64             `json:"category_id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	ImageURL    string            `json:"image_url"`
+	Recommended bool              `json:"recommended"`
+	SalesCount  int               `json:"sales_count"`
+	Images      []productImageDTO `json:"images"`
+	SortOrder   int               `json:"sort_order"`
+	Status      string            `json:"status"`
+	SKUs        []skuDTO          `json:"skus"`
+}
+
+type productImageDTO struct {
+	ID           int64  `json:"id"`
+	MediaAssetID *int64 `json:"media_asset_id"`
+	URL          string `json:"url"`
+	IsPrimary    bool   `json:"is_primary"`
+	SortOrder    int    `json:"sort_order"`
+}
+
+type productImageInput struct {
+	MediaAssetID int64  `json:"media_asset_id"`
+	URL          string `json:"url"`
+	IsPrimary    bool   `json:"is_primary"`
+	SortOrder    int    `json:"sort_order"`
 }
 
 type skuInput struct {
@@ -47,14 +65,16 @@ type skuInput struct {
 }
 
 type productInput struct {
-	StoreID     int64      `json:"store_id"`
-	CategoryID  int64      `json:"category_id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	ImageURL    string     `json:"image_url"`
-	SortOrder   int        `json:"sort_order"`
-	Status      string     `json:"status"`
-	SKUs        []skuInput `json:"skus"`
+	StoreID     int64               `json:"store_id"`
+	CategoryID  int64               `json:"category_id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	ImageURL    string              `json:"image_url"`
+	Recommended *bool               `json:"recommended"`
+	Images      []productImageInput `json:"images"`
+	SortOrder   int                 `json:"sort_order"`
+	Status      string              `json:"status"`
+	SKUs        []skuInput          `json:"skus"`
 }
 
 func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +120,10 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	var categoryExists int
 	if err = tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM categories WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL", input.CategoryID, identity.TenantID, storeID).Scan(&categoryExists); err != nil {
 		handleSQLError(w, err)
@@ -109,12 +133,33 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_CATEGORY", "category does not belong to this store")
 		return
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO products(tenant_id,store_id,category_id,name,description,image_url,sort_order,status) VALUES(?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, input.CategoryID, input.Name, input.Description, input.ImageURL, input.SortOrder, strings.ToUpper(input.Status))
+	resolvedImages, mainImageURL, err := resolveProductImages(r.Context(), tx, identity.TenantID, storeID, input.Images, input.ImageURL)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_PRODUCT_IMAGES", err.Error())
+		return
+	}
+	for _, image := range resolvedImages {
+		if image.MediaAssetID == nil {
+			if err = s.validateManagedMediaURL(r.Context(), tx, identity.TenantID, storeID, image.URL); err != nil {
+				writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+				return
+			}
+		}
+	}
+	recommended := false
+	if input.Recommended != nil {
+		recommended = *input.Recommended
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO products(tenant_id,store_id,category_id,name,description,image_url,recommended,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, input.SortOrder, strings.ToUpper(input.Status))
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	productID, _ := result.LastInsertId()
+	if err = insertResolvedProductImages(r.Context(), tx, identity.TenantID, storeID, productID, resolvedImages); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	for _, sku := range input.SKUs {
 		if err = insertSKU(r.Context(), tx, identity.TenantID, storeID, productID, sku); err != nil {
 			writeError(w, http.StatusBadRequest, "INVALID_SKU", err.Error())
@@ -197,7 +242,12 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var storeID int64
-	if err = tx.QueryRowContext(r.Context(), "SELECT store_id FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&storeID); err != nil {
+	var currentRecommended bool
+	if err = tx.QueryRowContext(r.Context(), "SELECT store_id,recommended FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&storeID, &currentRecommended); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -210,7 +260,40 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_CATEGORY", "category does not belong to this store")
 		return
 	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, input.ImageURL, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
+	recommended := currentRecommended
+	if input.Recommended != nil {
+		recommended = *input.Recommended
+	}
+	mainImageURL := input.ImageURL
+	var resolvedImages []resolvedProductImage
+	if input.Images != nil {
+		resolvedImages, mainImageURL, err = resolveProductImages(r.Context(), tx, identity.TenantID, storeID, input.Images, input.ImageURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_PRODUCT_IMAGES", err.Error())
+			return
+		}
+		for _, image := range resolvedImages {
+			if image.MediaAssetID == nil {
+				if err = s.validateManagedMediaURL(r.Context(), tx, identity.TenantID, storeID, image.URL); err != nil {
+					writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+					return
+				}
+			}
+		}
+	} else {
+		resolvedImages, mainImageURL, err = resolveProductImages(r.Context(), tx, identity.TenantID, storeID, nil, input.ImageURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_PRODUCT_IMAGES", err.Error())
+			return
+		}
+		for _, image := range resolvedImages {
+			if err = s.validateManagedMediaURL(r.Context(), tx, identity.TenantID, storeID, image.URL); err != nil {
+				writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+				return
+			}
+		}
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,recommended=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -304,6 +387,15 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if input.Images != nil {
+		if err = replaceProductImages(r.Context(), tx, identity.TenantID, storeID, id, resolvedImages); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	} else if err = syncLegacyProductPrimary(r.Context(), tx, identity.TenantID, storeID, id, mainImageURL); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
 		return
@@ -327,6 +419,9 @@ func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	result, err := tx.ExecContext(r.Context(), "UPDATE products SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), "UPDATE skus SET status='DISABLED',deleted_at=NOW(3) WHERE product_id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), "UPDATE product_images SET deleted_at=NOW(3) WHERE product_id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
 	}
 	if err != nil {
 		handleSQLError(w, err)
@@ -406,7 +501,7 @@ func updateInventoryOptimistic(ctx context.Context, tx *sql.Tx, tenantID, skuID 
 }
 
 func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publicOnly bool, productID int64) ([]productDTO, error) {
-	query := `SELECT id,store_id,category_id,name,description,image_url,sort_order,status FROM products WHERE tenant_id=? AND deleted_at IS NULL`
+	query := `SELECT id,store_id,category_id,name,description,image_url,recommended,sort_order,status FROM products WHERE tenant_id=? AND deleted_at IS NULL`
 	args := []any{tenantID}
 	if storeID > 0 {
 		query += " AND store_id=?"
@@ -428,7 +523,11 @@ func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publ
 	items := []productDTO{}
 	for rows.Next() {
 		var item productDTO
-		if err := rows.Scan(&item.ID, &item.StoreID, &item.CategoryID, &item.Name, &item.Description, &item.ImageURL, &item.SortOrder, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.StoreID, &item.CategoryID, &item.Name, &item.Description, &item.ImageURL, &item.Recommended, &item.SortOrder, &item.Status); err != nil {
+			return nil, err
+		}
+		item.Images, err = s.loadProductImages(ctx, tenantID, item.StoreID, item.ID, item.ImageURL)
+		if err != nil {
 			return nil, err
 		}
 		item.SKUs, err = s.loadSKUs(ctx, tenantID, item.ID, publicOnly)
@@ -437,7 +536,74 @@ func (s *Server) loadProducts(ctx context.Context, tenantID, storeID int64, publ
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if !publicOnly && len(items) > 0 {
+		placeholders := make([]string, len(items))
+		args := make([]any, 0, len(items)+1)
+		args = append(args, tenantID)
+		for index, item := range items {
+			placeholders[index] = "?"
+			args = append(args, item.ID)
+		}
+		salesRows, salesErr := s.DB.QueryContext(ctx, `SELECT oi.product_id,COALESCE(SUM(oi.quantity),0)
+			FROM order_items oi JOIN orders o ON o.id=oi.order_id AND o.tenant_id=oi.tenant_id
+			WHERE oi.tenant_id=? AND oi.product_id IN (`+strings.Join(placeholders, ",")+`) AND o.payment_status IN ('PAID','PARTIALLY_REFUNDED','REFUNDED')
+			GROUP BY oi.product_id`, args...)
+		if salesErr != nil {
+			return nil, salesErr
+		}
+		salesByProduct := make(map[int64]int, len(items))
+		for salesRows.Next() {
+			var productID int64
+			var salesCount int
+			if salesErr = salesRows.Scan(&productID, &salesCount); salesErr != nil {
+				salesRows.Close()
+				return nil, salesErr
+			}
+			salesByProduct[productID] = salesCount
+		}
+		if salesErr = salesRows.Err(); salesErr != nil {
+			salesRows.Close()
+			return nil, salesErr
+		}
+		salesRows.Close()
+		for index := range items {
+			items[index].SalesCount = salesByProduct[items[index].ID]
+		}
+	}
+	return items, nil
+}
+
+func (s *Server) loadProductImages(ctx context.Context, tenantID, storeID, productID int64, legacyURL string) ([]productImageDTO, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,media_asset_id,url,is_primary,sort_order FROM product_images
+		WHERE tenant_id=? AND store_id=? AND product_id=? AND deleted_at IS NULL
+		ORDER BY is_primary DESC,sort_order,id`, tenantID, storeID, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []productImageDTO{}
+	for rows.Next() {
+		var item productImageDTO
+		var assetID sql.NullInt64
+		if err = rows.Scan(&item.ID, &assetID, &item.URL, &item.IsPrimary, &item.SortOrder); err != nil {
+			return nil, err
+		}
+		if assetID.Valid {
+			item.MediaAssetID = &assetID.Int64
+		}
+		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(items) == 0 && strings.TrimSpace(legacyURL) != "" {
+		items = append(items, productImageDTO{URL: legacyURL, IsPrimary: true})
+	}
+	return items, nil
 }
 
 func (s *Server) loadSKUs(ctx context.Context, tenantID, productID int64, publicOnly bool) ([]skuDTO, error) {

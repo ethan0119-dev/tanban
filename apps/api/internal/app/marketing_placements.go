@@ -228,7 +228,21 @@ func (s *Server) createMarketingPlacement(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO marketing_placements(tenant_id,store_id,name,placement_code,image_url,title,subtitle,action_type,action_target_id,frequency,priority,channel_scope,active_from,active_to,status,created_by,updated_by)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, actor.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = s.validateManagedMediaURL(r.Context(), tx, actor.TenantID, storeID, input.ImageURL); err != nil {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO marketing_placements(tenant_id,store_id,name,placement_code,image_url,title,subtitle,action_type,action_target_id,frequency,priority,channel_scope,active_from,active_to,status,created_by,updated_by)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.PlacementCode, input.ImageURL, input.Title, input.Subtitle, input.ActionType, nullableMarketingID(input.ActionTargetID), input.Frequency,
 		input.Priority, input.ChannelScope, marketingTimeArg(input.ActiveFrom), marketingTimeArg(input.ActiveTo), actor.UserID, actor.UserID)
 	if err != nil {
@@ -236,6 +250,10 @@ func (s *Server) createMarketingPlacement(w http.ResponseWriter, r *http.Request
 		return
 	}
 	id, _ := result.LastInsertId()
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	s.audit(r.Context(), actor, "marketing.placement.create", "marketing_placement", int64String(id), input, r)
 	row, err := s.loadMarketingPlacement(r.Context(), actor.TenantID, storeID, id)
 	if err != nil {
@@ -263,15 +281,6 @@ func (s *Server) updateMarketingPlacement(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	current, err := s.loadMarketingPlacement(r.Context(), actor.TenantID, storeID, id)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if current.Status == "ACTIVE" {
-		writeError(w, http.StatusConflict, "PLACEMENT_ACTIVE", "pause the placement before editing it")
-		return
-	}
 	var input marketingPlacementInput
 	if !decodeJSON(w, r, &input) {
 		return
@@ -280,7 +289,30 @@ func (s *Server) updateMarketingPlacement(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE marketing_placements SET name=?,placement_code=?,image_url=?,title=?,subtitle=?,action_type=?,action_target_id=?,frequency=?,priority=?,channel_scope=?,active_from=?,active_to=?,version=version+1,updated_by=?
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, actor.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var currentStatus string
+	if err = tx.QueryRowContext(r.Context(), `SELECT status FROM marketing_placements WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, actor.TenantID, storeID).Scan(&currentStatus); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if currentStatus == "ACTIVE" {
+		writeError(w, http.StatusConflict, "PLACEMENT_ACTIVE", "pause the placement before editing it")
+		return
+	}
+	if err = s.validateManagedMediaURL(r.Context(), tx, actor.TenantID, storeID, input.ImageURL); err != nil {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE marketing_placements SET name=?,placement_code=?,image_url=?,title=?,subtitle=?,action_type=?,action_target_id=?,frequency=?,priority=?,channel_scope=?,active_from=?,active_to=?,version=version+1,updated_by=?
 		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE'`, input.Name, input.PlacementCode, input.ImageURL, input.Title, input.Subtitle, input.ActionType, nullableMarketingID(input.ActionTargetID), input.Frequency,
 		input.Priority, input.ChannelScope, marketingTimeArg(input.ActiveFrom), marketingTimeArg(input.ActiveTo), actor.UserID, id, actor.TenantID, storeID)
 	if err != nil {
@@ -289,6 +321,10 @@ func (s *Server) updateMarketingPlacement(w http.ResponseWriter, r *http.Request
 	}
 	if changed, _ := result.RowsAffected(); changed != 1 {
 		writeError(w, http.StatusConflict, "PLACEMENT_CHANGED", "placement changed concurrently")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
 		return
 	}
 	s.audit(r.Context(), actor, "marketing.placement.update", "marketing_placement", int64String(id), input, r)

@@ -4,6 +4,7 @@ import {
   ClockCircleOutlined,
   CoffeeOutlined,
   DeleteOutlined,
+  FolderOpenOutlined,
   PlusOutlined,
   PrinterOutlined,
   SaveOutlined,
@@ -35,6 +36,7 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import type { MerchantSettings, StoreBusinessDay, StoreBusinessHours } from '../types';
 
 type SettingsFormValues = Omit<MerchantSettings, 'businessHours'>;
@@ -61,6 +63,7 @@ export function SettingsPage() {
   const [overrideUntil, setOverrideUntil] = useState<Dayjs | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
+  const [logoLibraryOpen, setLogoLibraryOpen] = useState(false);
   const printTrigger = Form.useWatch('printTrigger', form);
 
   const load = useCallback(async () => {
@@ -140,7 +143,7 @@ export function SettingsPage() {
                 <Col xs={24} md={12}><Form.Item label="门店名称" name="storeName" rules={[{ required: true, message: '请输入门店名称' }]}><Input prefix={<CoffeeOutlined />} placeholder="码农咖啡" /></Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item label="联系电话" name="phone"><Input placeholder="门店联系电话" /></Form.Item></Col>
               </Row>
-              <Form.Item label="门店 Logo URL" name="logo"><Input placeholder="https://..." /></Form.Item>
+              <Form.Item label="门店 Logo"><Space.Compact block><Form.Item name="logo" noStyle><Input placeholder="从图片库选择，或填入 HTTPS 地址" /></Form.Item><Button icon={<FolderOpenOutlined />} onClick={() => setLogoLibraryOpen(true)}>图片库</Button></Space.Compact></Form.Item>
               <Form.Item label="经营地址" name="address"><Input placeholder="夜市、街区或摊位位置" /></Form.Item>
               <Form.Item label="店铺公告" name="announcement"><Input.TextArea rows={3} maxLength={120} showCount placeholder="将在顾客点单首页展示" /></Form.Item>
             </Card>
@@ -255,6 +258,7 @@ export function SettingsPage() {
           </Col>
         </Row>
       </Form>
+      <MediaLibraryModal open={logoLibraryOpen} title="选择门店 Logo" onCancel={() => setLogoLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) form.setFieldValue('logo', selected[0].url); setLogoLibraryOpen(false); }} />
     </div>
   );
 }

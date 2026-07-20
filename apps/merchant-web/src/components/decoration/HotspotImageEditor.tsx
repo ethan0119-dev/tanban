@@ -1,7 +1,8 @@
-import { AimOutlined, CloudUploadOutlined, DeleteOutlined, PictureOutlined } from '@ant-design/icons';
+import { AimOutlined, CloudUploadOutlined, DeleteOutlined, FolderOpenOutlined, PictureOutlined } from '@ant-design/icons';
 import { Alert, Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Upload, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { DecorationActionType, HomeModuleConfig, ImageHotspot, MediaAsset } from '../../features/decoration/model';
+import { MediaLibraryModal } from '../media/MediaLibraryModal';
 
 const ACTION_OPTIONS: Array<{ value: DecorationActionType; label: string }> = [
   { value: 'NONE', label: '无动作' },
@@ -34,6 +35,7 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
   const [drawing, setDrawing] = useState<DrawState | null>(null);
   const [selectedId, setSelectedId] = useState<string>('');
   const [imageUrlDraft, setImageUrlDraft] = useState(module.imageUrl ?? '');
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [modal, modalContextHolder] = Modal.useModal();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -159,17 +161,10 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
       <Form layout="vertical">
         <Row gutter={12} align="bottom">
           <Col xs={24} lg={12}>
-            <Form.Item label="从素材库选择">
-              <Select
-                allowClear
-                showSearch
-                value={module.imageUrl || undefined}
-                placeholder="选择已上传图片"
-                optionFilterProp="label"
-                options={imageAssets.map((asset) => ({ value: asset.url, label: asset.name }))}
-                onChange={(imageUrl) => void applyImageChange(imageUrl ?? '')}
-              />
-            </Form.Item>
+            <Form.Item label="从图片库选择"><Space.Compact block>
+              <Select allowClear showSearch value={module.imageUrl || undefined} placeholder="快速选择已加载图片" optionFilterProp="label" options={imageAssets.map((asset) => ({ value: asset.url, label: asset.name }))} onChange={(imageUrl) => void applyImageChange(imageUrl ?? '')} />
+              <Button icon={<FolderOpenOutlined />} onClick={() => setLibraryOpen(true)}>完整图片库</Button>
+            </Space.Compact></Form.Item>
           </Col>
           <Col xs={24} lg={12}>
             <Form.Item label="上传新图片">
@@ -256,6 +251,17 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
           </Form>
         </div>
       ) : hotspots.length > 0 ? <Typography.Text className="hotspot-select-hint" type="secondary">点击图上的蓝色区域编辑动作和位置。</Typography.Text> : null}
+      <MediaLibraryModal
+        open={libraryOpen}
+        title="选择热区底图"
+        excludeUrls={[module.imageUrl || '']}
+        onCancel={() => setLibraryOpen(false)}
+        onConfirm={(selectedAssets) => {
+          const asset = selectedAssets[0];
+          if (asset) void applyImageChange(asset.url, module.title || asset.name);
+          setLibraryOpen(false);
+        }}
+      />
     </div>
   );
 }

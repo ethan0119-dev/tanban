@@ -28,6 +28,8 @@ const (
 	mediaMaxMultipartBytes = mediaMaxUploadBytes + 1024*1024
 	mediaMaxDimension      = 12000
 	mediaMaxPixels         = 80 * 1024 * 1024
+	mediaMaxAssetsPerStore = 1000
+	mediaMaxBytesPerStore  = int64(1024 * 1024 * 1024)
 )
 
 var (
@@ -232,6 +234,14 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "name is required and limited to 120 characters")
 		return
 	}
+	var groupID int64
+	if rawGroupID := strings.TrimSpace(r.FormValue("group_id")); rawGroupID != "" {
+		groupID, err = strconv.ParseInt(rawGroupID, 10, 64)
+		if err != nil || groupID < 0 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "group_id must be a non-negative integer")
+			return
+		}
+	}
 	storageKey, err := newMediaStorageKey(identity.TenantID, storeID, imageFile.Extension, time.Now())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "MEDIA_STORAGE_ERROR", "failed to allocate image storage")
@@ -262,7 +272,30 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(storedPath)
 		}
 	}()
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, name, publicURL, storageKey, imageFile.MimeType, imageFile.Width, imageFile.Height, len(imageFile.Data), identity.UserID)
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = validateMediaGroupID(r.Context(), tx, identity.TenantID, storeID, groupID); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_MEDIA_GROUP", err.Error())
+		return
+	}
+	var activeAssets int
+	var activeBytes int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM media_assets WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND deleted_at IS NULL`, identity.TenantID, storeID).Scan(&activeAssets, &activeBytes); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if activeAssets >= mediaMaxAssetsPerStore || activeBytes+int64(len(imageFile.Data)) > mediaMaxBytesPerStore {
+		writeError(w, http.StatusInsufficientStorage, "MEDIA_QUOTA_EXCEEDED", "the store image library quota has been reached; delete unused images before uploading")
+		return
+	}
+	var result sql.Result
+	if groupID > 0 {
+		result, err = tx.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,group_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, groupID, name, publicURL, storageKey, imageFile.MimeType, imageFile.Width, imageFile.Height, len(imageFile.Data), identity.UserID)
+	} else {
+		result, err = tx.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, name, publicURL, storageKey, imageFile.MimeType, imageFile.Width, imageFile.Height, len(imageFile.Data), identity.UserID)
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -279,7 +312,11 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 	removeStoredFile = false
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	s.audit(r.Context(), identity, "media_asset.upload", "media_asset", int64String(id), map[string]any{"name": name, "storage_key": storageKey, "mime_type": imageFile.MimeType, "size_bytes": len(imageFile.Data)}, r)
-	writeData(w, http.StatusCreated, mediaAssetView{ID: id, Name: name, Kind: "IMAGE", URL: publicURL, StorageKey: storageKey, MimeType: imageFile.MimeType, Width: imageFile.Width, Height: imageFile.Height, SizeBytes: int64(len(imageFile.Data)), Status: "ACTIVE", CreatedAt: createdAt})
+	view := mediaAssetView{ID: id, Name: name, Kind: "IMAGE", URL: publicURL, StorageKey: storageKey, MimeType: imageFile.MimeType, Width: imageFile.Width, Height: imageFile.Height, SizeBytes: int64(len(imageFile.Data)), Status: "ACTIVE", CreatedAt: createdAt}
+	if groupID > 0 {
+		view.GroupID = &groupID
+	}
+	writeData(w, http.StatusCreated, view)
 }
 
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {

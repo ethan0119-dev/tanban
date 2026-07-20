@@ -1,4 +1,4 @@
-import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, FolderOpenOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -20,6 +20,7 @@ import {
 import { useState } from 'react';
 import { HOME_MODULE_LABELS, NAVIGATION_LABELS, type DecorationConfig, type DecorationTemplate, type HomeModuleType, type MediaAsset } from '../../features/decoration/model';
 import { HotspotImageEditor } from './HotspotImageEditor';
+import { MediaLibraryModal } from '../media/MediaLibraryModal';
 
 interface ConfigPanelProps {
   config: DecorationConfig;
@@ -34,6 +35,7 @@ interface PageModulesPanelProps extends ConfigPanelProps {
 
 export function PageModulesPanel({ config, onChange, assets = [], assetUploading = false, onUploadAsset }: PageModulesPanelProps) {
   const [newType, setNewType] = useState<HomeModuleType>('TEXT');
+  const [libraryTarget, setLibraryTarget] = useState<number | null>(null);
   const updateModule = (index: number, patch: Partial<DecorationConfig['homeModules'][number]>) => {
     const modules = config.homeModules.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
     onChange({ ...config, homeModules: modules });
@@ -91,11 +93,21 @@ export function PageModulesPanel({ config, onChange, assets = [], assetUploading
                   <Col span={12}><Form.Item label={module.type === 'ANNOUNCEMENT' ? '公告前缀' : '主标题'}><Input value={module.title} maxLength={module.type === 'ANNOUNCEMENT' ? 16 : 30} onChange={(event) => updateModule(index, { title: event.target.value })} /></Form.Item></Col>
                   {module.type !== 'ANNOUNCEMENT' && <Col span={12}><Form.Item label="辅助文案"><Input value={module.subtitle} maxLength={80} onChange={(event) => updateModule(index, { subtitle: event.target.value })} /></Form.Item></Col>}
                 </Row>
-                {(module.type === 'HERO_BANNER' || module.type === 'IMAGE') && <Form.Item label="HTTPS 图片 URL"><Input value={module.imageUrl} prefix={<PictureOutlined />} placeholder="https://..." onChange={(event) => updateModule(index, { imageUrl: event.target.value })} /></Form.Item>}
+                {(module.type === 'HERO_BANNER' || module.type === 'IMAGE') && <Form.Item label="模块图片"><Space.Compact block><Input value={module.imageUrl} prefix={<PictureOutlined />} placeholder="从图片库选择，或填入 HTTPS 地址" onChange={(event) => updateModule(index, { imageUrl: event.target.value })} /><Button icon={<FolderOpenOutlined />} onClick={() => setLibraryTarget(index)}>图片库</Button></Space.Compact></Form.Item>}
                 {module.type === 'ANNOUNCEMENT' && <Typography.Text type="secondary">公告正文沿用“门店设置”里的店铺公告，这里仅配置前缀。</Typography.Text>}
               </>}
         </Card>
       ))}
+      <MediaLibraryModal
+        open={libraryTarget !== null}
+        title="选择装修图片"
+        excludeUrls={libraryTarget === null ? [] : [config.homeModules[libraryTarget]?.imageUrl || '']}
+        onCancel={() => setLibraryTarget(null)}
+        onConfirm={(selected) => {
+          if (libraryTarget !== null && selected[0]) updateModule(libraryTarget, { imageUrl: selected[0].url });
+          setLibraryTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -198,6 +210,7 @@ export function NavigationPanel({ config, onChange }: ConfigPanelProps) {
 }
 
 export function SplashPanel({ config, onChange }: ConfigPanelProps) {
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const update = (patch: Partial<DecorationConfig['splash']>) => onChange({ ...config, splash: { ...config.splash, ...patch } });
   return (
     <div className="decoration-panel-stack">
@@ -205,7 +218,7 @@ export function SplashPanel({ config, onChange }: ConfigPanelProps) {
       <Card size="small" className="decor-section-card"><SwitchRow label="启用启动页" description="发布后按所选频率向进入当前门店的顾客展示" checked={config.splash.enabled} onChange={(enabled) => update({ enabled })} /></Card>
       <Card size="small" className="decor-section-card">
         <Form layout="vertical" disabled={!config.splash.enabled}>
-          <Form.Item label="背景图片 URL"><Input value={config.splash.imageUrl} placeholder="必须为 HTTPS，建议竖图 750 × 1334" onChange={(event) => update({ imageUrl: event.target.value })} /></Form.Item>
+          <Form.Item label="背景图片"><Space.Compact block><Input value={config.splash.imageUrl} placeholder="必须为 HTTPS，建议竖图 750 × 1334" onChange={(event) => update({ imageUrl: event.target.value })} /><Button icon={<FolderOpenOutlined />} onClick={() => setLibraryOpen(true)}>图片库</Button></Space.Compact></Form.Item>
           <Form.Item label="主标题"><Input value={config.splash.title} maxLength={60} onChange={(event) => update({ title: event.target.value })} /></Form.Item>
           <Form.Item label="副标题"><Input value={config.splash.subtitle} maxLength={160} onChange={(event) => update({ subtitle: event.target.value })} /></Form.Item>
           <Form.Item label="展示方式"><Segmented block value={config.splash.displayMode} options={[{ label: '弹窗', value: 'POPUP' }, { label: '全屏', value: 'FULLSCREEN' }]} onChange={(displayMode) => update({ displayMode: displayMode as DecorationConfig['splash']['displayMode'] })} /></Form.Item>
@@ -213,6 +226,7 @@ export function SplashPanel({ config, onChange }: ConfigPanelProps) {
           <Form.Item label="展示频率"><Select value={config.splash.frequency} options={[{ label: '每次进入', value: 'EVERY_VISIT' }, { label: '每天一次', value: 'DAILY' }, { label: '每个发布版本一次', value: 'ONCE_PER_VERSION' }]} onChange={(frequency) => update({ frequency })} /></Form.Item>
         </Form>
       </Card>
+      <MediaLibraryModal open={libraryOpen} title="选择启动页图片" excludeUrls={[config.splash.imageUrl]} onCancel={() => setLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) update({ imageUrl: selected[0].url }); setLibraryOpen(false); }} />
     </div>
   );
 }

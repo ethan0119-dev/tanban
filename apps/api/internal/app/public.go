@@ -70,6 +70,10 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 	for _, product := range products {
 		var stock int
 		var minPrice int64
+		publicImages := make([]map[string]any, 0, len(product.Images))
+		for _, image := range product.Images {
+			publicImages = append(publicImages, map[string]any{"url": image.URL, "isPrimary": image.IsPrimary, "sortOrder": image.SortOrder})
+		}
 		publicSKUs := make([]map[string]any, 0, len(product.SKUs))
 		for index, sku := range product.SKUs {
 			stock += sku.Stock
@@ -83,7 +87,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, configErr)
 			return
 		}
-		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
+		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
 	}
 	writeData(w, http.StatusOK, map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts})
 }

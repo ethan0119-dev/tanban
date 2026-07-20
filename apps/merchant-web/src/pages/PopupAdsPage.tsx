@@ -2,6 +2,7 @@ import {
   CloudUploadOutlined,
   EditOutlined,
   EyeOutlined,
+  FolderOpenOutlined,
   LinkOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
@@ -35,6 +36,7 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { decorationApi } from '../features/decoration/api';
 import { marketingApi } from '../features/marketing/api';
 import type {
@@ -99,6 +101,7 @@ export function PopupAdsPage() {
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [imageLibraryOpen, setImageLibraryOpen] = useState(false);
   const [editing, setEditing] = useState<MarketingPlacement>();
   const [form] = Form.useForm<PlacementFormValues>();
   const [messageApi, holder] = message.useMessage();
@@ -251,6 +254,7 @@ export function PopupAdsPage() {
           <Form.Item label="弹窗图片" required extra="建议使用竖版活动海报；上传成功后仍可手工替换 HTTPS 地址。">
             <Space.Compact block>
               <Form.Item name="image_url" noStyle rules={[{ required: true }, { type: 'url', message: '请输入完整图片 URL' }, { validator: (_, value: string) => !value || value.startsWith('https://') ? Promise.resolve() : Promise.reject(new Error('生产图片必须使用 HTTPS')) }]}><Input placeholder="https://..." /></Form.Item>
+              <Button icon={<FolderOpenOutlined />} onClick={() => setImageLibraryOpen(true)}>图片库</Button>
               <Upload
                 accept="image/jpeg,image/png,image/gif"
                 maxCount={1}
@@ -274,6 +278,7 @@ export function PopupAdsPage() {
           <Row gutter={16}><Col span={10}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（预留）', disabled: true }]} /></Form.Item></Col><Col span={14}><Form.Item label="投放时间" name="active_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item></Col></Row>
         </Form>
       </Modal>
+      <MediaLibraryModal open={imageLibraryOpen} title="选择弹窗广告图片" onCancel={() => setImageLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) form.setFieldValue('image_url', selected[0].url); setImageLibraryOpen(false); }} />
     </div>
   );
 }

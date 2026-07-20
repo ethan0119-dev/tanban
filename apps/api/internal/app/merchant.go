@@ -41,6 +41,8 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Get("/products/{productID}", s.getProduct)
 		managers.Put("/products/{productID}", s.updateProduct)
 		managers.Delete("/products/{productID}", s.deleteProduct)
+		managers.Post("/products/{productID}/actions", s.performProductAction)
+		managers.Get("/products/{productID}/statistics", s.getProductStatistics)
 		managers.Get("/products/{productID}/configuration", s.getProductConfiguration)
 		managers.Put("/products/{productID}/configuration", s.updateProductConfiguration)
 		managers.Put("/skus/{skuID}/inventory", s.updateInventory)
@@ -63,6 +65,10 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Get("/decoration/versions/{versionID}", s.getDecorationVersion)
 		managers.Post("/decoration/versions/{versionID}/rollback", s.rollbackDecoration)
 		managers.Get("/decoration/templates", s.getDecorationTemplates)
+		managers.Get("/media-groups", s.listMediaGroups)
+		managers.Post("/media-groups", s.createMediaGroup)
+		managers.Put("/media-groups/{groupID}", s.updateMediaGroup)
+		managers.Delete("/media-groups/{groupID}", s.deleteMediaGroup)
 		managers.Get("/media-assets", s.listMediaAssets)
 		managers.Post("/media-assets", s.createMediaAsset)
 		managers.Post("/media-assets/upload", s.uploadMediaAsset)
@@ -367,6 +373,10 @@ func (s *Server) updateMerchantSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	if currentTimeout < 1 || currentTimeout > 1440 {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "paymentTimeoutMinutes must be between 1 and 1440")
+		return
+	}
+	if err = s.validateManagedMediaURL(r.Context(), tx, identity.TenantID, storeID, currentLogo); err != nil {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
 		return
 	}
 	_, err = tx.ExecContext(r.Context(), `UPDATE stores SET name=?,logo_url=?,address=?,phone=?,business_hours=?,notice=?,auto_accept_orders=?,voice_reminder=?,default_print_trigger=?,auto_print_receipt=?,auto_print_label=?,pickup_mode=?,allow_late_payment=?,payment_timeout_minutes=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, currentName, currentLogo, currentAddress, currentPhone, currentHours, currentNotice, currentAutoAccept, currentVoice, currentTrigger, currentReceipt, currentLabel, currentPickup, currentLate, currentTimeout, storeID, identity.TenantID)

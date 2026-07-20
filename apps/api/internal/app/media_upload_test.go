@@ -99,6 +99,8 @@ func TestUploadMediaAssetPersistsAuthenticatedMerchantImage(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM stores WHERE tenant_id=? AND deleted_at IS NULL ORDER BY id LIMIT 1")).
 		WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\),COALESCE\\(SUM\\(size_bytes\\),0\\) FROM media_assets").WithArgs(int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"count", "bytes"}).AddRow(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO media_assets(tenant_id,store_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`)).
 		WithArgs(int64(5), int64(9), "首页主图", sqlmock.AnyArg(), sqlmock.AnyArg(), "image/png", 2, 3, len(imageBody), int64(12)).
 		WillReturnResult(sqlmock.NewResult(44, 1))
@@ -170,6 +172,8 @@ func TestUploadMediaAssetCleansFileWhenDatabaseWriteFails(t *testing.T) {
 	server := New(db, config.Config{MediaStorageDir: storageRoot, MediaPublicBaseURL: "https://tbapi.example.com/api/v1/public/media"}, slog.Default())
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\),COALESCE\\(SUM\\(size_bytes\\),0\\) FROM media_assets").WithArgs(int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"count", "bytes"}).AddRow(0, 0))
 	mock.ExpectExec("INSERT INTO media_assets").WillReturnError(errors.New("database unavailable"))
 	mock.ExpectRollback()
 
@@ -277,12 +281,15 @@ func TestUpdateUploadedMediaAssetRenamesWithoutLosingManagedMetadata(t *testing.
 	key := "uploads/t5/s9/2026/07/00112233445566778899aabbccddeeff.png"
 	assetURL := "https://tbapi.example.com/api/v1/public/media/" + key
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
 		WithArgs(int64(44), int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "kind", "url", "storage_key", "mime_type", "width", "height", "size_bytes", "status", "created_at"}).
 			AddRow(44, "旧名称", "IMAGE", assetURL, key, "image/png", 800, 600, 12345, "ACTIVE", "2026-07-20T01:02:03Z"))
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
 		WithArgs("新名称", int64(44), int64(5), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	request := httptest.NewRequest(http.MethodPut, "/media-assets/44", bytes.NewBufferString(`{"name":"新名称","url":"","storageKey":"","mimeType":"","width":0,"height":0,"sizeBytes":0}`))
@@ -320,9 +327,12 @@ func TestUpdateUploadedMediaAssetRejectsManagedMetadataReplacement(t *testing.T)
 	key := "uploads/t5/s9/2026/07/00112233445566778899aabbccddeeff.png"
 	assetURL := "https://tbapi.example.com/api/v1/public/media/" + key
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectQuery("SELECT id,name,kind,url,storage_key").WithArgs(int64(44), int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "kind", "url", "storage_key", "mime_type", "width", "height", "size_bytes", "status", "created_at"}).
 			AddRow(44, "旧名称", "IMAGE", assetURL, key, "image/png", 800, 600, 12345, "ACTIVE", "2026-07-20T01:02:03Z"))
+	mock.ExpectRollback()
 
 	request := httptest.NewRequest(http.MethodPut, "/media-assets/44", bytes.NewBufferString(`{"name":"新名称","url":"https://evil.example.com/replacement.png"}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -352,8 +362,8 @@ func TestDeleteMediaAssetRejectsDecorationReference(t *testing.T) {
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT url FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
-		WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url"}).AddRow(assetURL))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
+		WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
 	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"draft_json", "published_json"}).AddRow(draft, ""))
 	mock.ExpectRollback()
@@ -385,7 +395,7 @@ func TestDeleteMediaAssetRejectsHistoricalDecorationVersionReference(t *testing.
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery("SELECT url FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url"}).AddRow(assetURL))
+	mock.ExpectQuery("SELECT url,storage_key FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
 	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"draft_json", "published_json"}).AddRow(`{"home":{"modules":[]}}`, `{"home":{"modules":[]}}`))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT config_json FROM store_decoration_versions WHERE tenant_id=? AND store_id=? ORDER BY id`)).
@@ -419,9 +429,18 @@ func TestDeleteUnreferencedMediaAssetStillSucceeds(t *testing.T) {
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery("SELECT url FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url"}).AddRow(assetURL))
+	mock.ExpectQuery("SELECT url,storage_key FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
 	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery("SELECT config_json FROM store_decoration_versions").WithArgs(int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"config_json"}))
+	mock.ExpectQuery("SELECT CASE").WithArgs(
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL,
+	).WillReturnRows(sqlmock.NewRows([]string{"reference_kind"}).AddRow(""))
 	mock.ExpectExec("UPDATE media_assets SET status='DELETED'").WithArgs(int64(44), int64(5), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
@@ -434,6 +453,46 @@ func TestDeleteUnreferencedMediaAssetStillSucceeds(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteMediaAssetRejectsActiveProductImageReference(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := New(db, config.Config{}, slog.Default())
+	assetURL := "https://cdn.example.com/product.png"
+	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectQuery("SELECT url,storage_key FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
+	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT config_json FROM store_decoration_versions").WithArgs(int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"config_json"}))
+	mock.ExpectQuery("SELECT CASE").WithArgs(
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL,
+	).WillReturnRows(sqlmock.NewRows([]string{"reference_kind"}).AddRow("product images"))
+	mock.ExpectRollback()
+
+	request := httptest.NewRequest(http.MethodDelete, "/media-assets/44", nil)
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 12, TenantID: 5, Role: RoleMerchantManager}))
+	recorder := httptest.NewRecorder()
+	router := chi.NewRouter()
+	router.Delete("/media-assets/{assetID}", server.deleteMediaAsset)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusConflict || !bytes.Contains(recorder.Body.Bytes(), []byte("MEDIA_ASSET_IN_USE")) {
+		t.Fatalf("expected product in-use conflict, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 	if err = mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -209,6 +211,7 @@ type mediaAssetInput struct {
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
 	SizeBytes  int64  `json:"sizeBytes"`
+	GroupID    *int64 `json:"group_id"`
 }
 
 type mediaAssetView struct {
@@ -223,6 +226,8 @@ type mediaAssetView struct {
 	SizeBytes  int64  `json:"sizeBytes"`
 	Status     string `json:"status"`
 	CreatedAt  string `json:"createdAt"`
+	GroupID    *int64 `json:"group_id"`
+	GroupName  string `json:"group_name"`
 }
 
 func defaultDecorationConfig(store storeDTO) DecorationConfig {
@@ -623,6 +628,29 @@ func lockDecorationStore(ctx context.Context, tx *sql.Tx, tenantID, storeID int6
 	return tx.QueryRowContext(ctx, `SELECT id FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE`, storeID, tenantID).Scan(&lockedID)
 }
 
+// validateManagedMediaURL verifies a server-managed image while the caller is
+// holding the store row lock. The media delete path takes that same lock first,
+// which makes "save a reference" and "delete the image" mutually exclusive.
+// External HTTPS URLs are not managed by this service and are left untouched.
+func (s *Server) validateManagedMediaURL(ctx context.Context, tx *sql.Tx, tenantID, storeID int64, rawURL string) error {
+	base := strings.TrimRight(strings.TrimSpace(s.Config.MediaPublicBaseURL), "/")
+	rawURL = strings.TrimSpace(rawURL)
+	if base == "" || rawURL == "" || !strings.HasPrefix(rawURL, base+"/") {
+		return nil
+	}
+	storageKey := strings.TrimPrefix(rawURL, base+"/")
+	keyTenantID, keyStoreID, ok := parseLocalMediaStorageKey(storageKey)
+	if !ok || keyTenantID != tenantID || keyStoreID != storeID {
+		return fmt.Errorf("%w: image belongs to a different store", errDecorationAssetUnavailable)
+	}
+	var assetID int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND url=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey, rawURL).Scan(&assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: image has been deleted or is unavailable", errDecorationAssetUnavailable)
+	}
+	return err
+}
+
 // validateManagedDecorationAssets locks every locally uploaded image referenced
 // by a decoration while the caller is already holding the store row lock. The
 // delete path takes the same locks in the same order, so a draft/publish cannot
@@ -922,6 +950,10 @@ func (s *Server) listDecorationVersions(w http.ResponseWriter, r *http.Request) 
 		}
 		items = append(items, item)
 	}
+	if err = rows.Err(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	writeList(w, http.StatusOK, items, total, page, size)
 }
 
@@ -1102,12 +1134,37 @@ func (s *Server) listMediaAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, size, offset := pagination(r)
+	where := ` WHERE a.tenant_id=? AND a.store_id=? AND a.deleted_at IS NULL`
+	args := []any{identity.TenantID, storeID}
+	if raw := strings.TrimSpace(r.URL.Query().Get("group_id")); raw != "" {
+		groupID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || groupID < 0 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "group_id must be a non-negative integer")
+			return
+		}
+		if groupID == 0 {
+			where += " AND a.group_id IS NULL"
+		} else {
+			where += " AND a.group_id=?"
+			args = append(args, groupID)
+		}
+	}
+	if keyword := strings.TrimSpace(r.URL.Query().Get("q")); keyword != "" {
+		if len(keyword) > 120 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "q is limited to 120 characters")
+			return
+		}
+		where += " AND a.name LIKE ?"
+		args = append(args, "%"+keyword+"%")
+	}
 	var total int
-	if err = s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM media_assets WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL`, identity.TenantID, storeID).Scan(&total); err != nil {
+	if err = s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM media_assets a`+where, args...).Scan(&total); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`, identity.TenantID, storeID, size, offset)
+	queryArgs := append(append([]any{}, args...), size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT a.id,a.name,a.kind,a.url,a.storage_key,a.mime_type,a.width,a.height,a.size_bytes,a.status,DATE_FORMAT(a.created_at,'%Y-%m-%dT%H:%i:%sZ'),a.group_id,COALESCE(g.name,'')
+		FROM media_assets a LEFT JOIN media_asset_groups g ON g.id=a.group_id AND g.tenant_id=a.tenant_id AND g.store_id=a.store_id AND g.deleted_at IS NULL`+where+` ORDER BY a.id DESC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1116,11 +1173,19 @@ func (s *Server) listMediaAssets(w http.ResponseWriter, r *http.Request) {
 	items := []mediaAssetView{}
 	for rows.Next() {
 		var item mediaAssetView
-		if err = rows.Scan(&item.ID, &item.Name, &item.Kind, &item.URL, &item.StorageKey, &item.MimeType, &item.Width, &item.Height, &item.SizeBytes, &item.Status, &item.CreatedAt); err != nil {
+		var groupID sql.NullInt64
+		if err = rows.Scan(&item.ID, &item.Name, &item.Kind, &item.URL, &item.StorageKey, &item.MimeType, &item.Width, &item.Height, &item.SizeBytes, &item.Status, &item.CreatedAt, &groupID, &item.GroupName); err != nil {
 			handleSQLError(w, err)
 			return
 		}
+		if groupID.Valid {
+			item.GroupID = &groupID.Int64
+		}
 		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		handleSQLError(w, err)
+		return
 	}
 	writeList(w, http.StatusOK, items, total, page, size)
 }
@@ -1140,14 +1205,49 @@ func (s *Server) createMediaAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, identity.UserID)
+	var groupID int64
+	if input.GroupID != nil {
+		groupID = *input.GroupID
+		if groupID < 0 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "group_id must be non-negative")
+			return
+		}
+	}
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = validateMediaGroupID(r.Context(), tx, identity.TenantID, storeID, groupID); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_MEDIA_GROUP", err.Error())
+		return
+	}
+	var result sql.Result
+	if groupID > 0 {
+		result, err = tx.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,group_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, groupID, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, identity.UserID)
+	} else {
+		result, err = tx.ExecContext(r.Context(), `INSERT INTO media_assets(tenant_id,store_id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,created_by) VALUES(?,?,?,'IMAGE',?,?,?,?,?,?,'ACTIVE',?)`, identity.TenantID, storeID, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, identity.UserID)
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	id, _ := result.LastInsertId()
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	s.audit(r.Context(), identity, "media_asset.create", "media_asset", int64String(id), map[string]any{"name": input.Name}, r)
-	writeData(w, http.StatusCreated, mediaAssetView{ID: id, Name: strings.TrimSpace(input.Name), Kind: "IMAGE", URL: strings.TrimSpace(input.URL), StorageKey: strings.TrimSpace(input.StorageKey), MimeType: strings.TrimSpace(input.MimeType), Width: input.Width, Height: input.Height, SizeBytes: input.SizeBytes, Status: "ACTIVE"})
+	view := mediaAssetView{ID: id, Name: strings.TrimSpace(input.Name), Kind: "IMAGE", URL: strings.TrimSpace(input.URL), StorageKey: strings.TrimSpace(input.StorageKey), MimeType: strings.TrimSpace(input.MimeType), Width: input.Width, Height: input.Height, SizeBytes: input.SizeBytes, Status: "ACTIVE"}
+	if groupID > 0 {
+		view.GroupID = &groupID
+	}
+	writeData(w, http.StatusCreated, view)
 }
 
 func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
@@ -1165,8 +1265,28 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if input.GroupID != nil {
+		if *input.GroupID < 0 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "group_id must be non-negative")
+			return
+		}
+		if err = validateMediaGroupID(r.Context(), tx, identity.TenantID, storeID, *input.GroupID); err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_MEDIA_GROUP", err.Error())
+			return
+		}
+	}
 	var existing mediaAssetView
-	err = s.DB.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID).
+	err = tx.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).
 		Scan(&existing.ID, &existing.Name, &existing.Kind, &existing.URL, &existing.StorageKey, &existing.MimeType, &existing.Width, &existing.Height, &existing.SizeBytes, &existing.Status, &existing.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)
@@ -1178,7 +1298,18 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		name := strings.TrimSpace(input.Name)
-		result, updateErr := s.DB.ExecContext(r.Context(), `UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+		var result sql.Result
+		var updateErr error
+		if input.GroupID == nil {
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+		} else if *input.GroupID == 0 {
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+			existing.GroupID = nil
+			existing.GroupName = ""
+		} else {
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, *input.GroupID, id, identity.TenantID, storeID)
+			existing.GroupID = input.GroupID
+		}
 		if updateErr != nil {
 			handleSQLError(w, updateErr)
 			return
@@ -1188,16 +1319,45 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
 			return
 		}
+		if err = tx.Commit(); err != nil {
+			handleSQLError(w, err)
+			return
+		}
 		existing.Name = name
 		s.audit(r.Context(), identity, "media_asset.update", "media_asset", int64String(id), map[string]any{"name": name}, r)
 		writeData(w, http.StatusOK, existing)
 		return
 	}
+	if strings.TrimSpace(input.URL) == "" {
+		input.URL = existing.URL
+	}
+	if strings.TrimSpace(input.StorageKey) == "" {
+		input.StorageKey = existing.StorageKey
+	}
+	if strings.TrimSpace(input.MimeType) == "" {
+		input.MimeType = existing.MimeType
+	}
+	if input.Width == 0 {
+		input.Width = existing.Width
+	}
+	if input.Height == 0 {
+		input.Height = existing.Height
+	}
+	if input.SizeBytes == 0 {
+		input.SizeBytes = existing.SizeBytes
+	}
 	if err = validateMediaAssetInput(input); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
+	var result sql.Result
+	if input.GroupID == nil {
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
+	} else if *input.GroupID == 0 {
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
+	} else {
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, *input.GroupID, id, identity.TenantID, storeID)
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1207,8 +1367,16 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
 		return
 	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	s.audit(r.Context(), identity, "media_asset.update", "media_asset", int64String(id), map[string]any{"name": input.Name}, r)
-	writeData(w, http.StatusOK, mediaAssetView{ID: id, Name: strings.TrimSpace(input.Name), Kind: "IMAGE", URL: strings.TrimSpace(input.URL), StorageKey: strings.TrimSpace(input.StorageKey), MimeType: strings.TrimSpace(input.MimeType), Width: input.Width, Height: input.Height, SizeBytes: input.SizeBytes, Status: "ACTIVE"})
+	view := mediaAssetView{ID: id, Name: strings.TrimSpace(input.Name), Kind: "IMAGE", URL: strings.TrimSpace(input.URL), StorageKey: strings.TrimSpace(input.StorageKey), MimeType: strings.TrimSpace(input.MimeType), Width: input.Width, Height: input.Height, SizeBytes: input.SizeBytes, Status: "ACTIVE"}
+	if input.GroupID != nil && *input.GroupID > 0 {
+		view.GroupID = input.GroupID
+	}
+	writeData(w, http.StatusOK, view)
 }
 
 func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
@@ -1232,8 +1400,8 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	var assetURL string
-	if err = tx.QueryRowContext(r.Context(), `SELECT url FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).Scan(&assetURL); err != nil {
+	var assetURL, storageKey string
+	if err = tx.QueryRowContext(r.Context(), `SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).Scan(&assetURL, &storageKey); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -1286,6 +1454,15 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	versionRows.Close()
+	referenceKind, err := currentMediaAssetReference(r.Context(), tx, identity.TenantID, storeID, id, assetURL)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if referenceKind != "" {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from "+referenceKind+" before deleting it")
+		return
+	}
 	result, err := tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -1300,8 +1477,37 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	if isLocalMediaStorageKey(storageKey) {
+		if target, pathErr := localMediaPath(s.Config.MediaStorageDir, storageKey); pathErr != nil {
+			s.Logger.Error("resolve deleted media path", "error", pathErr, "asset_id", id, "storage_key", storageKey)
+		} else if removeErr := os.Remove(target); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			s.Logger.Error("remove deleted media file", "error", removeErr, "asset_id", id, "storage_key", storageKey)
+		}
+	}
 	s.audit(r.Context(), identity, "media_asset.delete", "media_asset", int64String(id), nil, r)
 	writeData(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func currentMediaAssetReference(ctx context.Context, queryer queryRower, tenantID, storeID, assetID int64, assetURL string) (string, error) {
+	var referenceKind string
+	err := queryer.QueryRowContext(ctx, `SELECT CASE
+		WHEN EXISTS(SELECT 1 FROM product_images pi JOIN products p ON p.id=pi.product_id AND p.tenant_id=pi.tenant_id AND p.store_id=pi.store_id WHERE pi.tenant_id=? AND pi.store_id=? AND (pi.media_asset_id=? OR pi.url=?) AND pi.deleted_at IS NULL AND p.deleted_at IS NULL) THEN 'product images'
+		WHEN EXISTS(SELECT 1 FROM products p WHERE p.tenant_id=? AND p.store_id=? AND p.image_url=? AND p.deleted_at IS NULL) THEN 'product images'
+		WHEN EXISTS(SELECT 1 FROM marketing_placements p WHERE p.tenant_id=? AND p.store_id=? AND (p.image_asset_id=? OR p.image_url=?) AND p.deleted_at IS NULL) THEN 'marketing placements'
+		WHEN EXISTS(SELECT 1 FROM stores st WHERE st.tenant_id=? AND st.id=? AND (st.logo_url=? OR st.banner_url=?) AND st.deleted_at IS NULL) THEN 'store branding'
+		WHEN EXISTS(SELECT 1 FROM membership_settings ms WHERE ms.tenant_id=? AND ms.card_image_url=?) THEN 'membership settings'
+		WHEN EXISTS(SELECT 1 FROM modifier_items mi WHERE mi.tenant_id=? AND mi.store_id=? AND mi.image_url=? AND mi.deleted_at IS NULL) THEN 'modifier items'
+		WHEN EXISTS(SELECT 1 FROM categories c WHERE c.tenant_id=? AND c.store_id=? AND c.icon_url=? AND c.deleted_at IS NULL) THEN 'categories'
+		ELSE '' END`,
+		tenantID, storeID, assetID, assetURL,
+		tenantID, storeID, assetURL,
+		tenantID, storeID, assetID, assetURL,
+		tenantID, storeID, assetURL, assetURL,
+		tenantID, assetURL,
+		tenantID, storeID, assetURL,
+		tenantID, storeID, assetURL,
+	).Scan(&referenceKind)
+	return referenceKind, err
 }
 
 func validateMediaAssetInput(input mediaAssetInput) error {

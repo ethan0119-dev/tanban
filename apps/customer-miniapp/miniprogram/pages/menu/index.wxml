@@ -38,6 +38,11 @@
   <view class="sku-picker" catchtap="noop">
     <view class="sku-picker-title"><view><text>选择规格与口味</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>
     <scroll-view class="configuration-scroll" scroll-y enhanced>
+      <swiper class="product-gallery" wx:if="{{selectingProduct.images && selectingProduct.images.length}}" indicator-dots="{{selectingProduct.images.length > 1}}" circular="{{selectingProduct.images.length > 1}}" autoplay="{{false}}">
+        <swiper-item wx:for="{{selectingProduct.images}}" wx:key="url">
+          <image src="{{item.url}}" mode="aspectFill" aria-label="{{selectingProduct.name}}商品图片" />
+        </swiper-item>
+      </swiper>
       <view class="configuration-group" wx:if="{{selectableSkus.length > 1}}">
         <view class="configuration-heading"><text>规格</text><text>请选择 1 项</text></view>
         <view class="configuration-options">

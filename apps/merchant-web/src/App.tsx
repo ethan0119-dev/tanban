@@ -25,6 +25,7 @@ import { CouponsPage } from './pages/CouponsPage';
 import { LotteryPage } from './pages/LotteryPage';
 import { MarketingAppsPage } from './pages/MarketingAppsPage';
 import { PopupAdsPage } from './pages/PopupAdsPage';
+import { MediaLibraryPage } from './pages/MediaLibraryPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -56,6 +57,7 @@ function AppRoutes() {
         <Route path="/print-jobs" element={<PrintersPage jobsOnly />} />
         <Route path="/products" element={<ManagementOnly><ProductsPage /></ManagementOnly>} />
         <Route path="/catalog" element={<ManagementOnly><CatalogConfigPage /></ManagementOnly>} />
+        <Route path="/media-library" element={<ManagementOnly><MediaLibraryPage /></ManagementOnly>} />
         <Route path="/customers" element={<ManagementOnly><CustomersPage /></ManagementOnly>} />
         <Route path="/membership" element={<ManagementOnly><MembershipPage /></ManagementOnly>} />
         <Route path="/stored-value" element={<ManagementOnly><StoredValuePage /></ManagementOnly>} />

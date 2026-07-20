@@ -282,6 +282,11 @@ export interface Product {
   name: string;
   description?: string;
   imageUrl?: string;
+  images?: Array<{
+    url: string;
+    isPrimary: boolean;
+    sortOrder: number;
+  }>;
   price: number;
   stock: number;
   soldOut: boolean;

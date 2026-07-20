@@ -45,6 +45,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   cursor: pointer;
   text-align: left;
 }
+.tanban-brand-image { width: 90px; height: auto; display: block; object-fit: contain; }
+.ant-layout-sider-collapsed .sider-brand { justify-content: center; padding-inline: 7px; }
+.ant-layout-sider-collapsed .tanban-brand-image { width: 58px; }
 .brand-word { white-space: nowrap; }
 .brand-word strong, .brand-word small { display: block; }
 .brand-word strong { font-size: 20px; letter-spacing: 2px; }
@@ -390,7 +393,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .story-points span::before { content: ''; position: absolute; top: 50%; left: 0; width: 6px; height: 6px; border-radius: 50%; background: #e7b78f; }
 .login-panel { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 50px 7vw 25px; }
 .login-card { width: 100%; max-width: 420px; }
-.login-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 48px; }
+.login-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 40px; }
+.login-brand img { width: 146px; height: auto; display: block; }
 .login-brand strong, .login-brand small { display: block; }
 .login-brand strong { color: #392a23; font-size: 25px; }
 .login-brand small { color: #a0938b; font-size: 9px; letter-spacing: 2px; }

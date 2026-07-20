@@ -368,12 +368,19 @@ function normalizeAsset(payload: unknown): MediaAsset {
     name: stringValue(value.name) || '未命名素材',
     url: stringValue(value.url),
     type: stringValue(value.kind, value.type).toUpperCase() === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+    groupId: (value.group_id ?? value.groupId) as string | number | undefined,
+    groupName: stringValue(value.group_name, value.groupName),
+    storageKey: stringValue(value.storageKey, value.storage_key),
+    mimeType: stringValue(value.mimeType, value.mime_type),
+    width: numberValue(0, value.width),
+    height: numberValue(0, value.height),
+    sizeBytes: numberValue(0, value.sizeBytes, value.size_bytes),
     createdAt: stringValue(value.createdAt, value.created_at),
   };
 }
 
-function assetPayload(input: Pick<MediaAsset, 'name' | 'url' | 'type'>) {
-  return { name: input.name, url: input.url, storageKey: '', mimeType: '', width: 0, height: 0, sizeBytes: 0 };
+function assetPayload(input: Pick<MediaAsset, 'name' | 'url' | 'type'> & Partial<MediaAsset>) {
+  return { name: input.name, url: input.url, storageKey: input.storageKey || '', mimeType: input.mimeType || '', width: input.width || 0, height: input.height || 0, sizeBytes: input.sizeBytes || 0, group_id: input.groupId ? Number(input.groupId) : 0 };
 }
 
 export const decorationApi = {
@@ -410,7 +417,7 @@ export const decorationApi = {
     form.append('name', name);
     return normalizeAsset(await api.postForm('/merchant/media-assets/upload', form));
   },
-  async updateAsset(id: string | number, input: Pick<MediaAsset, 'name' | 'url' | 'type'>): Promise<MediaAsset> {
+  async updateAsset(id: string | number, input: MediaAsset): Promise<MediaAsset> {
     return normalizeAsset(await api.put(`/merchant/media-assets/${encodeURIComponent(String(id))}`, assetPayload(input)));
   },
   deleteAsset(id: string | number): Promise<unknown> {

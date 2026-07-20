@@ -71,7 +71,128 @@ paths:
     post:
       summary: 创建商品及 SKU
       security: [{bearerAuth: []}]
-      responses: {'201': {description: Created product}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductInput'}
+      responses: {'200': {description: Created product}}
+  /merchant/products/{productID}:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 商品详情（含 SKU 与最多四张商品图）
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Product detail}}
+    put:
+      summary: 更新商品、SKU 与商品图片
+      description: images 缺省时兼容旧版 image_url；显式传 images 时必须最多四张且恰好一张主图。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductInput'}
+      responses: {'200': {description: Updated product}}
+    delete:
+      summary: 软删除商品、SKU 与商品图片关系
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Deleted}}
+  /merchant/products/{productID}/actions:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 商品上下架、推荐、复制与库存快捷操作
+      description: COPY 会复制 SKU、库存、商品图、规格选项、加料组和商品资源绑定；副本默认下架且不推荐。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductActionInput'}
+      responses:
+        '200': {description: 'Product after action, or copied product'}
+        '400': {description: Invalid action or stock}
+  /merchant/products/{productID}/statistics:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+      - in: query
+        name: from
+        schema: {type: string, format: date-time}
+      - in: query
+        name: to
+        schema: {type: string, format: date-time}
+    get:
+      summary: 商品销售统计
+      description: 只统计发生过成功支付的订单；毛销售额按订单商品小计计算，不扣退款，metric_scope 固定为 PAID_ORDER_GROSS_BEFORE_REFUNDS。
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Product gross sales statistics}}
+  /merchant/media-groups:
+    get:
+      summary: 当前商户门店图片分组
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Media group list}}
+    post:
+      summary: 创建图片分组
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaGroupInput'}
+      responses: {'201': {description: Created media group}}
+  /merchant/media-groups/{groupID}:
+    parameters:
+      - in: path
+        name: groupID
+        required: true
+        schema: {type: integer, format: int64}
+    put:
+      summary: 修改图片分组名称和排序
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaGroupInput'}
+      responses: {'200': {description: Updated media group}}
+    delete:
+      summary: 删除图片分组并将组内图片移至未分组
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Deleted media group}}
+  /merchant/media-assets:
+    get:
+      summary: 分页查询当前商户门店图片库
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: group_id
+          schema: {type: integer, format: int64, minimum: 0}
+          description: 0 表示未分组；不传表示全部。
+        - in: query
+          name: q
+          schema: {type: string, maxLength: 120}
+      responses: {'200': {description: Paginated media assets}}
+    post:
+      summary: 登记一个外部 HTTPS 图片素材
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaAssetInput'}
+      responses: {'201': {description: Created media asset}}
   /merchant/media-assets/upload:
     post:
       summary: 上传商户装修图片
@@ -87,6 +208,7 @@ paths:
               properties:
                 file: {type: string, format: binary}
                 name: {type: string, maxLength: 120}
+                group_id: {type: integer, format: int64, minimum: 0}
       responses:
         '201':
           description: Created media asset
@@ -99,6 +221,29 @@ paths:
         '400': {description: Invalid multipart form or name}
         '413': {description: File exceeds 8 MiB}
         '415': {description: Unsupported or invalid image}
+  /merchant/media-assets/{assetID}:
+    parameters:
+      - in: path
+        name: assetID
+        required: true
+        schema: {type: integer, format: int64}
+    put:
+      summary: 修改图片名称或分组
+      description: group_id=0 移至未分组；已上传图片的 URL 和文件元数据由服务端管理，不可替换。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaAssetInput'}
+      responses: {'200': {description: Updated media asset}}
+    delete:
+      summary: 删除未被引用的图片
+      description: 当前或历史装修、商品、营销弹窗、门店品牌、会员卡、加料或分类仍引用图片时返回 MEDIA_ASSET_IN_USE。
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Deleted media asset}
+        '409': {description: MEDIA_ASSET_IN_USE}
   /merchant/orders:
     get:
       summary: 商户订单列表
@@ -940,9 +1085,99 @@ components:
           minLength: 8
           maxLength: 128
           description: 可替代 Idempotency-Key 请求头。
+    ProductImageInput:
+      type: object
+      required: [is_primary]
+      properties:
+        media_asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 推荐传当前门店图片库素材 ID；服务端以素材真实 URL 为准。
+        url:
+          type: string
+          format: uri
+          maxLength: 1024
+          description: 未传 media_asset_id 时可使用 HTTPS 图片 URL。
+        is_primary: {type: boolean}
+        sort_order: {type: integer, format: int32, default: 0}
+    ProductSKUInput:
+      type: object
+      required: [name, price_cents, stock]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string, maxLength: 120}
+        attributes: {type: object, additionalProperties: true}
+        price_cents: {type: integer, format: int64, minimum: 0, maximum: 10000000}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+        stock: {type: integer, minimum: 0}
+        expected_stock:
+          type: integer
+          minimum: 0
+          description: 更新已有 SKU 时必填，用于乐观库存锁。
+        auto_sold_out: {type: boolean, default: true}
+        auto_refill: {type: boolean, default: false}
+        refill_stock: {type: integer, minimum: 0}
+    ProductInput:
+      type: object
+      required: [category_id, name, skus]
+      properties:
+        store_id: {type: integer, format: int64}
+        category_id: {type: integer, format: int64, minimum: 1}
+        name: {type: string, maxLength: 120}
+        description: {type: string, maxLength: 1000}
+        image_url:
+          type: string
+          description: 旧客户端主图字段；新客户端应使用 images。
+        recommended: {type: boolean, default: false}
+        images:
+          type: array
+          maxItems: 4
+          description: 显式传入时必须恰好一项 is_primary=true。
+          items: {$ref: '#/components/schemas/ProductImageInput'}
+        sort_order: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+        skus:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ProductSKUInput'}
+    ProductActionInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [ACTIVATE, DEACTIVATE, RECOMMEND, UNRECOMMEND, COPY, SOLD_OUT, RESTOCK_FULL]
+        stock:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          description: 仅 RESTOCK_FULL 使用；传入后所有 SKU 置为该库存。不传则每个 SKU 按 refill_stock 补满，refill_stock=0 时保持原库存。
+    MediaGroupInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, maxLength: 80}
+        sort_order: {type: integer, format: int32, default: 0}
+    MediaAssetInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, maxLength: 120}
+        url: {type: string, format: uri, maxLength: 1024}
+        storageKey: {type: string, maxLength: 512}
+        mimeType: {type: string, maxLength: 100}
+        width: {type: integer, minimum: 0, maximum: 20000}
+        height: {type: integer, minimum: 0, maximum: 20000}
+        sizeBytes: {type: integer, format: int64, minimum: 0}
+        group_id:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 0 表示未分组；更新时缺省表示不修改分组。
     MediaAsset:
       type: object
-      required: [id, name, kind, url, storageKey, mimeType, width, height, sizeBytes, status, createdAt]
+      required: [id, name, kind, url, storageKey, mimeType, width, height, sizeBytes, status, createdAt, group_name]
       properties:
         id: {type: integer, format: int64}
         name: {type: string}
@@ -955,3 +1190,5 @@ components:
         sizeBytes: {type: integer, format: int64}
         status: {type: string, enum: [ACTIVE]}
         createdAt: {type: string, format: date-time}
+        group_id: {type: integer, format: int64, nullable: true}
+        group_name: {type: string}

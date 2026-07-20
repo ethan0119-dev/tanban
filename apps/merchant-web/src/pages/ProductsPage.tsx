@@ -1,11 +1,20 @@
+/* eslint-disable @next/next/no-img-element -- product media is rendered by the Vite merchant application */
 import {
   AppstoreAddOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   InboxOutlined,
+  MoreOutlined,
+  PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  StarFilled,
+  StarOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
@@ -14,6 +23,7 @@ import {
   Col,
   Divider,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -33,16 +43,21 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
+import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { PageHeading } from '../components/PageHeading';
-import type { Category, Product, Sku } from '../types';
+import type { MediaAsset } from '../features/media/model';
+import type { Category, Product, ProductImage, Sku } from '../types';
 import { yuan } from '../utils/format';
+import './products.css';
 
 interface ProductFormValues {
   name: string;
   categoryId: string | number;
   image?: string;
+  images: ProductImage[];
   description?: string;
   enabled: boolean;
+  recommended: boolean;
   autoRestock: boolean;
   dailyStock?: number;
   skus: Sku[];
@@ -55,6 +70,18 @@ interface ProductFormValues {
   }>;
   modifierGroupIds: number[];
   resourceIds: number[];
+}
+
+type ProductAction = 'ACTIVATE' | 'DEACTIVATE' | 'RECOMMEND' | 'UNRECOMMEND' | 'COPY' | 'SOLD_OUT' | 'RESTOCK_FULL';
+
+interface ProductStatistics {
+  productId: string | number;
+  paidOrderCount: number;
+  salesCount: number;
+  grossSalesCents: number;
+  from?: string;
+  to?: string;
+  metricScope?: string;
 }
 
 interface ModifierGroupOption {
@@ -94,7 +121,7 @@ function normalizeCategory(value: Category): Category {
   };
 }
 
-function normalizeProduct(value: Product): Product {
+export function normalizeProduct(value: Product): Product {
   const raw = value as unknown as Record<string, unknown>;
   const rawSkus = (raw.skus ?? []) as Array<Record<string, unknown>>;
   const skus: Sku[] = rawSkus.map((sku) => ({
@@ -106,12 +133,25 @@ function normalizeProduct(value: Product): Product {
     originalStock: Number(sku.refill_stock ?? sku.stock ?? 0),
     attributes: (sku.attributes ?? {}) as Record<string, string>,
   }));
+  const rawImages = (raw.images ?? []) as Array<Record<string, unknown>>;
+  const images: ProductImage[] = rawImages.map((image, index) => ({
+    id: image.id as string | number | undefined,
+    mediaAssetId: (image.media_asset_id ?? image.mediaAssetId) as string | number | undefined,
+    url: String(image.url ?? ''),
+    isPrimary: Boolean(image.is_primary ?? image.isPrimary),
+    sortOrder: Number(image.sort_order ?? image.sortOrder ?? index),
+  })).filter((image) => image.url).sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || left.sortOrder - right.sortOrder);
+  const fallbackImage = value.image ?? String(raw.image_url ?? '');
+  if (!images.length && fallbackImage) images.push({ url: fallbackImage, isPrimary: true, sortOrder: 0 });
   return {
     ...value,
     categoryId: value.categoryId ?? (raw.category_id as string | number),
-    image: value.image ?? String(raw.image_url ?? ''),
+    image: images.find((image) => image.isPrimary)?.url || images[0]?.url || fallbackImage,
+    images,
     description: value.description ?? String(raw.description ?? ''),
     enabled: value.enabled ?? String(raw.status ?? 'ACTIVE') === 'ACTIVE',
+    recommended: Boolean(value.recommended ?? raw.recommended),
+    salesCount: Number(value.salesCount ?? raw.sales_count ?? 0),
     // The database shape is retained for forward compatibility, but no daily
     // idempotent refill job exists yet. Never present a stored flag as active.
     autoRestock: false,
@@ -122,12 +162,20 @@ function normalizeProduct(value: Product): Product {
   };
 }
 
-function productPayload(values: ProductFormValues | Product, enabled = values.enabled) {
+export function productPayload(values: ProductFormValues | Product, enabled = values.enabled) {
+  const images = (values.images || []).slice(0, 4).map((image, index) => ({
+    media_asset_id: image.mediaAssetId ? Number(image.mediaAssetId) : undefined,
+    url: image.url,
+    is_primary: index === 0,
+    sort_order: index,
+  }));
   return {
     category_id: Number(values.categoryId),
     name: values.name,
     description: values.description ?? '',
-    image_url: values.image ?? '',
+    image_url: images[0]?.url ?? values.image ?? '',
+    images,
+    recommended: Boolean(values.recommended),
     sort_order: 0,
     status: enabled ? 'ACTIVE' : 'DISABLED',
     skus: values.skus.map((sku) => ({
@@ -158,6 +206,15 @@ export function ProductsPage() {
   const [configurationReady, setConfigurationReady] = useState(true);
   const [configurationLoadError, setConfigurationLoadError] = useState('');
   const [categoryModal, setCategoryModal] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<Array<string | number>>([]);
+  const [actionLoading, setActionLoading] = useState<string>('');
+  const [statisticsOpen, setStatisticsOpen] = useState(false);
+  const [statisticsLoading, setStatisticsLoading] = useState(false);
+  const [statisticsProduct, setStatisticsProduct] = useState<Product>();
+  const [statistics, setStatistics] = useState<ProductStatistics>();
+  const [restockProduct, setRestockProduct] = useState<Product>();
+  const [restockStock, setRestockStock] = useState<number>(50);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupOption[]>([]);
   const [catalogResources, setCatalogResources] = useState<CatalogResourceOption[]>([]);
   const [form] = Form.useForm<ProductFormValues>();
@@ -207,8 +264,10 @@ export function ProductsPage() {
       name: product.name,
       categoryId: product.categoryId,
       image: product.image,
+      images: product.images || [],
       description: product.description,
       enabled: product.enabled,
+      recommended: product.recommended ?? false,
       autoRestock: product.autoRestock ?? false,
       dailyStock: product.dailyStock,
       skus: product.skus?.length ? product.skus : [{ name: '默认规格', price: product.price, stock: product.stock }],
@@ -217,7 +276,9 @@ export function ProductsPage() {
       resourceIds: [],
     } : {
       enabled: true,
+      recommended: false,
       autoRestock: false,
+      images: [],
       skus: [{ name: '默认规格', price: 0, stock: 0 }],
       optionGroups: [],
       modifierGroupIds: [],
@@ -324,22 +385,98 @@ export function ProductsPage() {
   };
 
   const toggleProduct = async (product: Product, enabled: boolean) => {
+    const action: ProductAction = enabled ? 'ACTIVATE' : 'DEACTIVATE';
+    setActionLoading(`${product.id}:${action}`);
     try {
-      const updated = normalizeProduct(await api.put<Product>(`/merchant/products/${product.id}`, productPayload(product, enabled)));
-      setProducts((items) => items.map((item) => item.id === product.id ? updated : item));
+      await api.post(`/merchant/products/${product.id}/actions`, { action });
+      setProducts((items) => items.map((item) => item.id === product.id ? { ...item, enabled } : item));
       messageApi.success(enabled ? '商品已上架' : '商品已下架');
     } catch (error) {
       messageApi.error(errorMessage(error));
+    } finally {
+      setActionLoading('');
     }
   };
 
   const deleteProduct = async (product: Product) => {
+    setActionLoading(`${product.id}:DELETE`);
     try {
       await api.delete(`/merchant/products/${product.id}`);
       setProducts((items) => items.filter((item) => item.id !== product.id));
+      setSelectedProductIds((items) => items.filter((id) => String(id) !== String(product.id)));
       messageApi.success('商品已删除');
     } catch (error) {
       messageApi.error(errorMessage(error));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const runProductAction = async (product: Product, action: ProductAction, stock?: number) => {
+    setActionLoading(`${product.id}:${action}`);
+    try {
+      await api.post(`/merchant/products/${product.id}/actions`, { action, ...(action === 'RESTOCK_FULL' && stock !== undefined ? { stock } : {}) });
+      if (action === 'RECOMMEND' || action === 'UNRECOMMEND') {
+        setProducts((items) => items.map((item) => item.id === product.id ? { ...item, recommended: action === 'RECOMMEND' } : item));
+      } else {
+        await load();
+      }
+      const successMessages: Record<ProductAction, string> = {
+        ACTIVATE: '商品已上架',
+        DEACTIVATE: '商品已下架',
+        RECOMMEND: '商品已推荐',
+        UNRECOMMEND: '已取消推荐',
+        COPY: '商品已复制为新的下架商品',
+        SOLD_OUT: '商品库存已沽清',
+        RESTOCK_FULL: '商品库存已置满',
+      };
+      messageApi.success(successMessages[action]);
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const runBatchAction = async (action: ProductAction | 'DELETE') => {
+    const targets = products.filter((product) => selectedProductIds.some((id) => String(id) === String(product.id)));
+    if (!targets.length) return;
+    setActionLoading(`BATCH:${action}`);
+    try {
+      await Promise.all(targets.map((product) => action === 'DELETE'
+        ? api.delete(`/merchant/products/${product.id}`)
+        : api.post(`/merchant/products/${product.id}/actions`, { action })));
+      setSelectedProductIds([]);
+      await load();
+      messageApi.success(`已处理 ${targets.length} 个商品`);
+    } catch (error) {
+      messageApi.error(`批量操作未全部完成，请刷新核对：${errorMessage(error)}`);
+      await load();
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const openStatistics = async (product: Product) => {
+    setStatisticsProduct(product);
+    setStatistics(undefined);
+    setStatisticsOpen(true);
+    setStatisticsLoading(true);
+    try {
+      const payload = await api.get<Record<string, unknown>>(`/merchant/products/${product.id}/statistics`);
+      setStatistics({
+        productId: (payload.product_id ?? payload.productId ?? product.id) as string | number,
+        paidOrderCount: Number(payload.paid_order_count ?? payload.paidOrderCount ?? 0),
+        salesCount: Number(payload.sales_count ?? payload.salesCount ?? 0),
+        grossSalesCents: Number(payload.gross_sales_cents ?? payload.grossSalesCents ?? 0),
+        from: String(payload.from ?? ''),
+        to: String(payload.to ?? ''),
+        metricScope: String(payload.metric_scope ?? payload.metricScope ?? ''),
+      });
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setStatisticsLoading(false);
     }
   };
 
@@ -363,8 +500,8 @@ export function ProductsPage() {
     <div className="page-shell">
       {contextHolder}
       <PageHeading
-        title="商品与库存"
-        description="管理商品、规格库存、点单属性、加料组以及商品扩展标签"
+        title="商品管理"
+        description="维护商品图片、规格库存、上下架与推荐状态，并查看真实成交统计"
         extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openProduct()}>新增商品</Button></Space>}
       />
       <Row gutter={[16, 16]} align="stretch">
@@ -402,20 +539,38 @@ export function ProductsPage() {
               />
               <Typography.Text type="secondary">共 {visibleProducts.length} 个商品</Typography.Text>
             </div>
+            {selectedProductIds.length > 0 && (
+              <div className="product-batch-bar">
+                <Typography.Text strong>已选择 {selectedProductIds.length} 个商品</Typography.Text>
+                <Space wrap>
+                  <Button size="small" loading={actionLoading === 'BATCH:ACTIVATE'} onClick={() => void runBatchAction('ACTIVATE')}>批量上架</Button>
+                  <Button size="small" loading={actionLoading === 'BATCH:DEACTIVATE'} onClick={() => void runBatchAction('DEACTIVATE')}>批量下架</Button>
+                  <Button size="small" icon={<StarOutlined />} onClick={() => void runBatchAction('RECOMMEND')}>批量推荐</Button>
+                  <Button size="small" onClick={() => void runBatchAction('UNRECOMMEND')}>取消推荐</Button>
+                  <Popconfirm title={`删除所选 ${selectedProductIds.length} 个商品？`} description="删除后不可恢复。" onConfirm={() => void runBatchAction('DELETE')}><Button size="small" danger>批量删除</Button></Popconfirm>
+                  <Button size="small" type="text" onClick={() => setSelectedProductIds([])}>取消选择</Button>
+                </Space>
+              </div>
+            )}
             <Table<Product>
               rowKey="id"
+              rowSelection={{ selectedRowKeys: selectedProductIds, onChange: (keys) => setSelectedProductIds(keys as Array<string | number>) }}
               loading={loading}
               dataSource={visibleProducts}
               pagination={{ pageSize: 12, showTotal: (total) => `共 ${total} 个` }}
-              scroll={{ x: 920 }}
+              scroll={{ x: 1220 }}
               locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有商品，先创建一个吧" /> }}
               columns={[
                 {
-                  title: '商品', key: 'product', width: 260,
+                  title: '商品', key: 'product', width: 300,
                   render: (_, product) => (
                     <Space>
-                      <Avatar shape="square" size={52} src={product.image} icon={<InboxOutlined />} />
-                      <div><Typography.Text strong>{product.name}</Typography.Text><div><Typography.Text type="secondary">{product.categoryName || categories.find((item) => String(item.id) === String(product.categoryId))?.name || '未分类'}</Typography.Text></div></div>
+                      <Avatar shape="square" size={58} src={product.image} icon={<InboxOutlined />} />
+                      <div>
+                        <Space size={6}><Typography.Text strong>{product.name}</Typography.Text>{product.recommended && <Tag color="volcano" icon={<StarFilled />}>推荐</Tag>}</Space>
+                        <div><Typography.Text type="secondary">{product.categoryName || categories.find((item) => String(item.id) === String(product.categoryId))?.name || '未分类'} · {product.images?.length || 0} 张图</Typography.Text></div>
+                        <div><Typography.Text type="secondary">销量 {product.salesCount || 0}</Typography.Text></div>
+                      </div>
                     </Space>
                   ),
                 },
@@ -425,10 +580,33 @@ export function ProductsPage() {
                   title: '库存', dataIndex: 'stock', width: 130,
                   render: (value: number) => <Space><strong className={value <= 5 ? 'stock-low' : ''}>{value}</strong>{value <= 0 ? <Tag color="error">售罄</Tag> : null}</Space>,
                 },
-                { title: '在售', dataIndex: 'enabled', width: 90, render: (value: boolean, product) => <Switch checked={value} onChange={(checked) => void toggleProduct(product, checked)} /> },
+                { title: '在售', dataIndex: 'enabled', width: 90, render: (value: boolean, product) => <Switch loading={actionLoading === `${product.id}:${value ? 'DEACTIVATE' : 'ACTIVATE'}`} checked={value} onChange={(checked) => void toggleProduct(product, checked)} /> },
                 {
-                  title: '操作', key: 'action', width: 130, fixed: 'right',
-                  render: (_, product) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openProduct(product)}>编辑</Button><Popconfirm title="确认删除该商品？" onConfirm={() => void deleteProduct(product)}><Button type="link" danger icon={<DeleteOutlined />} /></Popconfirm></Space>,
+                  title: '操作', key: 'action', width: 340, fixed: 'right',
+                  render: (_, product) => (
+                    <Space size={[2, 2]} wrap className="product-row-actions">
+                      <Button type="link" icon={<EditOutlined />} onClick={() => openProduct(product)}>编辑</Button>
+                      <Button type="link" icon={product.recommended ? <StarFilled /> : <StarOutlined />} loading={actionLoading === `${product.id}:${product.recommended ? 'UNRECOMMEND' : 'RECOMMEND'}`} onClick={() => void runProductAction(product, product.recommended ? 'UNRECOMMEND' : 'RECOMMEND')}>{product.recommended ? '取消推荐' : '推荐'}</Button>
+                      <Button type="link" icon={<BarChartOutlined />} onClick={() => void openStatistics(product)}>商品统计</Button>
+                      <Button type="link" icon={<CopyOutlined />} loading={actionLoading === `${product.id}:COPY`} onClick={() => void runProductAction(product, 'COPY')}>复制</Button>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            { key: 'sold-out', label: '沽清库存', icon: <StopOutlined />, disabled: product.stock <= 0 },
+                            { key: 'restock', label: '置满库存', icon: <CheckCircleOutlined /> },
+                            { type: 'divider' },
+                            { key: 'delete', label: '删除商品', icon: <DeleteOutlined />, danger: true },
+                          ],
+                          onClick: ({ key, domEvent }) => {
+                            domEvent.stopPropagation();
+                            if (key === 'sold-out') void runProductAction(product, 'SOLD_OUT');
+                            if (key === 'restock') { setRestockProduct(product); setRestockStock(product.dailyStock || Math.max(50, ...product.skus.map((sku) => sku.stock))); }
+                            if (key === 'delete') Modal.confirm({ title: `删除“${product.name}”？`, content: '删除后不可恢复，历史订单中的商品快照不受影响。', okButtonProps: { danger: true }, okText: '确认删除', onOk: () => deleteProduct(product) });
+                          },
+                        }}
+                      ><Button type="link" icon={<MoreOutlined />}>更多</Button></Dropdown>
+                    </Space>
+                  ),
                 },
               ]}
             />
@@ -462,7 +640,15 @@ export function ProductsPage() {
             <Col span={14}><Form.Item label="商品名称" name="name" rules={[{ required: true, message: '请输入商品名称' }]}><Input placeholder="例如：燕麦拿铁" /></Form.Item></Col>
             <Col span={10}><Form.Item label="商品分类" name="categoryId" rules={[{ required: true, message: '请选择分类' }]}><Select options={categories.map((item) => ({ label: item.name, value: item.id }))} placeholder="选择分类" /></Form.Item></Col>
           </Row>
-          <Form.Item label="商品图片 URL" name="image"><Input placeholder="可填写对象存储中的图片地址" /></Form.Item>
+          <Form.Item name="recommended" hidden valuePropName="checked"><Switch /></Form.Item>
+          <Form.Item
+            label="商品图片"
+            name="images"
+            rules={[{ validator: (_, value: ProductImage[]) => !value?.length || (value.length <= 4 && value.filter((item) => item.isPrimary).length === 1) ? Promise.resolve() : Promise.reject(new Error('商品最多 4 张图片，并且需要 1 张主图')) }]}
+            extra="最多 4 张：第 1 张为商品主图，其余为详情辅图；图片来自当前商户图片库，可在装修和营销中复用。"
+          >
+            <ProductImagesField onOpenLibrary={() => setImagePickerOpen(true)} />
+          </Form.Item>
           <Form.Item label="商品描述" name="description"><Input.TextArea rows={3} maxLength={200} showCount placeholder="介绍口味、原料或推荐理由" /></Form.Item>
           <Row gutter={16}>
             <Col span={12}><Form.Item label="立即上架" name="enabled" valuePropName="checked"><Switch /></Form.Item></Col>
@@ -544,6 +730,83 @@ export function ProductsPage() {
           <Form.Item label="排序" name="sort"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
         </Form>
       </Modal>
+
+      <MediaLibraryModal
+        open={imagePickerOpen}
+        title="选择商品图片"
+        multiple
+        maxSelection={Math.max(1, 4 - ((form.getFieldValue('images') as ProductImage[] | undefined)?.length || 0))}
+        excludeUrls={((form.getFieldValue('images') as ProductImage[] | undefined) || []).map((item) => item.url)}
+        onCancel={() => setImagePickerOpen(false)}
+        onConfirm={(assets) => {
+          const current = (form.getFieldValue('images') as ProductImage[] | undefined) || [];
+          const additions = assets.map((asset) => mediaAssetToProductImage(asset));
+          const next = [...current, ...additions].slice(0, 4).map((image, index) => ({ ...image, isPrimary: index === 0, sortOrder: index }));
+          form.setFieldValue('images', next);
+          setImagePickerOpen(false);
+        }}
+      />
+
+      <Modal
+        title={restockProduct ? `置满库存 · ${restockProduct.name}` : '置满库存'}
+        open={Boolean(restockProduct)}
+        okText="确认置满"
+        confirmLoading={Boolean(restockProduct && actionLoading === `${restockProduct.id}:RESTOCK_FULL`)}
+        onCancel={() => setRestockProduct(undefined)}
+        onOk={async () => {
+          if (!restockProduct) return;
+          await runProductAction(restockProduct, 'RESTOCK_FULL', restockStock);
+          setRestockProduct(undefined);
+        }}
+      >
+        <Typography.Paragraph type="secondary">将该商品下所有规格的可售库存统一设为指定数量。库存为 0 时可用它恢复销售。</Typography.Paragraph>
+        <InputNumber min={0} max={999999} precision={0} addonAfter="每个规格" value={restockStock} onChange={(value) => setRestockStock(Number(value || 0))} style={{ width: '100%' }} />
+      </Modal>
+
+      <Modal title={`商品统计${statisticsProduct ? ` · ${statisticsProduct.name}` : ''}`} open={statisticsOpen} footer={<Button onClick={() => setStatisticsOpen(false)}>关闭</Button>} onCancel={() => setStatisticsOpen(false)}>
+        <Card loading={statisticsLoading} bordered={false} className="product-statistics-card">
+          {statistics ? <>
+            <Row gutter={[12, 16]}>
+              <Col span={8}><div className="product-statistic"><span>支付订单</span><strong>{statistics.paidOrderCount}</strong><small>笔</small></div></Col>
+              <Col span={8}><div className="product-statistic"><span>销售数量</span><strong>{statistics.salesCount}</strong><small>份</small></div></Col>
+              <Col span={8}><div className="product-statistic"><span>毛销售额</span><strong>{yuan(statistics.grossSalesCents / 100)}</strong></div></Col>
+            </Row>
+            <Divider />
+            <Typography.Paragraph type="secondary">统计口径：已支付订单中的商品毛销售，不扣除后续退款。{statistics.metricScope ? ` · ${statistics.metricScope}` : ''}</Typography.Paragraph>
+            {(statistics.from || statistics.to) && <Typography.Text type="secondary">区间：{formatDateTime(statistics.from)} 至 {formatDateTime(statistics.to)}</Typography.Text>}
+          </> : !statisticsLoading ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可展示的统计数据" /> : null}
+        </Card>
+      </Modal>
     </div>
   );
+}
+
+function ProductImagesField({ value = [], onChange, onOpenLibrary }: { value?: ProductImage[]; onChange?: (images: ProductImage[]) => void; onOpenLibrary: () => void }) {
+  const ordered = [...value].sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || left.sortOrder - right.sortOrder);
+  const emit = (images: ProductImage[]) => onChange?.(images.map((image, index) => ({ ...image, isPrimary: index === 0, sortOrder: index })));
+  return (
+    <div className="product-image-field">
+      {ordered.map((image, index) => (
+        <div className={`product-image-tile ${index === 0 ? 'primary' : ''}`} key={`${image.url}-${index}`}>
+          <img src={image.url} alt={index === 0 ? '商品主图' : `商品辅图 ${index}`} />
+          <span>{index === 0 ? '主图' : `辅图 ${index}`}</span>
+          <div className="product-image-actions">
+            {index > 0 && <Button size="small" type="text" onClick={() => emit([ordered[index], ...ordered.filter((_, itemIndex) => itemIndex !== index)])}>设为主图</Button>}
+            <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label="移除图片" onClick={() => emit(ordered.filter((_, itemIndex) => itemIndex !== index))} />
+          </div>
+        </div>
+      ))}
+      {ordered.length < 4 && <button type="button" className="product-image-add" onClick={onOpenLibrary}><PictureOutlined /><strong>从图片库选择</strong><small>还可添加 {4 - ordered.length} 张</small></button>}
+    </div>
+  );
+}
+
+function mediaAssetToProductImage(asset: MediaAsset): ProductImage {
+  return { mediaAssetId: asset.id, url: asset.url, isPrimary: false, sortOrder: 0 };
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '不限';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }

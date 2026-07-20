@@ -58,6 +58,8 @@
 .sku-option { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 14rpx 0 0; padding: 22rpx 24rpx; border: 2rpx solid rgba(120,120,120,.2); border-radius: 18rpx; background: var(--surface, white); font-size: 26rpx; }
 .sku-option text:last-child { color: var(--green); font-weight: 800; }
 .configuration-scroll { max-height: 56vh; }
+.product-gallery { width: 100%; height: 330rpx; margin-bottom: 22rpx; overflow: hidden; border-radius: 22rpx; background: var(--paper); }
+.product-gallery image { width: 100%; height: 100%; display: block; }
 .configuration-group { padding: 12rpx 0 22rpx; border-bottom: 1rpx solid rgba(120,120,120,.12); }
 .configuration-heading { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14rpx; }
 .configuration-heading text:first-child { color: var(--ink); font-size: 27rpx; font-weight: 800; }

@@ -65,7 +65,7 @@ export function AssetLibraryPanel(props: AssetLibraryPanelProps) {
                 />
                 <Button size="small" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(asset.url)}>复制</Button>
                 <Button size="small" icon={<EditOutlined />} onClick={() => props.onOpen(asset)} />
-                <Popconfirm title="删除这个素材？" description="已经写入装修配置的 URL 不会被自动移除。" onConfirm={() => void props.onDelete(asset)}>
+                <Popconfirm title="删除这个素材？" description="正在被商品、装修、营销或门店使用的图片不可删除，请先解除引用。" onConfirm={() => void props.onDelete(asset)}>
                   <Button size="small" danger icon={<DeleteOutlined />} />
                 </Popconfirm>
               </Space>

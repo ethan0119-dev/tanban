@@ -1,9 +1,9 @@
+/* eslint-disable @next/next/no-img-element -- this Vite app imports a fingerprinted local brand asset */
 import {
   AppstoreOutlined,
   BgColorsOutlined,
   BellOutlined,
   CarOutlined,
-  CoffeeOutlined,
   DashboardOutlined,
   LogoutOutlined,
   GiftOutlined,
@@ -21,6 +21,7 @@ import {
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import tanbanLogo from '../assets/brand/tanban-logo-web.png';
 import { useAuth } from '../auth/AuthContext';
 import { isMerchantStaff } from '../auth/permissions';
 import { initials } from '../utils/format';
@@ -51,6 +52,7 @@ const managementNavigationItems: MenuProps['items'] = [
     children: [
       { key: '/products', label: '商品管理' },
       { key: '/catalog', label: '商品配置中心' },
+      { key: '/media-library', label: '图片库' },
     ],
   },
   {
@@ -133,8 +135,7 @@ export function AppLayout() {
         }}
       >
         <button className="sider-brand" type="button" onClick={() => navigate('/dashboard')} aria-label="返回经营总览">
-          <span className="brand-logo"><CoffeeOutlined /></span>
-          {!collapsed && <span className="brand-word"><strong>摊伴</strong><small>TANBAN</small></span>}
+          <img className="tanban-brand-image" src={tanbanLogo} alt="摊伴 TANBAN" />
         </button>
         <Menu
           className="merchant-menu"

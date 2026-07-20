@@ -188,15 +188,26 @@ export interface Product {
   categoryId: Id;
   categoryName?: string;
   image?: string;
+  images?: ProductImage[];
   description?: string;
   price: number;
   stock: number;
   enabled: boolean;
+  recommended?: boolean;
+  salesCount?: number;
   soldOut?: boolean;
   autoRestock?: boolean;
   dailyStock?: number;
   skus: Sku[];
   createdAt?: string;
+}
+
+export interface ProductImage {
+  id?: Id;
+  mediaAssetId?: Id;
+  url: string;
+  isPrimary: boolean;
+  sortOrder: number;
 }
 
 export interface PaymentRecord {

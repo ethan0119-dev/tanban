@@ -273,7 +273,9 @@ export function DecorationPage() {
   const updateAsset = async (id: string | number, input: Pick<MediaAsset, 'name' | 'url' | 'type'>) => {
     setAssetSaving(true);
     try {
-      const updated = await decorationApi.updateAsset(id, input);
+      const source = assets.find((item) => String(item.id) === String(id));
+      if (!source) throw new Error('素材不存在，请刷新后重试');
+      const updated = await decorationApi.updateAsset(id, { ...source, ...input });
       setAssets((items) => items.map((item) => item.id === id ? updated : item));
       setAssetModalOpen(false);
       setEditingAsset(null);

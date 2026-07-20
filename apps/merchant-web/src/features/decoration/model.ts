@@ -127,6 +127,13 @@ export interface MediaAsset {
   name: string;
   url: string;
   type: 'IMAGE' | 'VIDEO';
+  groupId?: string | number;
+  groupName?: string;
+  storageKey?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
   createdAt?: string;
 }
 
