@@ -16,6 +16,11 @@ type TianQue struct {
 	NotifyURL  string
 }
 
+type WeChatMiniApp struct {
+	AppID     string
+	AppSecret string
+}
+
 type Config struct {
 	HTTPAddr              string
 	DatabaseDSN           string
@@ -36,6 +41,7 @@ type Config struct {
 	DemoMerchantUser      string
 	DemoMerchantPass      string
 	TianQue               TianQue
+	WeChatMiniApp         WeChatMiniApp
 }
 
 func Load() (Config, error) {
@@ -64,12 +70,19 @@ func Load() (Config, error) {
 			PublicKey:  os.Getenv("TB_TIANQUE_PUBLIC_KEY"),
 			NotifyURL:  os.Getenv("TB_TIANQUE_NOTIFY_URL"),
 		},
+		WeChatMiniApp: WeChatMiniApp{
+			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_ID")),
+			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_SECRET")),
+		},
 	}
 	if cfg.DatabaseDSN == "" {
 		return Config{}, fmt.Errorf("TB_DATABASE_DSN is required")
 	}
 	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("TB_JWT_SECRET must contain at least 32 characters")
+	}
+	if (cfg.WeChatMiniApp.AppID == "") != (cfg.WeChatMiniApp.AppSecret == "") {
+		return Config{}, fmt.Errorf("TB_WECHAT_MINIAPP_APP_ID and TB_WECHAT_MINIAPP_APP_SECRET must be configured together")
 	}
 	var err error
 	cfg.JWTTTL, err = time.ParseDuration(env("TB_JWT_TTL", "24h"))

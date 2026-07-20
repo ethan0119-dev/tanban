@@ -62,7 +62,8 @@ go test ./...
 
 ## 微信小程序配置
 
-- AppID：在微信开发者工具导入 `apps/customer-miniapp` 后填写，生成的 `project.private.config.json`不提交。
+- AppID：在微信开发者工具导入 `apps/customer-miniapp` 后填写，生成的 `project.private.config.json` 不提交。
+- AppSecret：只写入服务器 root-only `.env.production` 的 `TB_WECHAT_MINIAPP_APP_SECRET`；AppID 同步写入 `TB_WECHAT_MINIAPP_APP_ID`。两项必须成对配置，严禁写入小程序前端或 Git。
 - API、默认演示门店和支付模式：`apps/customer-miniapp/miniprogram/config/env.ts`。
 - 正式发布前，把 `https://tbapi.666qwe.cn`加入微信公众平台 request 合法域名。
 

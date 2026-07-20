@@ -1,6 +1,6 @@
 # 顾客微信小程序
 
-使用微信开发者工具导入本目录。正式 AppID 在微信开发者工具的项目配置中填写，开发工具会生成不入库的 `project.private.config.json`。
+使用微信开发者工具导入本目录。正式 AppID 在微信开发者工具的项目配置中填写，开发工具会生成不入库的 `project.private.config.json`。AppSecret 只保存在 API 服务器的 root-only 环境文件中，不能进入本目录。
 
 环境配置位于 `miniprogram/config/env.ts`：
 
