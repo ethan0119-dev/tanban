@@ -408,6 +408,8 @@ npm run build:merchant
 prepare_static_release platform apps/platform-web/dist "$PLATFORM_ROOT"
 prepare_static_release merchant apps/merchant-web/dist "$MERCHANT_ROOT"
 install -d -m 0755 /www/wwwroot/tanban-api-acme
+install -m 0644 infra/wechat-domain-verification/YYMFacfbfJ.txt \
+  /www/wwwroot/tanban-api-acme/YYMFacfbfJ.txt
 
 echo "preflighting Nginx vhosts in an isolated include directory"
 preflight_nginx_configs
