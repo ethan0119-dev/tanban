@@ -152,6 +152,16 @@ export interface Store {
   theme?: StoreTheme;
   decoration?: DecorationConfig;
   decorationVersion?: number;
+  orderingSettings?: {
+    orderingMode: "SINGLE_PERSON" | "MULTI_PERSON";
+    distanceCheckEnabled: boolean;
+    distanceLimitM: number;
+    requireCustomerPhone: boolean;
+    allowOrderRemark: boolean;
+    allowItemRemark: boolean;
+  };
+  customerService?: { phone?: string; wechat?: string; qrUrl?: string };
+  legal?: { privacyPolicy?: string; userAgreement?: string };
 }
 
 export interface MarketingCoupon {

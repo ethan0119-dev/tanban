@@ -37,14 +37,12 @@ const managementNavigationItems: MenuProps['items'] = [
       { key: '/dine-in/fast-food-orders', label: '快餐订单' },
       { key: '/dine-in/table-codes', label: '桌码管理', icon: <QrcodeOutlined /> },
       { key: '/dine-in/fast-food-plates', label: '快餐码牌', icon: <QrcodeOutlined /> },
-      { key: '/dine-in/print-template', label: '店内打印模板' },
     ],
   },
   {
     key: 'delivery-domain', label: '外卖', icon: <CarOutlined />,
     children: [
       { key: '/delivery/orders', label: <span className="menu-label-with-status"><span>外卖订单</span><em>未开放</em></span> },
-      { key: '/delivery/print-template', label: <span className="menu-label-with-status"><span>外卖打印模板</span><em>预配置</em></span> },
     ],
   },
   {
@@ -74,9 +72,21 @@ const managementNavigationItems: MenuProps['items'] = [
     ],
   },
   { key: '/payments', label: '支付与退款', icon: <TransactionOutlined /> },
-  { key: '/printers', label: '打印中心', icon: <PrinterOutlined /> },
-  { key: '/staff', label: '员工与角色', icon: <TeamOutlined /> },
-  { key: '/settings', label: '门店设置', icon: <SettingOutlined /> },
+  {
+    key: 'settings-domain', label: '设置', icon: <SettingOutlined />,
+    children: [
+      { key: '/settings/store', label: '门店设置', icon: <ShopOutlined /> },
+      { key: '/settings/order', label: '点餐设置', icon: <ShoppingCartOutlined /> },
+      { key: '/settings/payment', label: '支付设置', icon: <TransactionOutlined /> },
+      { key: '/settings/notifications', label: '通知设置', icon: <BellOutlined /> },
+      { key: '/settings/privacy', label: '隐私与客服' },
+      { key: '/settings/print', label: '打印设置', icon: <PrinterOutlined /> },
+      { key: '/settings/printers', label: '打印机管理', icon: <PrinterOutlined /> },
+      { key: '/settings/dine-in-print-template', label: '店内打印模板' },
+      { key: '/settings/delivery-print-template', label: <span className="menu-label-with-status"><span>外卖打印模板</span><em>预配置</em></span> },
+      { key: '/settings/staff', label: '员工与角色', icon: <TeamOutlined /> },
+    ],
+  },
 ];
 
 function navigationRouteKeys(items: MenuProps['items']): string[] {
@@ -143,7 +153,7 @@ export function AppLayout() {
           theme="dark"
           items={navigationItems}
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain', 'marketing-domain']}
+          defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain', 'marketing-domain', 'settings-domain']}
           onClick={({ key }) => navigate(key)}
         />
         {!collapsed && <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>}

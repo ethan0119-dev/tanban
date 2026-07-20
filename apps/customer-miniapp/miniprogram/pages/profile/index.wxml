@@ -16,7 +16,7 @@
     <view class="service-item" bindtap="goLottery"><image src="/assets/icons/star.png" mode="aspectFit" /><text>门店活动</text></view>
     <view class="service-item" data-feature="积分商城" bindtap="unavailable"><image src="/assets/icons/shopping.png" mode="aspectFit" /><text>积分商城</text></view>
     <view class="service-item" data-feature="会员中心" bindtap="unavailable"><image src="/assets/icons/profile.png" mode="aspectFit" /><text>会员中心</text></view>
-    <view class="service-item" data-feature="门店服务" bindtap="unavailable"><image src="/assets/icons/shop.png" mode="aspectFit" /><text>门店服务</text></view>
+    <view class="service-item" bindtap="goLegal"><image src="/assets/icons/shop.png" mode="aspectFit" /><text>隐私与协议</text></view>
     <view class="service-item" bindtap="contact"><image src="/assets/icons/customer-service.png" mode="aspectFit" /><text>联系商家</text></view>
   </view>
   <view class="version">摊伴 TANBAN {{version}}</view>

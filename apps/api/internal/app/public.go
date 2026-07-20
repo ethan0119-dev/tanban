@@ -199,6 +199,23 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 	decoration, version := s.publicDecorationConfig(ctx, store)
 	view["decoration"] = decoration
 	view["decorationVersion"] = version
+	var orderingMode, customerServicePhone, customerServiceWechat, customerServiceQRURL, privacyPolicyText, userAgreementText string
+	var distanceCheckEnabled, requireCustomerPhone, allowOrderRemark, allowItemRemark bool
+	var distanceLimitM int
+	err = s.DB.QueryRowContext(ctx, `SELECT ordering_mode,distance_check_enabled,distance_limit_m,require_customer_phone,
+		allow_order_remark,allow_item_remark,customer_service_phone,customer_service_wechat,customer_service_qr_url,
+		privacy_policy_text,user_agreement_text FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
+		Scan(&orderingMode, &distanceCheckEnabled, &distanceLimitM, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
+			&customerServicePhone, &customerServiceWechat, &customerServiceQRURL, &privacyPolicyText, &userAgreementText)
+	if err == nil {
+		view["orderingSettings"] = map[string]any{"orderingMode": orderingMode, "distanceCheckEnabled": distanceCheckEnabled,
+			"distanceLimitM": distanceLimitM, "requireCustomerPhone": requireCustomerPhone, "allowOrderRemark": allowOrderRemark,
+			"allowItemRemark": allowItemRemark}
+		view["customerService"] = map[string]any{"phone": customerServicePhone, "wechat": customerServiceWechat, "qrUrl": customerServiceQRURL}
+		view["legal"] = map[string]any{"privacyPolicy": privacyPolicyText, "userAgreement": userAgreementText}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		s.Logger.Error("load public store operation settings", "store_id", store.ID, "error", err)
+	}
 	return view
 }
 
@@ -234,6 +251,8 @@ type publicOrderInput struct {
 	TableScene                  string                 `json:"tableScene"`
 	FastFoodPlatePublicID       string                 `json:"fastFoodPlatePublicId"`
 	LegacyFastFoodPlatePublicID string                 `json:"fast_food_plate_public_id"`
+	CustomerLatitude            *float64               `json:"customerLatitude"`
+	CustomerLongitude           *float64               `json:"customerLongitude"`
 }
 
 func legacyPublicOrderFingerprint(input publicOrderInput) string {
@@ -325,7 +344,13 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "customer identity or order remark is too long")
 		return
 	}
-	fingerprint := requestFingerprint(input)
+	// Customer coordinates are a transient admission signal, not order content.
+	// Excluding them keeps a safe idempotent retry from conflicting when a
+	// second GPS reading differs by a few meters.
+	fingerprintInput := input
+	fingerprintInput.CustomerLatitude = nil
+	fingerprintInput.CustomerLongitude = nil
+	fingerprint := requestFingerprint(fingerprintInput)
 	legacyFingerprint := ""
 	if input.TablePublicID == "" && input.FastFoodPlatePublicID == "" {
 		legacyFingerprint = legacyPublicOrderFingerprint(input)
@@ -365,6 +390,43 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	policy := storeOperationSettings{SettlementMode: "PAY_BEFORE", OrderingMode: "MULTI_PERSON", DistanceLimitM: 5000, AllowOrderRemark: true, AllowItemRemark: true}
+	var storeLatitude, storeLongitude sql.NullFloat64
+	err = tx.QueryRowContext(r.Context(), `SELECT settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,
+		require_customer_phone,allow_order_remark,allow_item_remark FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
+		Scan(&policy.SettlementMode, &policy.OrderingMode, &policy.DistanceCheckEnabled, &policy.DistanceLimitM, &storeLatitude, &storeLongitude,
+			&policy.RequireCustomerPhone, &policy.AllowOrderRemark, &policy.AllowItemRemark)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
+	if policy.RequireCustomerPhone && input.CustomerPhone == "" {
+		writeError(w, http.StatusBadRequest, "CUSTOMER_PHONE_REQUIRED", "customer phone is required by this store")
+		return
+	}
+	if !policy.AllowOrderRemark && strings.TrimSpace(input.Remark) != "" {
+		writeError(w, http.StatusBadRequest, "ORDER_REMARK_DISABLED", "order remarks are disabled by this store")
+		return
+	}
+	if !policy.AllowItemRemark {
+		for _, requested := range input.Items {
+			if strings.TrimSpace(requested.ItemRemark) != "" {
+				writeError(w, http.StatusBadRequest, "ITEM_REMARK_DISABLED", "item remarks are disabled by this store")
+				return
+			}
+		}
+	}
+	if policy.DistanceCheckEnabled {
+		if !storeLatitude.Valid || !storeLongitude.Valid || !validCoordinate(input.CustomerLatitude, input.CustomerLongitude) {
+			writeError(w, http.StatusBadRequest, "CUSTOMER_LOCATION_REQUIRED", "a valid customer location is required by this store")
+			return
+		}
+		distance := distanceMeters(storeLatitude.Float64, storeLongitude.Float64, *input.CustomerLatitude, *input.CustomerLongitude)
+		if distance > float64(policy.DistanceLimitM) {
+			writeError(w, http.StatusConflict, "CUSTOMER_OUT_OF_RANGE", "customer is outside the store ordering distance")
+			return
+		}
+	}
 	var table orderTableReference
 	if input.OrderType == orderTypeDineIn {
 		table, err = resolveOrderTable(r.Context(), tx, store.TenantID, store.ID, input.TablePublicID)
@@ -374,6 +436,22 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			handleSQLError(w, err)
+			return
+		}
+	}
+	if input.OrderType == orderTypeDineIn && policy.OrderingMode == "SINGLE_PERSON" {
+		var occupied int
+		err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON c.id=o.customer_id AND c.tenant_id=o.tenant_id
+			WHERE o.tenant_id=? AND o.store_id=? AND o.table_id=? AND o.order_type='DINE_IN'
+			AND o.status IN ('PENDING_PAYMENT','PAID','ACCEPTED','PREPARING','READY')
+			AND NOT ((?<>'' AND o.customer_openid=?) OR (?<>'' AND c.guest_key=?))`, store.TenantID, store.ID, table.ID,
+			input.OpenID, input.OpenID, input.CustomerKey, input.CustomerKey).Scan(&occupied)
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if occupied > 0 {
+			writeError(w, http.StatusConflict, "TABLE_ORDERING_SESSION_OCCUPIED", "this table is currently limited to one ordering customer")
 			return
 		}
 	}

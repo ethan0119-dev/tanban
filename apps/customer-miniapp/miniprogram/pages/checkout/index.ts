@@ -12,8 +12,16 @@ import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext
 interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 
+function customerLocation(): Promise<{ customerLatitude: number; customerLongitude: number }> {
+  return new Promise((resolve, reject) => wx.getLocation({
+    type: "gcj02",
+    success: (result) => resolve({ customerLatitude: result.latitude, customerLongitude: result.longitude }),
+    fail: () => reject(new Error("门店已启用距离校验，请在微信设置中允许定位后再下单")),
+  }));
+}
+
 Page({
-  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], amount: 0, remark: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode },
+  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], amount: 0, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -84,6 +92,10 @@ Page({
     this.setData({ remark });
     rememberCheckoutDetails(this.data.checkoutKey, this.data.fulfillmentType, remark);
   },
+  setCustomerPhone(event: TextInputEvent) {
+    if (this.data.detailsLocked) return;
+    this.setData({ customerPhone: event.detail.value.trim() });
+  },
   chooseFulfillment() {
     if (this.data.tableContext) {
       wx.showToast({ title: `当前为${this.data.tableContext.tableName}堂食点单`, icon: "none" });
@@ -121,6 +133,12 @@ Page({
       if (checkoutBlockedByStoreStatus(latestStore.businessStatus, this.data.orderNo) || (latestStore.acceptingOrders === false && !this.data.orderNo)) {
         throw new Error(latestStore.businessStatusMessage || "门店休息中，暂时不能下单");
       }
+      if (latestStore.orderingSettings?.requireCustomerPhone && !/^1\d{10}$/.test(this.data.customerPhone)) {
+        throw new Error("请填写可联系的 11 位手机号");
+      }
+      const locationFields = latestStore.orderingSettings?.distanceCheckEnabled ? await customerLocation() : {};
+      const orderRemark = latestStore.orderingSettings?.allowOrderRemark === false ? "" : this.data.remark;
+      const allowItemRemark = latestStore.orderingSettings?.allowItemRemark !== false;
       let tableContext = this.data.tableContext;
       let fastFoodContext = this.data.fastFoodContext;
       if (tableContext) {
@@ -165,7 +183,7 @@ Page({
           order = await request<Order>({
             url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
             header: { "Idempotency-Key": flow.idempotencyKey },
-            data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
+            data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
           });
           rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
           this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -174,7 +192,7 @@ Page({
         order = await request<Order>({
           url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
           header: { "Idempotency-Key": flow.idempotencyKey },
-          data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
+          data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
         });
         rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
         this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });

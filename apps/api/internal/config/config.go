@@ -21,6 +21,11 @@ type WeChatMiniApp struct {
 	AppSecret string
 }
 
+type WeChatOfficialAccount struct {
+	AppID     string
+	AppSecret string
+}
+
 type Config struct {
 	HTTPAddr              string
 	DatabaseDSN           string
@@ -42,6 +47,7 @@ type Config struct {
 	DemoMerchantPass      string
 	TianQue               TianQue
 	WeChatMiniApp         WeChatMiniApp
+	WeChatOfficialAccount WeChatOfficialAccount
 }
 
 func Load() (Config, error) {
@@ -74,6 +80,10 @@ func Load() (Config, error) {
 			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_ID")),
 			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_SECRET")),
 		},
+		WeChatOfficialAccount: WeChatOfficialAccount{
+			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_ID")),
+			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_SECRET")),
+		},
 	}
 	if cfg.DatabaseDSN == "" {
 		return Config{}, fmt.Errorf("TB_DATABASE_DSN is required")
@@ -83,6 +93,9 @@ func Load() (Config, error) {
 	}
 	if (cfg.WeChatMiniApp.AppID == "") != (cfg.WeChatMiniApp.AppSecret == "") {
 		return Config{}, fmt.Errorf("TB_WECHAT_MINIAPP_APP_ID and TB_WECHAT_MINIAPP_APP_SECRET must be configured together")
+	}
+	if (cfg.WeChatOfficialAccount.AppID == "") != (cfg.WeChatOfficialAccount.AppSecret == "") {
+		return Config{}, fmt.Errorf("TB_WECHAT_OFFICIAL_ACCOUNT_APP_ID and TB_WECHAT_OFFICIAL_ACCOUNT_APP_SECRET must be configured together")
 	}
 	var err error
 	cfg.JWTTTL, err = time.ParseDuration(env("TB_JWT_TTL", "24h"))

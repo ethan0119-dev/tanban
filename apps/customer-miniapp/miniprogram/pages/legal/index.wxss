@@ -1,0 +1,9 @@
+.page { min-height: 100vh; padding: 24rpx; box-sizing: border-box; background: #f6f5f0; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; padding: 8rpx; border-radius: 18rpx; background: #ebe8e1; }
+.tabs button { margin: 0; border-radius: 14rpx; color: #6e6a64; background: transparent; font-size: 26rpx; }
+.tabs button::after { border: 0; }
+.tabs button.active { color: #fff; background: #214d3f; }
+.card { margin-top: 20rpx; padding: 34rpx; border-radius: 24rpx; background: #fff; }
+.title { display: block; margin-bottom: 28rpx; font-size: 32rpx; font-weight: 800; }
+.content { color: #4f4a45; font-size: 26rpx; line-height: 1.85; white-space: pre-wrap; }
+.loading { padding: 120rpx 0; color: #8a857f; text-align: center; }

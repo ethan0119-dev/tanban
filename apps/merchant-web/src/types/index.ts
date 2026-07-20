@@ -313,6 +313,84 @@ export interface MerchantSettings {
   paymentTimeoutMinutes?: number;
 }
 
+export interface MerchantOperationSettings {
+  storeId: Id;
+  settlementMode: 'PAY_BEFORE';
+  orderingMode: 'SINGLE_PERSON' | 'MULTI_PERSON';
+  distanceCheckEnabled: boolean;
+  distanceLimitM: number;
+  storeLatitude?: number;
+  storeLongitude?: number;
+  requireCustomerPhone: boolean;
+  allowOrderRemark: boolean;
+  allowItemRemark: boolean;
+  orderReminderEnabled: boolean;
+  orderReminderIntervalMinutes: number;
+  takeawayVerificationEnabled: boolean;
+  reviewsEnabled: boolean;
+  customerServicePhone?: string;
+  customerServiceWechat?: string;
+  customerServiceQrUrl?: string;
+  privacyPolicyText?: string;
+  userAgreementText?: string;
+  officialAccountNotifyEnabled: boolean;
+  officialAccountEvents: string[];
+  notificationRecipientLabel?: string;
+}
+
+export interface MerchantOperationSettingsResponse {
+  settings: MerchantOperationSettings;
+  safetyPolicies: {
+    cancelledPaidOrderQuarantined: boolean;
+    duplicatePaymentQuarantined: boolean;
+    stockDeductTiming: string;
+  };
+  reservedCapabilities: string[];
+  officialAccount: {
+    platformConfigured: boolean;
+    merchantRecipientBound: boolean;
+    deliveryActive: boolean;
+  };
+}
+
+export interface MerchantPaymentSettings {
+  provider: string;
+  providerDisplayName: string;
+  bindingStatus: 'DEVELOPMENT' | 'PENDING_BINDING' | 'BOUND';
+  merchantNoMasked?: string;
+  subAppIdConfigured: boolean;
+  feeRatePercent: number;
+  settlementCycle: string;
+  checkoutMode: 'HALF_SCREEN_CASHIER';
+  fundsFlow: 'ACQUIRER_TO_MERCHANT_BANK_CARD';
+  platformReceivesFunds: boolean;
+  confirmationMode: 'PROVIDER_CALLBACK_WITH_ACTIVE_QUERY_RECONCILIATION';
+  supportsPartialRefund: boolean;
+  sensitiveConfigurationManagedByPlatform: boolean;
+}
+
+export interface TableBoardTable {
+  id: Id;
+  areaId: Id;
+  areaName: string;
+  name: string;
+  tableCode: string;
+  capacity: number;
+  state: 'UNOPENED' | 'OPENED' | 'DINING';
+  orderId?: Id;
+  orderNo?: string;
+  orderStatus?: string;
+  customerName?: string;
+  totalCents?: number;
+  openedAt?: string;
+}
+
+export interface TableBoardResponse {
+  areas: Array<{ id: Id; name: string; tables: TableBoardTable[] }>;
+  settlementMode: 'PAY_BEFORE';
+  orderingMode: 'SINGLE_PERSON' | 'MULTI_PERSON';
+}
+
 export interface StoreBusinessPeriod {
   id?: Id;
   start: string;

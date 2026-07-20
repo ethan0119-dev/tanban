@@ -26,6 +26,7 @@ import { LotteryPage } from './pages/LotteryPage';
 import { MarketingAppsPage } from './pages/MarketingAppsPage';
 import { PopupAdsPage } from './pages/PopupAdsPage';
 import { MediaLibraryPage } from './pages/MediaLibraryPage';
+import { OperationSettingsPage } from './pages/OperationSettingsPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -51,9 +52,9 @@ function AppRoutes() {
         <Route path="/dine-in/fast-food-orders" element={<OrdersPage businessType="DINE_IN" sceneMode="TAKEOUT" />} />
         <Route path="/dine-in/table-codes" element={<ManagementOnly><TableCodesPage /></ManagementOnly>} />
         <Route path="/dine-in/fast-food-plates" element={<ManagementOnly><FastFoodPlatesPage /></ManagementOnly>} />
-        <Route path="/dine-in/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="dine-in-print-template" businessType="DINE_IN" /></ManagementOnly>} />
+        <Route path="/dine-in/print-template" element={<Navigate to="/settings/dine-in-print-template" replace />} />
         <Route path="/delivery/orders" element={<ManagementOnly><OrdersPage businessType="DELIVERY" unavailable /></ManagementOnly>} />
-        <Route path="/delivery/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="delivery-print-template" businessType="DELIVERY" /></ManagementOnly>} />
+        <Route path="/delivery/print-template" element={<Navigate to="/settings/delivery-print-template" replace />} />
         <Route path="/print-jobs" element={<PrintersPage jobsOnly />} />
         <Route path="/products" element={<ManagementOnly><ProductsPage /></ManagementOnly>} />
         <Route path="/catalog" element={<ManagementOnly><CatalogConfigPage /></ManagementOnly>} />
@@ -67,9 +68,19 @@ function AppRoutes() {
         <Route path="/marketing/popup-ads" element={<ManagementOnly><PopupAdsPage /></ManagementOnly>} />
         <Route path="/marketing/lottery" element={<ManagementOnly><LotteryPage /></ManagementOnly>} />
         <Route path="/payments" element={<ManagementOnly><PaymentsPage /></ManagementOnly>} />
-        <Route path="/printers" element={<ManagementOnly><PrintersPage /></ManagementOnly>} />
-        <Route path="/staff" element={<ManagementOnly><StaffPage /></ManagementOnly>} />
-        <Route path="/settings" element={<ManagementOnly><SettingsPage /></ManagementOnly>} />
+        <Route path="/printers" element={<Navigate to="/settings/printers" replace />} />
+        <Route path="/staff" element={<Navigate to="/settings/staff" replace />} />
+        <Route path="/settings" element={<Navigate to="/settings/store" replace />} />
+        <Route path="/settings/store" element={<ManagementOnly><SettingsPage /></ManagementOnly>} />
+        <Route path="/settings/order" element={<ManagementOnly><OperationSettingsPage section="ORDER" /></ManagementOnly>} />
+        <Route path="/settings/payment" element={<ManagementOnly><OperationSettingsPage section="PAYMENT" /></ManagementOnly>} />
+        <Route path="/settings/notifications" element={<ManagementOnly><OperationSettingsPage section="NOTIFICATION" /></ManagementOnly>} />
+        <Route path="/settings/privacy" element={<ManagementOnly><OperationSettingsPage section="PRIVACY" /></ManagementOnly>} />
+        <Route path="/settings/print" element={<ManagementOnly><OperationSettingsPage section="PRINT" /></ManagementOnly>} />
+        <Route path="/settings/printers" element={<ManagementOnly><PrintersPage /></ManagementOnly>} />
+        <Route path="/settings/dine-in-print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="settings-dine-in-print-template" businessType="DINE_IN" /></ManagementOnly>} />
+        <Route path="/settings/delivery-print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="settings-delivery-print-template" businessType="DELIVERY" /></ManagementOnly>} />
+        <Route path="/settings/staff" element={<ManagementOnly><StaffPage /></ManagementOnly>} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Result status="404" title="页面不存在" subTitle="这个页面可能已经移动" extra={<a href="/dashboard">返回经营总览</a>} />} />

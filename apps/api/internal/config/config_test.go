@@ -38,3 +38,16 @@ func TestLoadRejectsPartialWeChatMiniAppCredentials(t *testing.T) {
 		t.Fatalf("expected paired credential validation error, got %v", err)
 	}
 }
+
+func TestLoadRejectsPartialWeChatOfficialAccountCredentials(t *testing.T) {
+	setRequiredConfig(t)
+	t.Setenv("TB_WECHAT_MINIAPP_APP_ID", "")
+	t.Setenv("TB_WECHAT_MINIAPP_APP_SECRET", "")
+	t.Setenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_ID", "wx_official_app_id")
+	t.Setenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_SECRET", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "must be configured together") {
+		t.Fatalf("expected paired official-account credential validation error, got %v", err)
+	}
+}

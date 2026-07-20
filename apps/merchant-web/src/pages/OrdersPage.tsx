@@ -41,7 +41,7 @@ import { api, errorMessage } from '../api/client';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
 import { normalizeOrder } from '../features/storefront/model';
-import type { ListResult, Order, OrderBusinessType, OrderStatus } from '../types';
+import type { ListResult, Order, OrderBusinessType, OrderStatus, TableBoardResponse, TableBoardTable } from '../types';
 import { dateTime, yuan } from '../utils/format';
 
 const { RangePicker } = DatePicker;
@@ -122,6 +122,7 @@ function itemConfigurationSummary(item: Order['items'][number]): string[] {
 }
 
 export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, sceneMode }: { businessType?: OrderBusinessType; unavailable?: boolean; sceneMode?: 'DINE_IN' | 'TAKEOUT' }) {
+  const [viewMode, setViewMode] = useState<'ORDERS' | 'TABLES'>('ORDERS');
   const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL');
   const [serviceMode, setServiceMode] = useState<'DINE_IN' | 'TAKEOUT'>(sceneMode || 'DINE_IN');
   const [keyword, setKeyword] = useState('');
@@ -131,6 +132,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
   const [selected, setSelected] = useState<Order | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [tableBoard, setTableBoard] = useState<TableBoardResponse | null>(null);
+  const [tableBoardLoading, setTableBoardLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const isDelivery = businessType === 'DELIVERY';
   const domainName = isDelivery ? '外卖' : sceneMode === 'TAKEOUT' ? '快餐' : sceneMode === 'DINE_IN' ? '堂食' : '店内';
@@ -166,6 +169,21 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
 
   useEffect(() => { void load(1); }, [serviceMode, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadTableBoard = useCallback(async () => {
+    setTableBoardLoading(true);
+    try {
+      setTableBoard(await api.get<TableBoardResponse>('/merchant/table-board'));
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setTableBoardLoading(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => {
+    if (viewMode === 'TABLES' && sceneMode === 'DINE_IN') void loadTableBoard();
+  }, [loadTableBoard, sceneMode, viewMode]);
+
   const openDetail = async (order: Order) => {
     setSelected(order);
     setDrawerOpen(true);
@@ -173,6 +191,17 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
       setSelected(normalizeOrder(await api.get<Order>(`/merchant/orders/${order.id}`)));
     } catch {
       // 列表信息已经足够展示；详情接口失败不阻断现场处理订单。
+    }
+  };
+
+  const openDetailByID = async (orderID: string | number) => {
+    setSelected(null);
+    setDrawerOpen(true);
+    try {
+      setSelected(normalizeOrder(await api.get<Order>(`/merchant/orders/${orderID}`)));
+    } catch (error) {
+      setDrawerOpen(false);
+      messageApi.error(errorMessage(error));
     }
   };
 
@@ -264,7 +293,13 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         extra={<Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>}
       />
       {unavailable && <Alert className="order-domain-alert" type="warning" showIcon message="外卖订单一期未开放" description="系统已经将外卖识别为独立经营域，但尚未接入配送地址、配送范围、运费、骑手或第三方外卖平台。当前不会创建外卖订单，也不会把店内订单误显示到这里。" />}
-      <Card bordered={false} className="content-card order-filter-card">
+      {sceneMode === 'DINE_IN' && <Card bordered={false} className="content-card order-view-tabs-card">
+        <Tabs activeKey={viewMode} onChange={(key) => setViewMode(key as typeof viewMode)} items={[
+          { key: 'ORDERS', label: '订单管理' },
+          { key: 'TABLES', label: <Space><TableOutlined />桌台状态</Space> },
+        ]} />
+      </Card>}
+      {viewMode === 'ORDERS' && <Card bordered={false} className="content-card order-filter-card">
         <Tabs
           activeKey={status}
           onChange={(key) => setStatus(key as typeof status)}
@@ -290,8 +325,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
           <Col xs={24} sm={16} lg={9}><RangePicker disabled={unavailable} value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
           <Col xs={24} sm={8} lg={6}><Button type="primary" block disabled={unavailable} icon={<SearchOutlined />} onClick={() => void load(1)}>查询订单</Button></Col>
         </Row>
-      </Card>
-      <Card bordered={false} className="content-card table-card">
+      </Card>}
+      {viewMode === 'ORDERS' && <Card bordered={false} className="content-card table-card">
         {isDelivery ? (
           <Table<Order>
             rowKey="id"
@@ -330,7 +365,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`没有符合条件的${serviceMode === 'DINE_IN' ? '堂食' : '快餐'}订单`} />}
           </div>
         )}
-      </Card>
+      </Card>}
+      {viewMode === 'TABLES' && sceneMode === 'DINE_IN' && <TableBoard board={tableBoard} loading={tableBoardLoading} onRefresh={() => void loadTableBoard()} onOpenOrder={(orderId) => void openDetailByID(orderId)} />}
 
       <Drawer
         title={selected ? <Space><span>订单详情</span><OrderStatusTag status={selected.status} /></Space> : '订单详情'}
@@ -395,5 +431,47 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         ) : <Empty />}
       </Drawer>
     </div>
+  );
+}
+
+const tableStateMeta: Record<TableBoardTable['state'], { label: string; color: string; hint: string }> = {
+  UNOPENED: { label: '未开台', color: '#a5a5a5', hint: '当前没有活动订单' },
+  OPENED: { label: '已开台', color: '#52c7a5', hint: '已下单但尚未进入制作' },
+  DINING: { label: '就餐中', color: '#faad14', hint: '商户已开始制作或待出餐' },
+};
+
+function TableBoard({ board, loading, onRefresh, onOpenOrder }: { board: TableBoardResponse | null; loading: boolean; onRefresh: () => void; onOpenOrder: (orderId: string | number) => void }) {
+  return (
+    <Card bordered={false} className="content-card dine-in-table-board" loading={loading}>
+      <div className="table-board-intro">
+        <div>
+          <Typography.Title level={5}>桌台现场</Typography.Title>
+          <Typography.Paragraph type="secondary">未开台表示空闲；已开台表示顾客已产生待支付/待接单订单；就餐中表示订单已进入制作或待出餐。</Typography.Paragraph>
+        </div>
+        <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>刷新桌台</Button>
+      </div>
+      {board?.areas?.length ? board.areas.map((area) => (
+        <section className="table-board-area" key={String(area.id)}>
+          <div className="table-board-area-title"><strong>{area.name}</strong><span>{area.tables.length} 桌</span></div>
+          <div className="table-board-grid">
+            {area.tables.map((table) => {
+              const meta = tableStateMeta[table.state];
+              return (
+                <button className={`table-status-card state-${table.state.toLowerCase()}`} type="button" key={String(table.id)} onClick={() => table.orderId && onOpenOrder(table.orderId)} disabled={!table.orderId}>
+                  <div className="table-status-card-head"><strong>{table.name}</strong><span>{table.tableCode}</span></div>
+                  <div className="table-status-main" style={{ color: meta.color }}><TableOutlined /><b>{meta.label}</b></div>
+                  {table.orderNo ? <div className="table-status-order"><span>{table.orderNo}</span><strong>{yuan(table.totalCents || 0)}</strong></div> : <small>{meta.hint}</small>}
+                  <div className="table-status-capacity">{table.capacity} 座</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未配置可用桌台，请先到“店内 → 桌码管理”创建区域和桌码" />}
+      <div className="table-board-footer">
+        <div className="table-board-legend">{Object.entries(tableStateMeta).map(([key, value]) => <span key={key}><i style={{ background: value.color }} />{value.label}</span>)}</div>
+        <div className="table-board-modes"><span>结算模式：<b>{board?.settlementMode === 'PAY_BEFORE' ? '先结账后用餐' : '--'}</b></span><span>点餐模式：<b>{board?.orderingMode === 'MULTI_PERSON' ? '多人点餐' : '单人点餐'}</b></span></div>
+      </div>
+    </Card>
   );
 }

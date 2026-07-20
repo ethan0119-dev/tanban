@@ -1,16 +1,11 @@
 import {
-  BankOutlined,
   CalendarOutlined,
-  ClockCircleOutlined,
   CoffeeOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
   PlusOutlined,
-  PrinterOutlined,
   SaveOutlined,
-  SettingOutlined,
   ShopOutlined,
-  SoundOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -21,7 +16,6 @@ import {
   Divider,
   Form,
   Input,
-  InputNumber,
   Radio,
   Row,
   Select,
@@ -33,7 +27,7 @@ import {
 } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
@@ -64,7 +58,6 @@ export function SettingsPage() {
   const [overrideReason, setOverrideReason] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
   const [logoLibraryOpen, setLogoLibraryOpen] = useState(false);
-  const printTrigger = Form.useWatch('printTrigger', form);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,10 +127,10 @@ export function SettingsPage() {
   return (
     <div className="page-shell">
       {contextHolder}
-      <PageHeading title="门店设置" description="配置营业信息、接单规则与打印触发策略" extra={<Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void save()}>保存设置</Button>} />
+      <PageHeading title="门店设置" description="配置门店资料、营业时间与紧急开关店状态" extra={<Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void save()}>保存设置</Button>} />
       <Form<SettingsFormValues> form={form} layout="vertical" disabled={loading} className="settings-form">
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={15}>
+          <Col xs={24}>
             <Card bordered={false} className="content-card settings-card" title={<Space><ShopOutlined />门店资料</Space>}>
               <Row gutter={16}>
                 <Col xs={24} md={12}><Form.Item label="门店名称" name="storeName" rules={[{ required: true, message: '请输入门店名称' }]}><Input prefix={<CoffeeOutlined />} placeholder="码农咖啡" /></Form.Item></Col>
@@ -217,52 +210,10 @@ export function SettingsPage() {
               )}
             </Card>
 
-            <Card bordered={false} className="content-card settings-card" title={<Space><SettingOutlined />订单规则</Space>}>
-              <div className="setting-switch-row"><div><strong>自动接单</strong><p>顾客完成下单后自动进入订单列表</p></div><Form.Item name="autoAcceptOrder" valuePropName="checked" noStyle><Switch /></Form.Item></div>
-              <div className="setting-switch-row"><div><strong>新订单语音提醒</strong><p>商户后台打开时播报新订单</p></div><Form.Item name="orderVoiceReminder" valuePropName="checked" noStyle><Switch /></Form.Item></div>
-              <div className="setting-switch-row"><div><strong>快餐取餐号</strong><p>快餐 / 到店自取订单创建时生成门店营业日内稳定取餐号</p></div><Tag color="success">已启用</Tag></div>
-              <div className="setting-switch-row"><div><strong>超时后允许继续付款</strong><p>未主动关闭的订单，即使超过提示时间仍可付款</p></div><Form.Item name="allowLatePayment" valuePropName="checked" noStyle><Switch /></Form.Item></div>
-              <Form.Item label="支付提示有效时间" name="paymentTimeoutMinutes" rules={[{ required: true }]}><InputNumber min={1} max={1440} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
-            </Card>
-
-            <Card bordered={false} className="content-card settings-card" title={<Space><PrinterOutlined />打印总策略</Space>}>
-              <Alert type="warning" showIcon message="建议默认选择“支付成功后打印”" description="这里的触发点用于首次生成场景模板；已存在的桌码堂食、自提和外卖模板可在各自打印模板页单独调整。下面两个自动打印开关是门店总开关，关闭后不会自动创建对应任务。" />
-              <Form.Item label="新模板默认触发点" name="printTrigger" rules={[{ required: true }]} className="trigger-choice">
-                <Radio.Group>
-                  <Radio.Button value="PAYMENT_SUCCESS"><Space><BankOutlined />付款后打印</Space></Radio.Button>
-                  <Radio.Button value="ORDER_CREATED"><Space><ClockCircleOutlined />下单后打印</Space></Radio.Button>
-                </Radio.Group>
-              </Form.Item>
-              <Typography.Paragraph type="secondary">
-                新模板默认：{printTrigger === 'ORDER_CREATED' ? '订单创建成功即生成打印任务，未付款订单也可能出单。' : '只有支付机构确认成功后生成打印任务。'}
-              </Typography.Paragraph>
-              <div className="setting-switch-row"><div><strong>自动打印订单小票</strong><p>打印整单信息、金额和订单备注</p></div><Form.Item name="autoPrintReceipt" valuePropName="checked" noStyle><Switch /></Form.Item></div>
-              <div className="setting-switch-row"><div><strong>自动打印商品标签</strong><p>按商品数量拆分标签，适合饮品杯贴</p></div><Form.Item name="autoPrintLabel" valuePropName="checked" noStyle><Switch /></Form.Item></div>
-            </Card>
-          </Col>
-
-          <Col xs={24} xl={9}>
-            <Card bordered={false} className="content-card provider-card">
-              <span className="provider-icon"><BankOutlined /></span>
-              <Typography.Title level={4}>支付服务</Typography.Title>
-              <TagLike>会生活 · 随行付</TagLike>
-              <div className="provider-line"><span>资金流向</span><strong>支付机构 → 商户银行卡</strong></div>
-              <div className="provider-line"><span>平台是否过款</span><strong className="safe-text">否</strong></div>
-              <div className="provider-line"><span>结算信息</span><strong>请在会生活商家端查看</strong></div>
-              <Alert type="info" showIcon message="商户号及结算卡由平台管理员完成进件绑定，商户后台不展示敏感银行卡信息。" />
-            </Card>
-            <Card bordered={false} className="content-card help-card">
-              <SoundOutlined />
-              <div><strong>订单提醒没有声音？</strong><p>请允许浏览器播放声音，并保持商户后台页面处于打开状态。</p></div>
-            </Card>
           </Col>
         </Row>
       </Form>
       <MediaLibraryModal open={logoLibraryOpen} title="选择门店 Logo" onCancel={() => setLogoLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) form.setFieldValue('logo', selected[0].url); setLogoLibraryOpen(false); }} />
     </div>
   );
-}
-
-function TagLike({ children }: { children: ReactNode }) {
-  return <span className="provider-tag">{children}</span>;
 }

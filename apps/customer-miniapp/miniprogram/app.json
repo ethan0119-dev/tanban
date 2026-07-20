@@ -9,6 +9,7 @@
     "pages/my-coupons/index",
     "pages/recharge/index",
     "pages/lottery/index",
+    "pages/legal/index",
     "pages/profile/index"
   ],
   "window": {
@@ -21,6 +22,12 @@
   "usingComponents": {
     "marketing-popup": "/components/marketing-popup/index"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于判断顾客是否位于商户设置的可点餐距离内"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation"],
   "tabBar": {
     "color": "#7b807a",
     "selectedColor": "#214d3f",

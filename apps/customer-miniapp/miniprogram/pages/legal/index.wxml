@@ -1,0 +1,5 @@
+<view class="page">
+  <view class="tabs"><button class="{{activeTab === 'privacy' ? 'active' : ''}}" data-tab="privacy" bindtap="selectTab">隐私政策</button><button class="{{activeTab === 'agreement' ? 'active' : ''}}" data-tab="agreement" bindtap="selectTab">用户协议</button></view>
+  <view class="card" wx:if="{{!loading}}"><text class="title">{{storeName}}</text><text class="content" wx:if="{{activeTab === 'privacy'}}">{{privacyPolicy}}</text><text class="content" wx:else>{{userAgreement}}</text></view>
+  <view class="loading" wx:else>正在加载...</view>
+</view>
