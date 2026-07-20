@@ -61,6 +61,39 @@ describe('storefront domain normalization', () => {
     });
   });
 
+  it('normalizes the stable pickup code and fast-food plate snapshot', () => {
+    const order = normalizeOrder({
+      id: 81,
+      orderNo: 'TB81',
+      status: 'PAID',
+      amount: 18,
+      createdAt: '2026-07-20T10:00:00Z',
+      items: [],
+      order_type: 'TAKEOUT',
+      business_date: '2026-07-20',
+      pickup_code: '0038',
+      fast_food_plate: { public_id: 'plate-public', plate_code: 'K08', plate_name: '取餐架 K08' },
+    } as never);
+    expect(order.pickupNo).toBe('0038');
+    expect(order.fastFoodPlateName).toBe('取餐架 K08');
+    expect(order.fastFoodPlateCode).toBe('K08');
+  });
+
+  it('does not invent an ID-based pickup code for a migrated order', () => {
+    const order = normalizeOrder({
+      id: 81,
+      orderNo: 'TB81',
+      status: 'PAID',
+      amount: 18,
+      createdAt: '2026-07-20T10:00:00Z',
+      items: [],
+      order_type: 'TAKEOUT',
+      business_date: '2026-07-20',
+      pickup_code: '',
+    } as never);
+    expect(order.pickupNo).toBe('');
+  });
+
   it('keeps dine-in and delivery print templates independent', () => {
     expect(defaultPrintTemplate('DINE_IN').sections.MERCHANT.templateText).toContain('{{table_name}}');
     expect(defaultPrintTemplate('TAKEOUT').sections.MERCHANT.templateText).toContain('{{order_no}}');

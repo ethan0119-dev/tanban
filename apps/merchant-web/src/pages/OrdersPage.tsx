@@ -1,10 +1,14 @@
 import {
+  ClockCircleOutlined,
   CloseCircleOutlined,
+  CoffeeOutlined,
   EyeOutlined,
+  NumberOutlined,
   PrinterOutlined,
   ReloadOutlined,
   SearchOutlined,
   SyncOutlined,
+  TableOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -19,6 +23,7 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Row,
   Segmented,
   Space,
@@ -57,6 +62,51 @@ const nextStatus: Partial<Record<OrderStatus, { status: OrderStatus; text: strin
   READY: { status: 'COMPLETED', text: '完成订单' },
 };
 
+function orderSceneLabel(order: Order): string {
+  if (order.orderType === 'DINE_IN') return order.tableAreaName || '店内桌码';
+  if (order.orderType === 'TAKEOUT') return order.fastFoodPlateName
+    ? `放餐位置：${[order.fastFoodPlateCode, order.fastFoodPlateName].filter(Boolean).join(' · ')}`
+    : '快餐 / 到店自取 · 未指定码牌';
+  return '外卖配送';
+}
+
+function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order) => void }) {
+  const dineIn = order.orderType === 'DINE_IN';
+  const products = order.items?.slice(0, 3).map((item) => `${item.productName} ×${item.quantity}`).join('、') || '等待加载商品明细';
+  return (
+    <Card
+      bordered={false}
+      className={`order-work-card ${dineIn ? 'dine-in' : 'takeout'}`}
+      onClick={() => onOpen(order)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onOpen(order);
+      }}
+    >
+      <div className="order-work-card-head">
+        <Tag color={dineIn ? 'blue' : 'gold'}>{dineIn ? '桌码堂食' : '快餐自取'}</Tag>
+        <OrderStatusTag status={order.status} />
+      </div>
+      <div className="order-work-card-scene">
+        <span className="order-work-card-icon">{dineIn ? <TableOutlined /> : <NumberOutlined />}</span>
+        <div>
+          <small>{dineIn ? '当前桌台' : '取餐号'}</small>
+          <strong>{dineIn ? (order.tableName || '未绑定桌台') : `#${order.pickupNo || '--'}`}</strong>
+          <span>{orderSceneLabel(order)}</span>
+        </div>
+      </div>
+      <div className="order-work-card-products"><CoffeeOutlined /> <span>{products}</span></div>
+      {order.remark && <div className="order-work-card-remark">备注：{order.remark}</div>}
+      <div className="order-work-card-meta">
+        <span><ClockCircleOutlined /> {dateTime(order.createdAt)}</span>
+        <strong>{yuan(order.paidAmount ?? order.amount)}</strong>
+      </div>
+      <Button type="primary" ghost block icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onOpen(order); }}>查看并处理</Button>
+    </Card>
+  );
+}
+
 function itemConfigurationSummary(item: Order['items'][number]): string[] {
   const options = (item.configuration?.options || [])
     .map((option) => [option.groupName, option.valueName].filter(Boolean).join('：'))
@@ -71,9 +121,9 @@ function itemConfigurationSummary(item: Order['items'][number]): string[] {
   ];
 }
 
-export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { businessType?: OrderBusinessType; unavailable?: boolean }) {
+export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, sceneMode }: { businessType?: OrderBusinessType; unavailable?: boolean; sceneMode?: 'DINE_IN' | 'TAKEOUT' }) {
   const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL');
-  const [serviceMode, setServiceMode] = useState<'DINE_IN' | 'TAKEOUT'>('DINE_IN');
+  const [serviceMode, setServiceMode] = useState<'DINE_IN' | 'TAKEOUT'>(sceneMode || 'DINE_IN');
   const [keyword, setKeyword] = useState('');
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [result, setResult] = useState<ListResult<Order>>({ items: [], meta: { page: 1, pageSize: 20, total: 0 } });
@@ -83,7 +133,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { 
   const [actionLoading, setActionLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const isDelivery = businessType === 'DELIVERY';
-  const domainName = isDelivery ? '外卖' : '店内';
+  const domainName = isDelivery ? '外卖' : sceneMode === 'TAKEOUT' ? '快餐' : sceneMode === 'DINE_IN' ? '堂食' : '店内';
 
   const load = useCallback(async (page = 1, pageSize = result.meta.pageSize ?? 20) => {
     if (unavailable) {
@@ -224,7 +274,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { 
             label: <span>{tab.label}{tab.key !== 'ALL' && counts[tab.key] ? <em className="tab-count">{counts[tab.key]}</em> : null}</span>,
           }))}
         />
-        {!isDelivery && <div className="order-service-mode"><Typography.Text strong>店内场景</Typography.Text><Segmented disabled={unavailable} value={serviceMode} onChange={(value) => setServiceMode(value as typeof serviceMode)} options={[{ label: '桌码堂食', value: 'DINE_IN' }, { label: '快餐 / 到店自取', value: 'TAKEOUT' }]} /></div>}
+        {!isDelivery && !sceneMode && <div className="order-service-mode"><Typography.Text strong>店内场景</Typography.Text><Segmented disabled={unavailable} value={serviceMode} onChange={(value) => setServiceMode(value as typeof serviceMode)} options={[{ label: '桌码堂食', value: 'DINE_IN' }, { label: '快餐 / 到店自取', value: 'TAKEOUT' }]} /></div>}
         <Row gutter={[12, 12]}>
           <Col xs={24} lg={9}>
             <Input
@@ -242,22 +292,44 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { 
         </Row>
       </Card>
       <Card bordered={false} className="content-card table-card">
-        <Table<Order>
-          rowKey="id"
-          loading={loading}
-          dataSource={result.items}
-          columns={columns}
-          scroll={{ x: 1050 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={unavailable ? '外卖能力开放后，配送订单将在此展示' : `没有符合条件的${domainName}订单`} /> }}
-          pagination={{
-            current: result.meta.page,
-            pageSize: result.meta.pageSize,
-            total: result.meta.total,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 笔订单`,
-          }}
-          onChange={(pagination: TablePaginationConfig) => void load(pagination.current, pagination.pageSize)}
-        />
+        {isDelivery ? (
+          <Table<Order>
+            rowKey="id"
+            loading={loading}
+            dataSource={result.items}
+            columns={columns}
+            scroll={{ x: 1050 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={unavailable ? '外卖能力开放后，配送订单将在此展示' : `没有符合条件的${domainName}订单`} /> }}
+            pagination={{
+              current: result.meta.page,
+              pageSize: result.meta.pageSize,
+              total: result.meta.total,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 笔订单`,
+            }}
+            onChange={(pagination: TablePaginationConfig) => void load(pagination.current, pagination.pageSize)}
+          />
+        ) : (
+          <div className="order-workboard" aria-busy={loading}>
+            {loading && !result.items.length ? <div className="order-workboard-empty"><SyncOutlined spin /> 正在刷新现场订单</div> : result.items.length ? (
+              <>
+                <div className="order-work-grid">
+                  {result.items.map((order) => <OrderWorkCard key={order.id} order={order} onOpen={(item) => void openDetail(item)} />)}
+                </div>
+                <div className="order-work-pagination">
+                  <Pagination
+                    current={result.meta.page}
+                    pageSize={result.meta.pageSize}
+                    total={result.meta.total}
+                    showSizeChanger
+                    showTotal={(total) => `共 ${total} 笔订单`}
+                    onChange={(page, pageSize) => void load(page, pageSize)}
+                  />
+                </div>
+              </>
+            ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`没有符合条件的${serviceMode === 'DINE_IN' ? '堂食' : '快餐'}订单`} />}
+          </div>
+        )}
       </Card>
 
       <Drawer
@@ -314,6 +386,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false }: { 
               <Descriptions.Item label="订单类型">{selected.businessType === 'DELIVERY' ? '外卖订单' : '店内订单'}</Descriptions.Item>
               <Descriptions.Item label="取餐方式">{selected.orderType === 'DELIVERY' ? '外卖配送' : selected.orderType === 'DINE_IN' ? '桌码堂食' : '快餐 / 到店自取'}</Descriptions.Item>
               {selected.tableName && <Descriptions.Item label="桌台">{[selected.tableAreaName, selected.tableName].filter(Boolean).join(' · ')}</Descriptions.Item>}
+              {selected.fastFoodPlateName && <Descriptions.Item label="快餐码牌">{[selected.fastFoodPlateCode, selected.fastFoodPlateName].filter(Boolean).join(' · ')}</Descriptions.Item>}
               <Descriptions.Item label="顾客">{selected.customerName || '微信顾客'} {selected.customerPhone}</Descriptions.Item>
               <Descriptions.Item label="订单备注">{selected.remark || '无'}</Descriptions.Item>
               <Descriptions.Item label="打印次数">{selected.printCount ?? 0} 次</Descriptions.Item>

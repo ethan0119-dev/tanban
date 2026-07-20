@@ -54,14 +54,16 @@ export function inferOrderType(value: unknown): OrderType {
 export function normalizeOrder(value: Order): Order {
   const raw = record(value);
   const table = record(raw.table);
+  const fastFoodPlate = record(raw.fastFoodPlate ?? raw.fast_food_plate);
   const rawItems = (raw.items ?? []) as Array<Record<string, unknown>>;
   const orderNo = value.orderNo ?? String(raw.order_no ?? '');
-  const existingPickupNo = stringValue(value.pickupNo, raw.pickup_no).trim();
+  const existingPickupNo = stringValue(value.pickupNo, raw.pickupCode, raw.pickup_code, raw.pickup_no).trim();
+  const hasPersistedBusinessDate = Boolean(stringValue(raw.businessDate, raw.business_date));
   return {
     ...value,
     id: value.id ?? String(raw.orderId ?? raw.order_id ?? value.orderNo),
     orderNo,
-    pickupNo: existingPickupNo || pickupCode(value.id ?? raw.id),
+    pickupNo: existingPickupNo || (!hasPersistedBusinessDate ? pickupCode(value.id ?? raw.id) : ''),
     amount: raw.total_cents !== undefined ? Number(raw.total_cents) / 100 : numberValue(value.amount, raw.totalAmount, raw.total_amount),
     paidAmount: raw.paid_cents !== undefined ? Number(raw.paid_cents) / 100 : numberValue(value.paidAmount, raw.paid_amount, value.amount),
     refundAmount: raw.refunded_cents !== undefined ? Number(raw.refunded_cents) / 100 : numberValue(value.refundAmount, raw.refund_amount),
@@ -74,6 +76,9 @@ export function normalizeOrder(value: Order): Order {
     tableNo: stringValue(value.tableNo, table.tableCode, table.table_code, raw.table_code_snapshot, raw.table_no),
     tableName: stringValue(value.tableName, table.name, raw.table_name_snapshot, raw.table_name),
     tableAreaName: stringValue(value.tableAreaName, table.areaName, table.area_name, raw.table_area_name_snapshot, raw.table_area_name, raw.area_name),
+    fastFoodPlatePublicId: stringValue(value.fastFoodPlatePublicId, fastFoodPlate.publicId, fastFoodPlate.public_id, raw.fast_food_plate_public_id_snapshot, raw.fast_food_plate_public_id) || undefined,
+    fastFoodPlateCode: stringValue(value.fastFoodPlateCode, fastFoodPlate.plateCode, fastFoodPlate.plate_code, raw.fast_food_plate_code_snapshot, raw.fast_food_plate_code) || undefined,
+    fastFoodPlateName: stringValue(value.fastFoodPlateName, fastFoodPlate.plateName, fastFoodPlate.plate_name, raw.fast_food_plate_name_snapshot, raw.fast_food_plate_name) || undefined,
     paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
     createdAt: value.createdAt ?? String(raw.created_at ?? ''),
     items: rawItems.map((item) => ({

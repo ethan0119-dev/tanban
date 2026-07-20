@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -29,6 +28,9 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
 		managers.Get("/settings", s.getMerchantSettings)
 		managers.Put("/settings", s.updateMerchantSettings)
+		managers.Get("/business-hours", s.getStoreBusinessHours)
+		managers.Put("/business-hours", s.updateStoreBusinessHours)
+		managers.Put("/business-status", s.updateStoreBusinessOverride)
 		managers.Get("/categories", s.listCategories)
 		managers.Post("/categories", s.createCategory)
 		managers.Get("/categories/{categoryID}", s.getCategory)
@@ -85,6 +87,11 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Get("/table-codes/{tableID}", s.getTableCode)
 		managers.Put("/table-codes/{tableID}", s.updateTableCode)
 		managers.Delete("/table-codes/{tableID}", s.deleteTableCode)
+		managers.Get("/fast-food-plates", s.listFastFoodPlates)
+		managers.Post("/fast-food-plates", s.createFastFoodPlate)
+		managers.Get("/fast-food-plates/{plateID}", s.getFastFoodPlate)
+		managers.Put("/fast-food-plates/{plateID}", s.updateFastFoodPlate)
+		managers.Delete("/fast-food-plates/{plateID}", s.deleteFastFoodPlate)
 		managers.Get("/print-templates", s.listPrintTemplates)
 		managers.Post("/print-templates", s.createPrintTemplate)
 		managers.Get("/print-templates/{templateID}", s.getPrintTemplate)
@@ -100,6 +107,10 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	// Customer, membership and stored-value administration has its own route
 	// group so financial write permissions remain explicit and fail closed.
 	s.memberRoutes(r)
+
+	// Marketing applications are mounted as a separate manager-only module so
+	// staff order permissions never leak into campaign or coupon administration.
+	s.registerMarketingMerchantRoutes(r)
 }
 
 func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +185,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		popularProducts = append(popularProducts, map[string]any{"name": name, "count": count})
 	}
 	popularRows.Close()
-	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,order_type,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,order_type,pickup_code,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
 		FROM orders WHERE tenant_id=? AND store_id=? ORDER BY id DESC LIMIT 5`, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -183,15 +194,17 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 	recentOrders := []map[string]any{}
 	for recentRows.Next() {
 		var orderID, totalCents int64
-		var orderNo, status, orderType, tableArea, tableName, tableCode, createdAt string
-		if err = recentRows.Scan(&orderID, &orderNo, &totalCents, &status, &orderType, &tableArea, &tableName, &tableCode, &createdAt); err != nil {
+		var orderNo, status, orderType, pickupCode, plateName, plateCode, tableArea, tableName, tableCode, createdAt string
+		if err = recentRows.Scan(&orderID, &orderNo, &totalCents, &status, &orderType, &pickupCode, &plateName, &plateCode, &tableArea, &tableName, &tableCode, &createdAt); err != nil {
 			recentRows.Close()
 			handleSQLError(w, err)
 			return
 		}
-		row := map[string]any{"id": orderID, "pickupNo": fmt.Sprintf("%04d", orderID%10000), "orderNo": orderNo, "orderType": orderType, "order_type": orderType, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []any{}}
+		row := map[string]any{"id": orderID, "pickupNo": pickupCode, "pickupCode": pickupCode, "orderNo": orderNo, "orderType": orderType, "order_type": orderType, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []any{}}
 		if orderType == orderTypeDineIn {
 			row["table"] = map[string]any{"areaName": tableArea, "name": tableName, "tableCode": tableCode}
+		} else if plateCode != "" {
+			row["fastFoodPlate"] = map[string]any{"plateName": plateName, "plateCode": plateCode}
 		}
 		recentOrders = append(recentOrders, row)
 	}

@@ -576,7 +576,12 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		lines = append(lines, printKeyValue("订单", order.OrderNo, width))
 	}
 	if layoutBool(template.Layout, "showPickupNo", true) {
-		lines = append(lines, printKeyValue("取餐号", fmt.Sprintf("%04d", order.ID%10000), width))
+		if pickupCode := printablePickupCode(order); pickupCode != "" {
+			lines = append(lines, printKeyValue("取餐号", pickupCode, width))
+		}
+	}
+	if order.FastFoodPlate != nil {
+		lines = append(lines, printKeyValue("码牌", strings.TrimSpace(order.FastFoodPlate.Name+" "+order.FastFoodPlate.PlateCode), width))
 	}
 	if layoutBool(template.Layout, "showTable", true) && order.Table != nil {
 		lines = append(lines, printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name+" "+order.Table.TableCode), width))
@@ -658,7 +663,12 @@ func renderStructuredLabel(template activePrintTemplate, order orderDTO, item or
 		lines = append(lines, printKeyValue("类型", orderTypeTitle(order.OrderType), width))
 	}
 	if layoutBool(template.Layout, "showPickupNo", true) {
-		lines = append(lines, printKeyValue("取餐号", fmt.Sprintf("%04d", order.ID%10000), width))
+		if pickupCode := printablePickupCode(order); pickupCode != "" {
+			lines = append(lines, printKeyValue("取餐号", pickupCode, width))
+		}
+	}
+	if order.FastFoodPlate != nil {
+		lines = append(lines, printKeyValue("码牌", strings.TrimSpace(order.FastFoodPlate.Name+" "+order.FastFoodPlate.PlateCode), width))
 	}
 	if layoutBool(template.Layout, "showTable", true) && order.Table != nil {
 		lines = append(lines, printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name), width))
@@ -922,19 +932,25 @@ func renderLabel(template string, order orderDTO, item orderItemDTO, extra strin
 
 func renderOrderTemplate(template string, order orderDTO, items, extra string, reprint bool) string {
 	tableName, tableArea, tableCode := "", "", ""
+	plateName, plateCode := "", ""
 	if order.Table != nil {
 		tableName, tableArea, tableCode = order.Table.Name, order.Table.AreaName, order.Table.TableCode
+	}
+	if order.FastFoodPlate != nil {
+		plateName, plateCode = order.FastFoodPlate.Name, order.FastFoodPlate.PlateCode
 	}
 	replacer := strings.NewReplacer(
 		"{{store_name}}", printableText(order.StoreName),
 		"{{order_no}}", order.OrderNo,
-		"{{pickup_no}}", fmt.Sprintf("%04d", order.ID%10000),
+		"{{pickup_no}}", printablePickupCode(order),
 		"{{order_type}}", order.OrderType,
 		"{{paid_amount}}", formatPrintAmount(order.PaidCents),
 		"{{paid_cents}}", int64String(order.PaidCents),
 		"{{table_name}}", tableName,
 		"{{table_area}}", tableArea,
 		"{{table_code}}", tableCode,
+		"{{fast_food_plate_name}}", plateName,
+		"{{fast_food_plate_code}}", plateCode,
 		"{{items}}", items,
 		"{{total_cents}}", int64String(order.TotalCents),
 		"{{remark}}", printableText(order.Remark),
@@ -947,6 +963,19 @@ func renderOrderTemplate(template string, order orderDTO, items, extra string, r
 		content += "\n" + extra
 	}
 	return content
+}
+
+func printablePickupCode(order orderDTO) string {
+	if strings.TrimSpace(order.PickupCode) != "" {
+		return strings.TrimSpace(order.PickupCode)
+	}
+	// Historical TAKEOUT rows created before migration 014 did not persist a
+	// pickup number. Keep only that read-time compatibility path; all new
+	// orders receive an immutable business-day sequence in the transaction.
+	if order.BusinessDate == "" && order.ID > 0 {
+		return fmt.Sprintf("%04d", order.ID%10000)
+	}
+	return ""
 }
 
 func printableOrderItemLines(item orderItemDTO, quantity int) []string {

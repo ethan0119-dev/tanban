@@ -1,5 +1,5 @@
 import type { TanbanAppOption } from "../../app";
-import type { DecorationAction, DecorationConfig, DecorationModule, Store, TableOrderingContext } from "../../types/domain";
+import type { DecorationAction, DecorationConfig, DecorationModule, FastFoodOrderingContext, MarketingPlacement, Store, TableOrderingContext } from "../../types/domain";
 import {
   applyDecorationChrome,
   decorationStyle,
@@ -9,8 +9,11 @@ import {
   runDecorationAction,
   shouldDisplaySplash,
 } from "../../utils/decoration";
-import { request } from "../../utils/request";
+import { customerGuestKey } from "../../utils/customer";
+import { idempotencyKey, request } from "../../utils/request";
+import { marketingEventKey, rememberMarketingPopup, shouldDisplayMarketingPopup } from "../../utils/marketing";
 import { tableContextForStore } from "../../utils/table-context";
+import { fastFoodContextForStore } from "../../utils/fast-food-context";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -22,7 +25,10 @@ Page({
     modules: [] as DecorationModule[],
     appearanceStyle: "",
     tableContext: null as TableOrderingContext | null,
+    fastFoodContext: null as FastFoodOrderingContext | null,
     splashVisible: false,
+    marketingPopup: null as MarketingPlacement | null,
+    marketingPopupVisible: false,
     error: "",
   },
   onShow() {
@@ -32,12 +38,13 @@ Page({
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
     if (app.globalData.routeError) {
-      this.setData({ loading: false, store: null, tableContext: null, error: app.globalData.routeError });
+      this.setData({ loading: false, store: null, tableContext: null, fastFoodContext: null, error: app.globalData.routeError });
       return;
     }
     const storeCode = app.globalData.storeCode;
     const tableContext = tableContextForStore(storeCode);
-    this.setData({ tableContext });
+    const fastFoodContext = fastFoodContextForStore(storeCode);
+    this.setData({ tableContext, fastFoodContext });
     if (forceReload || !this.data.store || this.data.store.code !== storeCode) await this.loadStore(storeCode);
   },
   onUnload() {
@@ -52,12 +59,71 @@ Page({
       const store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
       const decoration = normalizeDecoration(store.decoration, store);
       const modules = decoration.home.modules.filter((module) => module.enabled);
-      this.setData({ store, decoration, modules, appearanceStyle: decorationStyle(decoration), loading: false });
+      this.setData({ store, decoration, modules, appearanceStyle: decorationStyle(decoration), loading: false, marketingPopup: null, marketingPopupVisible: false });
       wx.setNavigationBarTitle({ title: store.name || "摊伴点单" });
       applyDecorationChrome(decoration);
-      this.showSplashIfNeeded(storeCode, store.decorationVersion || 0, decoration);
+      const marketingShown = await this.loadMarketingPopup(storeCode);
+      if (!marketingShown) this.showSplashIfNeeded(storeCode, store.decorationVersion || 0, decoration);
     } catch (error) {
       this.setData({ loading: false, error: error instanceof Error ? error.message : "门店加载失败" });
+    }
+  },
+  async loadMarketingPopup(storeCode: string): Promise<boolean> {
+    try {
+      const channelScope = this.data.tableContext ? "DINE_IN" : "TAKEOUT";
+      const placement = await request<MarketingPlacement | null>({ url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/popup?placementCode=HOME_POPUP&channelScope=${channelScope}`, method: "GET" });
+      if (!placement || !shouldDisplayMarketingPopup(storeCode, placement)) return false;
+      rememberMarketingPopup(storeCode, placement);
+      this.setData({ marketingPopup: placement, marketingPopupVisible: true, splashVisible: false });
+      void this.recordMarketingEvent("IMPRESSION");
+      return true;
+    } catch {
+      // 营销位故障不影响门店首页和下单主链路。
+      return false;
+    }
+  },
+  async recordMarketingEvent(eventType: "IMPRESSION" | "CLICK" | "CLOSE") {
+    const placement = this.data.marketingPopup;
+    if (!placement) return;
+    const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+    try {
+      await request({
+        url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/events`, method: "POST",
+        header: { "Idempotency-Key": marketingEventKey(placement.id, eventType) },
+        data: { placement_id: placement.id, event_type: eventType, subject_key: customerGuestKey() },
+      });
+    } catch {
+      // 曝光统计采用尽力而为策略，不阻塞顾客交互。
+    }
+  },
+  closeMarketingPopup() {
+    const placement = this.data.marketingPopup;
+    if (!placement || !this.data.marketingPopupVisible) return;
+    rememberMarketingPopup(getApp<TanbanAppOption>().globalData.storeCode, placement);
+    this.setData({ marketingPopupVisible: false });
+    void this.recordMarketingEvent("CLOSE");
+  },
+  async onMarketingAction() {
+    const placement = this.data.marketingPopup;
+    if (!placement || !this.data.marketingPopupVisible) return;
+    void this.recordMarketingEvent("CLICK");
+    rememberMarketingPopup(getApp<TanbanAppOption>().globalData.storeCode, placement);
+    this.setData({ marketingPopupVisible: false });
+    if (placement.action_type === "OPEN_MENU") return wx.switchTab({ url: "/pages/menu/index" });
+    if (placement.action_type === "OPEN_COUPONS") return wx.navigateTo({ url: "/pages/coupons/index" });
+    if (placement.action_type === "OPEN_LOTTERY") return wx.navigateTo({ url: `/pages/lottery/index?id=${placement.action_target_id || ""}` });
+    if (placement.action_type === "CLAIM_COUPON" && placement.action_target_id) {
+      try {
+        const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+        const result = await request<{ warning?: string }>({
+          url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/coupons/${placement.action_target_id}/claim`, method: "POST",
+          header: { "Idempotency-Key": idempotencyKey("popup_coupon") },
+          data: { subject_key: customerGuestKey() },
+        });
+        wx.showModal({ title: "领取已记录", content: result.warning || "当前仅生成联调领取记录，暂不能抵扣真实订单。", showCancel: false });
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : "领取失败", icon: "none" });
+      }
     }
   },
   showSplashIfNeeded(storeCode: string, version: number, decoration: DecorationConfig) {

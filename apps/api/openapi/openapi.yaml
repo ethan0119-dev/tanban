@@ -8,6 +8,7 @@ paths:
   /auth/login:
     post:
       summary: 平台或商户账号登录
+      security: []
       requestBody:
         required: true
         content:
@@ -199,19 +200,343 @@ paths:
                 amount_cents: {type: integer, format: int64, minimum: 1}
                 reason: {type: string}
       responses: {'201': {description: Refund created}}
-  /public/stores/{storeCode}/catalog:
+  /merchant/business-hours:
     get:
-      summary: 顾客点单目录
+      summary: 读取门店每周营业计划与当前营业状态
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: 'Weekly schedule, timezone, override and current business state'}
+    put:
+      summary: 更新门店时区与七天多时段营业计划
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timezone, weeklySchedule]
+              properties:
+                timezone: {type: string, example: Asia/Shanghai}
+                weeklySchedule:
+                  type: array
+                  items:
+                    type: object
+                    required: [weekday, periods]
+                    properties:
+                      weekday: {type: integer, minimum: 1, maximum: 7}
+                      periods:
+                        type: array
+                        maxItems: 6
+                        items:
+                          type: object
+                          required: [start, end]
+                          properties:
+                            start: {type: string, example: '08:00'}
+                            end: {type: string, example: '24:00'}
+      responses: {'200': {description: Updated schedule and current state}}
+  /merchant/business-status:
+    put:
+      summary: 设置或取消临时营业/闭店覆盖
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BusinessStatusInput'}
+      responses: {'200': {description: Current business state}}
+  /merchant/fast-food-plates:
+    get:
+      summary: 快餐码牌列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+      responses: {'200': {description: Fast-food pickup plate page}}
+    post:
+      summary: 创建快餐码牌及不可猜测扫码 scene
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FastFoodPlateInput'}
+      responses: {'200': {description: Created fast-food plate}}
+  /merchant/fast-food-plates/{plateID}:
+    get:
+      summary: 快餐码牌详情
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Fast-food plate}}
+    put:
+      summary: 修改快餐码牌资料或启停状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FastFoodPlateInput'}
+      responses: {'200': {description: Updated fast-food plate}}
+    delete:
+      summary: 停用并软删除快餐码牌
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Deleted fast-food plate}}
+  /merchant/marketing/apps:
+    get:
+      summary: 已开放营销应用及活动状态汇总
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Marketing application registry}}
+  /merchant/marketing/coupons:
+    get:
+      summary: 代金券与满减券活动列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Coupon campaign page}}
+    post:
+      summary: 创建优惠券活动草稿
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingCouponInput'}
+      responses: {'201': {description: Created coupon campaign}}
+  /merchant/marketing/coupons/{couponID}:
+    parameters:
+      - in: path
+        name: couponID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 优惠券活动详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Coupon campaign}}
+    put:
+      summary: 修改未启用的优惠券活动
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingCouponInput'}
+      responses: {'200': {description: Updated coupon campaign}}
+    delete:
+      summary: 软删除未启用且未被领取或引用的优惠券活动
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Coupon campaign deleted}}
+  /merchant/marketing/coupons/{couponID}/activate:
+    post:
+      summary: 启用优惠券活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated coupon campaign}}
+  /merchant/marketing/coupons/{couponID}/pause:
+    post:
+      summary: 暂停优惠券活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused coupon campaign}}
+  /merchant/marketing/coupon-records:
+    get:
+      summary: 优惠券领取与中奖发放记录
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: campaign_id
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Coupon issuance record page}}
+  /merchant/marketing/placements:
+    get:
+      summary: 小程序弹窗广告列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Marketing placement page}}
+    post:
+      summary: 创建弹窗广告草稿
+      description: 支持首页、点单、结算、订单结果和会员中心五个投放位。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingPlacementInput'}
+      responses: {'201': {description: Created marketing placement}}
+  /merchant/marketing/placements/{placementID}:
+    parameters:
+      - in: path
+        name: placementID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 弹窗广告详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Marketing placement}}
+    put:
+      summary: 修改未启用的弹窗广告
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingPlacementInput'}
+      responses: {'200': {description: Updated marketing placement}}
+    delete:
+      summary: 软删除未启用的弹窗广告
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Marketing placement deleted}}
+  /merchant/marketing/placements/{placementID}/activate:
+    post:
+      summary: 启用弹窗广告
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: placementID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated marketing placement}}
+  /merchant/marketing/placements/{placementID}/pause:
+    post:
+      summary: 暂停弹窗广告
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: placementID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused marketing placement}}
+  /merchant/marketing/lotteries:
+    get:
+      summary: 免费抽奖活动及奖项列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Lottery campaign page}}
+    post:
+      summary: 创建免费抽奖活动草稿
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingLotteryInput'}
+      responses: {'201': {description: Created lottery campaign}}
+  /merchant/marketing/lotteries/{lotteryID}:
+    parameters:
+      - in: path
+        name: lotteryID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 免费抽奖活动详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Lottery campaign and prizes}}
+    put:
+      summary: 修改未开奖且未启用的抽奖活动
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingLotteryInput'}
+      responses: {'200': {description: Updated lottery campaign}}
+    delete:
+      summary: 软删除未开奖且未启用的抽奖活动
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Lottery campaign deleted}}
+  /merchant/marketing/lotteries/{lotteryID}/activate:
+    post:
+      summary: 启用免费抽奖活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated lottery campaign}}
+  /merchant/marketing/lotteries/{lotteryID}/pause:
+    post:
+      summary: 暂停免费抽奖活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused lottery campaign}}
+  /merchant/marketing/lottery-draws:
+    get:
+      summary: 免费抽奖参与与中奖记录
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: campaign_id
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Lottery draw record page}}
+  /public/stores/{storeCode}:
+    get:
+      summary: 门店装修与实时营业状态
+      security: []
       parameters:
         - in: path
           name: storeCode
           required: true
           schema: {type: string}
-      responses: {'200': {description: Store, categories and products}}
+      responses: {'200': {description: 'Public store, decoration, businessStatus and nextOpenAt'}}
+  /public/stores/{storeCode}/catalog:
+    get:
+      summary: 顾客点单目录
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses: {'200': {description: 'Store, categories and products'}}
   /public/media/{storagePath}:
     get:
       summary: 读取已上传的公开图片
       description: 只读取处于 ACTIVE 状态的图片；storagePath 包含服务端生成的多段路径。
+      security: []
       parameters:
         - in: path
           name: storagePath
@@ -223,6 +548,7 @@ paths:
   /public/table-codes/{code}:
     get:
       summary: 解析不可猜测的桌码 publicId
+      security: []
       parameters:
         - in: path
           name: code
@@ -230,10 +556,164 @@ paths:
           schema: {type: string, minLength: 20, maxLength: 32}
       responses:
         '200': {description: Active store and table context}
-        '404': {description: Code, area, store or tenant is unavailable}
+        '404': {description: 'Code, area, store or tenant is unavailable'}
+  /public/fast-food-plates/{code}:
+    get:
+      summary: 解析不可猜测的快餐码牌 publicId
+      security: []
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 32}
+      responses:
+        '200': {description: Active store and fast-food pickup context}
+        '404': {description: 'Plate, store or tenant is unavailable'}
+  /public/stores/{storeCode}/marketing/popup:
+    get:
+      summary: 获取指定页面和店内渠道当前最高优先级弹窗
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: placementCode
+          schema: {type: string, enum: [HOME_POPUP, MENU_POPUP, CHECKOUT_POPUP, ORDER_RESULT_POPUP, PROFILE_POPUP]}
+        - in: query
+          name: channelScope
+          schema: {type: string, enum: [ALL, DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Active placement or null}}
+  /public/stores/{storeCode}/marketing/coupons:
+    get:
+      summary: 当前可领取优惠券列表
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Public coupon campaigns}}
+  /public/stores/{storeCode}/marketing/coupons/{couponID}/claim:
+    post:
+      summary: 以匿名主体键领取临时优惠券资产
+      description: 正式微信顾客会话上线前只返回 PROVISIONAL 记录，不参与订单核销。
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 idempotency_key 二者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PublicMarketingSubjectInput'}
+      responses:
+        '201': {description: Provisional coupon claim created}
+        '200': {description: Idempotent replay of an existing claim}
+        '409': {description: 'Campaign unavailable, sold out or subject limit reached'}
+        '429': {description: Anonymous mutation rate limit reached}
+  /public/stores/{storeCode}/marketing/events:
+    post:
+      summary: 记录弹窗曝光、点击或关闭事件
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 event_id 或 idempotency_key 三者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingEventInput'}
+      responses:
+        '201': {description: Event recorded}
+        '200': {description: Idempotent replay of an existing event}
+  /public/stores/{storeCode}/marketing/lotteries:
+    get:
+      summary: 当前可参与免费抽奖列表
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Public lottery campaigns}}
+  /public/stores/{storeCode}/marketing/lotteries/{lotteryID}:
+    get:
+      summary: 当前可参与免费抽奖详情
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses:
+        '200': {description: Active lottery and prizes}
+        '404': {description: Lottery is unavailable}
+  /public/stores/{storeCode}/marketing/lotteries/{lotteryID}/draw:
+    post:
+      summary: 以匿名主体键参与一次免费抽奖
+      description: 中奖优惠券在正式微信顾客会话上线前仅为 PROVISIONAL 记录。
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 idempotency_key 二者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PublicMarketingSubjectInput'}
+      responses:
+        '201': {description: Lottery draw created}
+        '200': {description: Idempotent replay of an existing draw}
+        '409': {description: Lottery unavailable or anonymous subject limit reached}
+        '429': {description: Anonymous mutation rate limit reached}
   /public/stores/{storeCode}/orders:
     post:
       summary: 幂等创建订单
+      security: []
       parameters:
         - in: path
           name: storeCode
@@ -253,11 +733,15 @@ paths:
               properties:
                 order_scene: {type: string, enum: [DINE_IN, TAKEOUT]}
                 table_public_id: {type: string, description: DINE_IN 必填且必须属于路径中的门店}
+                fastFoodPlatePublicId: {type: string, description: TAKEOUT 可选；服务端重新校验归属与启用状态}
                 items: {type: array, minItems: 1, items: {type: object}}
-      responses: {'201': {description: Order created}}
+      responses:
+        '201': {description: Order created with stable business-day pickup code}
+        '409': {description: Store closed or idempotency conflict}
   /public/orders/{orderNo}/payments:
     post:
       summary: 发起支付
+      security: []
       parameters:
         - in: path
           name: orderNo
@@ -270,7 +754,192 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      in: query
+      name: page_size
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
   schemas:
+    MarketingStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, PAUSED, ENDED]
+    BusinessStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [OPEN, CLOSED, NONE]
+          description: NONE 取消当前临时覆盖。
+        startsAt:
+          type: string
+          format: date-time
+          description: 可选；不传时从服务端当前时间开始。
+        endsAt:
+          type: string
+          format: date-time
+          description: OPEN 或 CLOSED 时必填，必须晚于 startsAt 且最长 31 天。
+        reason: {type: string, maxLength: 255}
+    FastFoodPlateInput:
+      type: object
+      required: [plateName, plateCode]
+      properties:
+        storeId:
+          type: integer
+          format: int64
+          description: 可选；不传时使用当前商户默认门店。
+        plateName: {type: string, maxLength: 80}
+        plateCode:
+          type: string
+          maxLength: 64
+          pattern: '^\S+$'
+        remark: {type: string, maxLength: 255}
+        sortOrder: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+    MarketingCouponInput:
+      type: object
+      required: [name, coupon_type, discount_cents, total_stock]
+      properties:
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        coupon_type: {type: string, enum: [CASH, FULL_REDUCTION]}
+        threshold_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: FULL_REDUCTION 时必须大于等于 discount_cents；CASH 会强制归零。
+        discount_cents: {type: integer, format: int64, minimum: 1}
+        distribution_mode:
+          type: string
+          enum: [PUBLIC_CLAIM, MANUAL_ONLY, LOTTERY_ONLY]
+          default: PUBLIC_CLAIM
+        total_stock: {type: integer, format: int64, minimum: 1, maximum: 1000000000}
+        per_subject_limit: {type: integer, minimum: 1, default: 1}
+        claim_start_at: {type: string, format: date-time, nullable: true}
+        claim_end_at: {type: string, format: date-time, nullable: true}
+        validity_mode:
+          type: string
+          enum: [FIXED_RANGE, RELATIVE_DAYS]
+          default: RELATIVE_DAYS
+        valid_from: {type: string, format: date-time, nullable: true}
+        valid_to: {type: string, format: date-time, nullable: true}
+        valid_days: {type: integer, minimum: 1, maximum: 3650, default: 30}
+        order_types:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+          default: [DINE_IN, TAKEOUT]
+    MarketingPlacementInput:
+      type: object
+      required: [name, image_url]
+      properties:
+        name: {type: string, maxLength: 100}
+        placement_code:
+          type: string
+          enum: [HOME_POPUP, MENU_POPUP, CHECKOUT_POPUP, ORDER_RESULT_POPUP, PROFILE_POPUP]
+          default: HOME_POPUP
+        image_url: {type: string, format: uri, maxLength: 1024}
+        title: {type: string, maxLength: 80}
+        subtitle: {type: string, maxLength: 200}
+        action_type:
+          type: string
+          enum: [NONE, OPEN_MENU, OPEN_COUPONS, CLAIM_COUPON, OPEN_LOTTERY]
+          default: NONE
+        action_target_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: CLAIM_COUPON 或 OPEN_LOTTERY 时必填，其他动作禁止传入。
+        frequency:
+          type: string
+          enum: [EVERY_VISIT, DAILY, ONCE_PER_CAMPAIGN]
+          default: ONCE_PER_CAMPAIGN
+        priority: {type: integer, minimum: -10000, maximum: 10000, default: 0}
+        channel_scope:
+          type: string
+          enum: [ALL, DINE_IN, TAKEOUT, DELIVERY]
+          default: ALL
+        active_from: {type: string, format: date-time, nullable: true}
+        active_to: {type: string, format: date-time, nullable: true}
+    MarketingLotteryPrizeInput:
+      type: object
+      required: [name, prize_type, weight]
+      properties:
+        name: {type: string, maxLength: 100}
+        prize_type: {type: string, enum: [THANKS, COUPON]}
+        coupon_campaign_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: COUPON 奖项必填，且必须引用同门店已启用的 LOTTERY_ONLY 优惠券。
+        weight: {type: integer, format: int64, minimum: 1, maximum: 1000000000000}
+        total_stock:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+          description: COUPON 奖项必须大于 0，THANKS 会强制归零。
+        sort_order: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+    MarketingLotteryInput:
+      type: object
+      required: [name, active_from, active_to, daily_limit, total_limit, terms, prizes]
+      properties:
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        channel_scope:
+          type: string
+          enum: [ALL, DINE_IN, TAKEOUT, DELIVERY]
+          default: ALL
+        active_from: {type: string, format: date-time}
+        active_to: {type: string, format: date-time}
+        daily_limit: {type: integer, minimum: 1, maximum: 100}
+        total_limit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 单一匿名主体在该活动全周期内的最大抽奖次数。
+        terms: {type: string, minLength: 1, maxLength: 5000}
+        prizes:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: '#/components/schemas/MarketingLotteryPrizeInput'}
+    PublicMarketingSubjectInput:
+      type: object
+      required: [subject_key]
+      properties:
+        subject_key:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: 仅用于一期匿名相关性，不是已验证顾客凭证。
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
+    MarketingEventInput:
+      type: object
+      required: [placement_id, event_type]
+      properties:
+        placement_id: {type: integer, format: int64, minimum: 1}
+        event_type: {type: string, enum: [IMPRESSION, CLICK, CLOSE]}
+        subject_key: {type: string, minLength: 12, maxLength: 128}
+        event_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
     MediaAsset:
       type: object
       required: [id, name, kind, url, storageKey, mimeType, width, height, sizeBytes, status, createdAt]

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -24,6 +25,36 @@ func TestHealthEnvelope(t *testing.T) {
 	server.Routes().ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Body.String() == "" {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestTrustedProxyRealIPOnlyAcceptsLocalNginx(t *testing.T) {
+	t.Parallel()
+	server := &Server{}
+	handler := server.trustedProxyRealIP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.RemoteAddr))
+	}))
+
+	direct := httptest.NewRequest(http.MethodGet, "/", nil)
+	direct.RemoteAddr = "198.51.100.7:45678"
+	direct.Header.Set("True-Client-IP", "203.0.113.99")
+	direct.Header.Set("X-Real-IP", "203.0.113.98")
+	direct.Header.Set("X-Forwarded-For", "203.0.113.97")
+	directResponse := httptest.NewRecorder()
+	handler.ServeHTTP(directResponse, direct)
+	if got := directResponse.Body.String(); got != "198.51.100.7:45678" {
+		t.Fatalf("direct client spoofed forwarding headers: %q", got)
+	}
+
+	proxied := httptest.NewRequest(http.MethodGet, "/", nil)
+	proxied.RemoteAddr = "127.0.0.1:45678"
+	proxied.Header.Set("True-Client-IP", "203.0.113.99")
+	proxied.Header.Set("X-Real-IP", "198.51.100.8")
+	proxied.Header.Set("X-Forwarded-For", "203.0.113.97")
+	proxiedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(proxiedResponse, proxied)
+	if got := strings.TrimSpace(proxiedResponse.Body.String()); got != "198.51.100.8" {
+		t.Fatalf("local proxy client address was not accepted: %q", got)
 	}
 }
 

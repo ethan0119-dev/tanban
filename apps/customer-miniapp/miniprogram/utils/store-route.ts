@@ -10,11 +10,13 @@ export type OrderingEntryRoute =
   | { kind: "NONE" }
   | { kind: "STORE"; storeCode: string }
   | { kind: "TABLE"; publicScene: string; expectedStoreCode?: string }
+  | { kind: "FAST_FOOD"; publicId: string; expectedStoreCode?: string }
   | { kind: "INVALID"; message: string };
 
 const STORE_CODE_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const TABLE_SCENE_PATTERN = /^[a-zA-Z0-9_-]{20,32}$/;
 const TABLE_KEYS = ["tableCode", "table_code", "tc"] as const;
+const FAST_FOOD_KEYS = ["fastFoodPlate", "fast_food_plate", "fp"] as const;
 
 function decode(value: string): string {
   try {
@@ -34,6 +36,12 @@ function validTableScene(value: string | undefined): string {
   if (!value) return "";
   const decoded = decode(value).trim();
   return TABLE_SCENE_PATTERN.test(decoded) ? decoded : "";
+}
+
+function validFastFoodPublicId(value: string | undefined): string {
+  if (!value) return "";
+  const decoded = decode(value).trim();
+  return /^[a-fA-F0-9]{28}$/.test(decoded) ? decoded.toLowerCase() : "";
 }
 
 function sceneFields(rawScene: string): Record<string, string> {
@@ -94,6 +102,12 @@ export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntry
     return { kind: "TABLE", publicScene, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
   }
 
+  if (hasAnyKey(query, FAST_FOOD_KEYS)) {
+    const publicId = validFastFoodPublicId(presentValue(query, FAST_FOOD_KEYS));
+    if (!publicId) return { kind: "INVALID", message: "快餐码牌参数无效，请重新扫码" };
+    return { kind: "FAST_FOOD", publicId, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
+  }
+
   if (Object.prototype.hasOwnProperty.call(query, "scene")) {
     const rawScene = query.scene;
     if (!rawScene) return { kind: "INVALID", message: "二维码参数为空，请重新扫码" };
@@ -114,6 +128,15 @@ export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntry
         }
         const expectedStoreCode = explicitStore || sceneStore;
         return { kind: "TABLE", publicScene, ...(expectedStoreCode ? { expectedStoreCode } : {}) };
+      }
+      if (hasAnyKey(fields, FAST_FOOD_KEYS)) {
+        const publicId = validFastFoodPublicId(presentValue(fields, FAST_FOOD_KEYS));
+        if (!publicId) return { kind: "INVALID", message: "快餐码牌参数无效或已损坏，请重新扫码" };
+        const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
+        if (hasAnyKey(fields, storeKeys) && !sceneStore) return { kind: "INVALID", message: "码牌中的门店参数无效，请重新扫码" };
+        if (explicitStore && sceneStore && explicitStore !== sceneStore) return { kind: "INVALID", message: "快餐码牌与门店不匹配，请重新扫码" };
+        const expectedStoreCode = explicitStore || sceneStore;
+        return { kind: "FAST_FOOD", publicId, ...(expectedStoreCode ? { expectedStoreCode } : {}) };
       }
       const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
       if (!sceneStore) return { kind: "INVALID", message: "二维码参数无效，请重新扫码" };
@@ -144,6 +167,7 @@ export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntry
 
 export function orderingEntryKey(route: OrderingEntryRoute): string {
   if (route.kind === "TABLE") return `TABLE:${route.expectedStoreCode || ""}:${route.publicScene}`;
+  if (route.kind === "FAST_FOOD") return `FAST_FOOD:${route.expectedStoreCode || ""}:${route.publicId}`;
   if (route.kind === "STORE") return `STORE:${route.storeCode}`;
   return route.kind;
 }

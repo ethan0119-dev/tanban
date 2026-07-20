@@ -1,18 +1,19 @@
 import { env } from "../../config/env";
 import type { TanbanAppOption } from "../../app";
-import type { CartItem, Order, TableOrderingContext } from "../../types/domain";
+import type { CartItem, FastFoodOrderingContext, Order, Store, TableOrderingContext } from "../../types/domain";
 import { cartLineKey, clearCart, readCart } from "../../utils/cart";
-import { checkoutFlowFor, checkoutNeedsFreshOrder, checkoutOrderIsClosed, clearCheckoutFlow, markCheckoutSubmitted, rememberCheckoutDetails, rememberCheckoutOrder } from "../../utils/checkout";
+import { checkoutBlockedByStoreStatus, checkoutFlowFor, checkoutNeedsFreshOrder, checkoutOrderIsClosed, clearCheckoutFlow, markCheckoutSubmitted, rememberCheckoutDetails, rememberCheckoutOrder } from "../../utils/checkout";
 import { customerGuestKey } from "../../utils/customer";
 import { rememberOrder } from "../../utils/orders";
 import { ApiError, request } from "../../utils/request";
 import { revalidateTableOrderingContext, sameTableContext, tableContextForStore, tableOrderFields } from "../../utils/table-context";
+import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext } from "../../utils/fast-food-context";
 
 interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 
 Page({
-  data: { storeCode: "", cart: [] as CartItem[], amount: 0, remark: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode },
+  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], amount: 0, remark: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -26,16 +27,25 @@ Page({
       return;
     }
     const storeCode = app.globalData.storeCode;
+    let store: Store | null = null;
+    try {
+      store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+    } catch {
+      // 创建订单时服务端仍会做最终营业状态校验。
+    }
     const tableContext = tableContextForStore(storeCode);
+    const fastFoodContext = fastFoodContextForStore(storeCode);
     const cart = readCart(storeCode);
     if (!cart.length) {
       void wx.navigateBack();
       return;
     }
-    const flow = checkoutFlowFor(storeCode, cart, tableContext);
+    const flow = checkoutFlowFor(storeCode, cart, tableContext, fastFoodContext);
     this.setData({
       storeCode,
+      store,
       tableContext,
+      fastFoodContext,
       cart: cart.map((item) => ({ ...item, lineKey: cartLineKey(item) })),
       amount: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
       fulfillmentType: flow.fulfillmentType,
@@ -52,7 +62,7 @@ Page({
       const order = await request<Order>({ url: `/public/orders/${encodeURIComponent(orderNo)}`, method: "GET" });
       if (checkoutOrderIsClosed(order.status)) {
         clearCheckoutFlow(flowKey);
-        const fresh = checkoutFlowFor(this.data.storeCode, this.data.cart, this.data.tableContext);
+        const fresh = checkoutFlowFor(this.data.storeCode, this.data.cart, this.data.tableContext, this.data.fastFoodContext);
         this.setData({ checkoutKey: fresh.idempotencyKey, orderNo: "", fulfillmentType: fresh.fulfillmentType, remark: fresh.remark, detailsLocked: false });
         return;
       }
@@ -102,7 +112,17 @@ Page({
       if (!sameTableContext(activeTableContext, this.data.tableContext)) {
         throw new Error("点单桌台已切换，请返回菜单并重新确认");
       }
+      const activeFastFoodContext = fastFoodContextForStore(storeCode);
+      if (!sameFastFoodContext(activeFastFoodContext, this.data.fastFoodContext)) {
+        throw new Error("快餐码牌已切换，请返回菜单并重新确认");
+      }
+      const latestStore = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+      this.setData({ store: latestStore });
+      if (checkoutBlockedByStoreStatus(latestStore.businessStatus, this.data.orderNo) || (latestStore.acceptingOrders === false && !this.data.orderNo)) {
+        throw new Error(latestStore.businessStatusMessage || "门店休息中，暂时不能下单");
+      }
       let tableContext = this.data.tableContext;
+      let fastFoodContext = this.data.fastFoodContext;
       if (tableContext) {
         const storedContext = tableContextForStore(storeCode);
         if (!storedContext || !sameTableContext(storedContext, tableContext)) {
@@ -115,15 +135,21 @@ Page({
         app.globalData.storeCode = tableContext.storeCode;
         this.setData({ tableContext, fulfillmentType: "DINE_IN" });
       }
+      if (fastFoodContext) {
+        fastFoodContext = await revalidateFastFoodContext(fastFoodContext);
+        app.globalData.fastFoodContext = fastFoodContext;
+        app.globalData.storeCode = fastFoodContext.storeCode;
+        this.setData({ fastFoodContext, fulfillmentType: "PICKUP" });
+      }
       // 每次提交都重新经过持久化 flow 校验，这样页面长时间停留时 TTL 也会生效。
-      let flow = checkoutFlowFor(storeCode, this.data.cart, tableContext);
+      let flow = checkoutFlowFor(storeCode, this.data.cart, tableContext, fastFoodContext);
       if (flow.idempotencyKey !== this.data.checkoutKey || flow.orderNo !== this.data.orderNo) {
         this.setData({ checkoutKey: flow.idempotencyKey, orderNo: flow.orderNo });
       }
       if (!flow.submitted) {
         rememberCheckoutDetails(flow.idempotencyKey, tableContext ? "DINE_IN" : "PICKUP", this.data.remark);
         markCheckoutSubmitted(flow.idempotencyKey);
-        flow = checkoutFlowFor(storeCode, this.data.cart, tableContext);
+        flow = checkoutFlowFor(storeCode, this.data.cart, tableContext, fastFoodContext);
         this.setData({ detailsLocked: true });
       }
       let order: Order;
@@ -131,15 +157,15 @@ Page({
         order = await request<Order>({ url: `/public/orders/${encodeURIComponent(flow.orderNo)}`, method: "GET" });
         if (checkoutOrderIsClosed(order.status)) {
           clearCheckoutFlow(flow.idempotencyKey);
-          flow = checkoutFlowFor(storeCode, this.data.cart, tableContext);
+          flow = checkoutFlowFor(storeCode, this.data.cart, tableContext, fastFoodContext);
           rememberCheckoutDetails(flow.idempotencyKey, tableContext ? "DINE_IN" : "PICKUP", this.data.remark);
           markCheckoutSubmitted(flow.idempotencyKey);
-          flow = checkoutFlowFor(storeCode, this.data.cart, tableContext);
+          flow = checkoutFlowFor(storeCode, this.data.cart, tableContext, fastFoodContext);
           this.setData({ checkoutKey: flow.idempotencyKey, orderNo: "", detailsLocked: true });
           order = await request<Order>({
             url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
             header: { "Idempotency-Key": flow.idempotencyKey },
-            data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
+            data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
           });
           rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
           this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -148,7 +174,7 @@ Page({
         order = await request<Order>({
           url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
           header: { "Idempotency-Key": flow.idempotencyKey },
-          data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
+          data: { customerKey: customerGuestKey(), fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: this.data.remark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: item.itemRemark || '' })) },
         });
         rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
         this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -190,7 +216,8 @@ Page({
       wx.redirectTo({ url: `/pages/order-detail/index?orderNo=${encodeURIComponent(order.orderNo)}` });
     } catch (error) {
       const orderNoLongerPayable = checkoutNeedsFreshOrder(error);
-      if (orderNoLongerPayable && this.data.checkoutKey) {
+      const storeClosed = error instanceof ApiError && error.code === "STORE_CLOSED";
+      if ((orderNoLongerPayable || storeClosed) && this.data.checkoutKey) {
         clearCheckoutFlow(this.data.checkoutKey);
         this.setData({ checkoutKey: "", orderNo: "", detailsLocked: false });
       }

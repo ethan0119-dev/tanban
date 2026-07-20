@@ -1,0 +1,14 @@
+<view class="page coupons-page">
+  <view class="coupon-hero"><text>领券中心</text><text>当前点单场景可领取的门店优惠</text></view>
+  <view class="coupon-notice">优惠资产涉及真实金额，正式抵扣需先完成微信顾客登录、券包与订单计价闭环；当前领取仅用于联调。</view>
+  <view class="coupon-list" wx:if="{{coupons.length}}">
+    <view class="coupon-card" wx:for="{{coupons}}" wx:key="id">
+      <view class="coupon-value"><view><text>¥</text><text class="coupon-amount">{{item.amountText}}</text></view><text>{{item.thresholdText}}</text></view>
+      <view class="coupon-main"><text class="coupon-title">{{item.name}}</text><text class="coupon-desc">{{item.description || item.scopeText}}</text><text class="coupon-validity">{{item.scopeText}} · {{item.validityText}} · {{item.stockText}}</text></view>
+      <button class="coupon-claim" loading="{{item.claiming}}" disabled="{{item.remainingStock <= 0}}" data-id="{{item.id}}" bindtap="claim">{{item.remainingStock > 0 ? '领取' : '领完'}}</button>
+    </view>
+  </view>
+  <view class="empty" wx:elif="{{loading}}">正在加载优惠活动…</view>
+  <view class="empty" wx:elif="{{error}}"><text>{{error}}</text><button bindtap="loadCoupons">重新加载</button></view>
+  <view class="empty" wx:else><text>暂时没有可领取的优惠券</text><button class="primary" bindtap="goMenu">先去点单</button></view>
+</view>

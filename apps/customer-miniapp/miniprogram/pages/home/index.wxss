@@ -1,10 +1,19 @@
 .decorated-page { min-height: 100vh; padding-top: 28rpx; box-sizing: border-box; }
+.store-closed-card { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border-radius: var(--radius, 24rpx); color: #fff; background: linear-gradient(135deg, #7e5140, #50352c); box-shadow: 0 14rpx 34rpx rgba(78,45,34,.17); }
+.store-closed-card > view { display: flex; flex-direction: column; gap: 7rpx; }
+.store-closed-card > view text:first-child { font-size: 29rpx; font-weight: 900; }
+.store-closed-card > view text:last-child, .store-closed-card > text { color: rgba(255,255,255,.72); font-size: 20rpx; }
 .decor-module { box-sizing: border-box; }
 .table-context-card { display: flex; flex-direction: column; gap: 10rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border: 2rpx solid rgba(33, 77, 63, .18); border-radius: var(--radius, 24rpx); background: linear-gradient(135deg, #edf4ee, var(--surface, #fffefa)); box-shadow: 0 12rpx 34rpx rgba(33, 77, 63, .08); }
 .table-context-card > view { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
 .table-context-badge { padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--green); color: white; font-size: 20rpx; font-weight: 800; }
 .table-context-name { font-size: 34rpx; font-weight: 800; }
 .table-context-card > text { font-size: 23rpx; }
+.fast-food-context-card { display: flex; flex-direction: column; gap: 10rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border: 2rpx solid rgba(186, 112, 39, .2); border-radius: var(--radius, 24rpx); background: linear-gradient(135deg, #fff2dd, var(--surface, #fffefa)); box-shadow: 0 12rpx 34rpx rgba(145, 83, 26, .08); }
+.fast-food-context-card > view { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.fast-food-context-badge { padding: 6rpx 14rpx; border-radius: 999rpx; color: #fff; background: #b76d27; font-size: 20rpx; font-weight: 800; }
+.fast-food-context-name { font-size: 34rpx; font-weight: 800; }
+.fast-food-context-card > text { font-size: 23rpx; }
 .decor-hero { margin: 0 28rpx; }
 .hero-swiper, .banner { width: 100%; height: 300rpx; border-radius: var(--radius, 28rpx); overflow: hidden; }
 .banner-hit { position: relative; width: 100%; height: 100%; }
@@ -43,3 +52,11 @@
 .splash-copy { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 10rpx; padding: 80rpx 36rpx 38rpx; background: linear-gradient(transparent, rgba(0, 0, 0, .72)); color: white; }
 .splash-copy text:first-child { font-size: 38rpx; font-weight: 800; }
 .splash-action { position: absolute; right: 32rpx; bottom: 30rpx; z-index: 2; margin: 0; padding: 0 26rpx; border-radius: 999rpx; background: var(--lime); color: var(--ink); font-size: 24rpx; font-weight: 700; }
+.marketing-popup-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 54rpx; background: rgba(20,14,11,.72); box-sizing: border-box; }
+.marketing-popup-card { position: relative; width: 100%; max-width: 650rpx; overflow: hidden; border-radius: 32rpx; background: #fffefa; box-shadow: 0 34rpx 100rpx rgba(0,0,0,.32); }
+.marketing-popup-image { display: block; width: 100%; height: 720rpx; background: #eee4da; }
+.marketing-popup-close { position: absolute; top: 22rpx; right: 22rpx; z-index: 3; width: 58rpx; height: 58rpx; margin: 0; padding: 0; border-radius: 50%; color: #fff; background: rgba(0,0,0,.45); font-size: 38rpx; line-height: 54rpx; }
+.marketing-popup-copy { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 9rpx; padding: 100rpx 34rpx 42rpx; color: #fff; background: linear-gradient(transparent, rgba(20,10,6,.78)); }
+.marketing-popup-copy text:first-child { font-size: 39rpx; font-weight: 900; }
+.marketing-popup-copy text:last-child { font-size: 23rpx; }
+.marketing-popup-action { position: absolute; right: 30rpx; bottom: 30rpx; z-index: 2; margin: 0; padding: 0 28rpx; border-radius: 999rpx; color: #3d2c22; background: #f8d36d; font-size: 23rpx; font-weight: 800; }

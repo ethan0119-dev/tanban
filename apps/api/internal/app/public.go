@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 func (s *Server) publicRoutes(r chi.Router) {
 	r.Get("/table-codes/{code}", s.publicResolveTableCode)
+	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)
 	r.Get("/stores/{storeCode}", s.publicStore)
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
 	r.Post("/stores/{storeCode}/orders", s.publicCreateOrder)
@@ -24,6 +24,7 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Post("/orders/{orderNo}/payments", s.publicPayOrder)
 	r.Post("/payments/{paymentID}/mock-confirm", s.publicMockConfirm)
 	r.Get("/customer/orders", s.publicCustomerOrders)
+	s.registerPublicMarketingRoutes(r)
 }
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
@@ -112,11 +113,20 @@ func publicModifierGroups(groups []modifierGroupDTO) []map[string]any {
 }
 
 func publicStoreView(store storeDTO) map[string]any {
-	return map[string]any{"id": store.ID, "code": store.Code, "name": store.Name, "logoUrl": store.LogoURL, "address": store.Address, "businessStatus": "OPEN", "theme": map[string]any{"bannerUrl": store.BannerURL, "announcement": store.Notice}}
+	return map[string]any{"id": store.ID, "code": store.Code, "name": store.Name, "logoUrl": store.LogoURL, "address": store.Address, "theme": map[string]any{"bannerUrl": store.BannerURL, "announcement": store.Notice}}
 }
 
 func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string]any {
 	view := publicStoreView(store)
+	state, err := s.currentStoreBusinessState(ctx, s.DB, store.TenantID, store.ID)
+	if err != nil {
+		// A configuration read failure must fail closed at the public boundary.
+		s.Logger.Error("load public store business status", "store_id", store.ID, "error", err)
+		state = storeBusinessState{Open: false, Reason: "SCHEDULE_UNAVAILABLE", Message: "暂时无法接单", Timezone: defaultStoreTimezone, BusinessDate: time.Now().Format("2006-01-02")}
+	}
+	for key, value := range businessStateView(state) {
+		view[key] = value
+	}
 	decoration, version := s.publicDecorationConfig(ctx, store)
 	view["decoration"] = decoration
 	view["decorationVersion"] = version
@@ -142,17 +152,19 @@ type publicOrderItemInput struct {
 }
 
 type publicOrderInput struct {
-	OpenID        string                 `json:"openid"`
-	CustomerKey   string                 `json:"customerKey"`
-	CustomerName  string                 `json:"customer_name"`
-	CustomerPhone string                 `json:"customer_phone"`
-	Fulfillment   string                 `json:"fulfillmentType"`
-	Remark        string                 `json:"remark"`
-	Items         []publicOrderItemInput `json:"items"`
-	OrderType     string                 `json:"orderType"`
-	OrderScene    string                 `json:"order_scene"`
-	TablePublicID string                 `json:"table_public_id"`
-	TableScene    string                 `json:"tableScene"`
+	OpenID                      string                 `json:"openid"`
+	CustomerKey                 string                 `json:"customerKey"`
+	CustomerName                string                 `json:"customer_name"`
+	CustomerPhone               string                 `json:"customer_phone"`
+	Fulfillment                 string                 `json:"fulfillmentType"`
+	Remark                      string                 `json:"remark"`
+	Items                       []publicOrderItemInput `json:"items"`
+	OrderType                   string                 `json:"orderType"`
+	OrderScene                  string                 `json:"order_scene"`
+	TablePublicID               string                 `json:"table_public_id"`
+	TableScene                  string                 `json:"tableScene"`
+	FastFoodPlatePublicID       string                 `json:"fastFoodPlatePublicId"`
+	LegacyFastFoodPlatePublicID string                 `json:"fast_food_plate_public_id"`
 }
 
 func legacyPublicOrderFingerprint(input publicOrderInput) string {
@@ -177,7 +189,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	// for a lightweight abuse guard. The cache interface can move this counter
 	// to Redis when the API is scaled horizontally.
 	s.publicRateMu.Lock()
-	rateKey := "public-order:" + store.Code + ":" + r.RemoteAddr
+	rateKey := "public-order:" + store.Code + ":" + publicClientHost(r)
 	attempts := 0
 	if raw, cacheErr := s.Cache.Get(r.Context(), rateKey); cacheErr == nil {
 		attempts, _ = strconv.Atoi(string(raw))
@@ -219,12 +231,21 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	input.TablePublicID = strings.TrimSpace(strings.TrimPrefix(input.TablePublicID, "tc="))
 	input.TableScene = ""
+	if input.FastFoodPlatePublicID == "" {
+		input.FastFoodPlatePublicID = input.LegacyFastFoodPlatePublicID
+	}
+	input.FastFoodPlatePublicID = strings.TrimSpace(strings.TrimPrefix(input.FastFoodPlatePublicID, "fp="))
+	input.LegacyFastFoodPlatePublicID = ""
 	if orderType == orderTypeDineIn && input.TablePublicID == "" {
 		writeError(w, http.StatusBadRequest, "TABLE_CODE_REQUIRED", "table_public_id is required for a dine-in order")
 		return
 	}
 	if orderType != orderTypeDineIn && input.TablePublicID != "" {
 		writeError(w, http.StatusBadRequest, "TABLE_CODE_NOT_ALLOWED", "table_public_id is only valid for a dine-in order")
+		return
+	}
+	if orderType != orderTypeTakeout && input.FastFoodPlatePublicID != "" {
+		writeError(w, http.StatusBadRequest, "FAST_FOOD_PLATE_NOT_ALLOWED", "fastFoodPlatePublicId is only valid for a takeout order")
 		return
 	}
 	input.OpenID = strings.TrimSpace(input.OpenID)
@@ -236,12 +257,15 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fingerprint := requestFingerprint(input)
-	legacyFingerprint := legacyPublicOrderFingerprint(input)
+	legacyFingerprint := ""
+	if input.TablePublicID == "" && input.FastFoodPlatePublicID == "" {
+		legacyFingerprint = legacyPublicOrderFingerprint(input)
+	}
 	var existingID int64
 	var existingFingerprint string
 	err = s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM orders WHERE tenant_id=? AND store_id=? AND idempotency_key=?", store.TenantID, store.ID, idempotencyKey).Scan(&existingID, &existingFingerprint)
 	if err == nil {
-		if existingFingerprint != "" && existingFingerprint != fingerprint && existingFingerprint != legacyFingerprint {
+		if existingFingerprint != "" && existingFingerprint != fingerprint && (legacyFingerprint == "" || existingFingerprint != legacyFingerprint) {
 			writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different order request")
 			return
 		}
@@ -263,12 +287,33 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	businessState, err := s.ensureStoreAcceptingOrders(r.Context(), tx, store.TenantID, store.ID)
+	if err != nil {
+		if errors.Is(err, errStoreClosed) {
+			writeError(w, http.StatusConflict, "STORE_CLOSED", businessState.Message)
+			return
+		}
+		handleSQLError(w, err)
+		return
+	}
 	var table orderTableReference
 	if input.OrderType == orderTypeDineIn {
 		table, err = resolveOrderTable(r.Context(), tx, store.TenantID, store.ID, input.TablePublicID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusBadRequest, "INVALID_TABLE_CODE", "table code does not belong to this store or is disabled")
+				return
+			}
+			handleSQLError(w, err)
+			return
+		}
+	}
+	var fastFoodPlate fastFoodPlateReference
+	if input.FastFoodPlatePublicID != "" {
+		fastFoodPlate, err = resolveOrderFastFoodPlate(r.Context(), tx, store.TenantID, store.ID, input.FastFoodPlatePublicID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusBadRequest, "INVALID_FAST_FOOD_PLATE", "fast-food plate does not belong to this store or is disabled")
 				return
 			}
 			handleSQLError(w, err)
@@ -345,13 +390,23 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orderNo := newBusinessNo("TB")
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total)
+	businessDate := businessState.BusinessDate
+	var pickupSequence int64
+	pickupCode := ""
+	if input.OrderType == orderTypeTakeout {
+		pickupSequence, pickupCode, err = allocatePickupCode(r.Context(), tx, store.TenantID, store.ID, businessDate)
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
 			if e := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM orders WHERE tenant_id=? AND store_id=? AND idempotency_key=?", store.TenantID, store.ID, idempotencyKey).Scan(&existingID, &existingFingerprint); e == nil {
-				if existingFingerprint != "" && existingFingerprint != fingerprint && existingFingerprint != legacyFingerprint {
+				if existingFingerprint != "" && existingFingerprint != fingerprint && (legacyFingerprint == "" || existingFingerprint != legacyFingerprint) {
 					writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different order request")
 					return
 				}
@@ -512,7 +567,13 @@ func publicOrderView(order orderDTO) map[string]any {
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": fmt.Sprintf("%04d", order.ID%10000), "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	if order.FastFoodPlate != nil {
+		view["fastFoodPlate"] = map[string]any{"publicId": order.FastFoodPlate.PublicID, "plateName": order.FastFoodPlate.Name, "plateCode": order.FastFoodPlate.PlateCode}
+		view["fastFoodPlatePublicId"] = order.FastFoodPlate.PublicID
+		view["fastFoodPlateName"] = order.FastFoodPlate.Name
+		view["fastFoodPlateCode"] = order.FastFoodPlate.PlateCode
+	}
 	if order.Table != nil {
 		view["table"] = map[string]any{"publicId": order.Table.PublicID, "name": order.Table.Name, "areaName": order.Table.AreaName, "tableCode": order.Table.TableCode}
 		view["tablePublicId"] = order.Table.PublicID

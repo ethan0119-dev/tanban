@@ -1,9 +1,10 @@
-import type { CartItem, Category, DecorationConfig, ModifierGroup, Product, ProductOptionGroup, Sku, Store, TableOrderingContext } from "../../types/domain";
+import type { CartItem, Category, DecorationConfig, FastFoodOrderingContext, ModifierGroup, Product, ProductOptionGroup, Sku, Store, TableOrderingContext } from "../../types/domain";
 import type { TanbanAppOption } from "../../app";
 import { addCartItem, cartLineKey, changeCartLineQuantity, readCart } from "../../utils/cart";
 import { applyDecorationChrome, decorationStyle, defaultDecoration, normalizeDecoration } from "../../utils/decoration";
 import { request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
+import { fastFoodContextForStore } from "../../utils/fast-food-context";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -31,6 +32,8 @@ function decorateProducts(products: Product[], cart: CartItem[]): MenuProduct[] 
 Page({
   data: {
     loading: true,
+    storeCode: "",
+    store: null as Store | null,
     categories: [] as Category[],
     products: [] as MenuProduct[],
     activeCategoryId: 0,
@@ -47,17 +50,18 @@ Page({
     appearanceStyle: "",
     menuLayoutClass: "category-left product-list-view density-comfortable",
     tableContext: null as TableOrderingContext | null,
+    fastFoodContext: null as FastFoodOrderingContext | null,
     routeError: "",
   },
   async onShow() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
     if (app.globalData.routeError) {
-      this.setData({ loading: false, routeError: app.globalData.routeError, tableContext: null });
+      this.setData({ loading: false, routeError: app.globalData.routeError, tableContext: null, fastFoodContext: null });
       return;
     }
     const storeCode = app.globalData.storeCode;
-    this.setData({ routeError: "", tableContext: tableContextForStore(storeCode) });
+    this.setData({ storeCode, routeError: "", tableContext: tableContextForStore(storeCode), fastFoodContext: fastFoodContextForStore(storeCode) });
     this.setCart(readCart(storeCode));
     await this.loadCatalog();
   },
@@ -69,6 +73,7 @@ Page({
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
       const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);
       this.setData({
+        store: catalog.store || null,
         categories: catalog.categories || [],
         products: decorateProducts(visibleProducts, this.data.cart),
         activeCategoryId: decoration.menu.loadMode === "ALL" ? 0 : catalog.categories?.[0]?.id || 0,
@@ -89,6 +94,10 @@ Page({
   },
   chooseCategory(event: WechatMiniprogram.BaseEvent) { this.setData({ activeCategoryId: Number(event.currentTarget.dataset.id) }); },
   addProduct(event: WechatMiniprogram.BaseEvent) {
+    if (this.data.store?.businessStatus !== "OPEN") {
+      wx.showToast({ title: this.data.store?.businessStatusMessage || "门店休息中，暂时不能下单", icon: "none" });
+      return;
+    }
     const product = this.data.products.find((item) => item.id === Number(event.currentTarget.dataset.id));
     if (!product || product.soldOut) return;
     const availableSkus = product.skus?.filter((item) => !item.soldOut) || [];
@@ -222,6 +231,7 @@ Page({
   countForProduct(productId: number): number { return this.data.cart.find((item) => item.productId === productId)?.quantity || 0; },
   checkout() {
     if (this.data.routeError) return wx.showToast({ title: this.data.routeError, icon: "none" });
+    if (this.data.store?.businessStatus !== "OPEN") return wx.showToast({ title: this.data.store?.businessStatusMessage || "门店休息中，暂时不能下单", icon: "none" });
     if (!this.data.cartQuantity) return wx.showToast({ title: "请先选择商品", icon: "none" });
     wx.navigateTo({ url: "/pages/checkout/index" });
   },

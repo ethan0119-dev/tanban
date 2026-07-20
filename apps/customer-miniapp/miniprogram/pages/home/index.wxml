@@ -1,8 +1,17 @@
 <view class="page decorated-page" style="{{appearanceStyle}}" wx:if="{{!loading && store}}">
+  <view class="store-closed-card" wx:if="{{store.businessStatus !== 'OPEN'}}">
+    <view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间，暂时不能下单'}}</text></view>
+    <text wx:if="{{store.nextOpenAt}}">下次营业：{{store.nextOpenAt}}</text>
+  </view>
   <view class="table-context-card" wx:if="{{tableContext}}">
     <view><text class="table-context-badge">堂食点单</text><text class="table-context-name">{{tableContext.tableName}}</text></view>
     <text>{{tableContext.areaName ? tableContext.areaName + ' · ' : ''}}{{store.name}}</text>
     <text class="muted">订单将送至当前桌台，换桌请重新扫码</text>
+  </view>
+  <view class="fast-food-context-card" wx:elif="{{fastFoodContext}}">
+    <view><text class="fast-food-context-badge">快餐码牌</text><text class="fast-food-context-name">{{fastFoodContext.plateName}}</text></view>
+    <text>{{store.name}} · 做好后按码牌位置放餐</text>
+    <text class="muted">本单会绑定当前码牌，切换码牌请重新扫码</text>
   </view>
   <block wx:for="{{modules}}" wx:key="id">
     <view wx:if="{{item.type === 'HERO_BANNER'}}" class="decor-module decor-hero">
@@ -62,6 +71,15 @@
 
     <view wx:elif="{{item.type === 'SPACER'}}" class="decor-module" style="height: {{item.config.height}}rpx" />
   </block>
+</view>
+
+<view class="marketing-popup-mask" wx:if="{{marketingPopupVisible && marketingPopup}}" bindtap="closeMarketingPopup">
+  <view class="marketing-popup-card" catchtap="noop">
+    <button class="marketing-popup-close" bindtap="closeMarketingPopup">×</button>
+    <image class="marketing-popup-image" src="{{marketingPopup.image_url}}" mode="aspectFill" />
+    <view class="marketing-popup-copy" wx:if="{{marketingPopup.title || marketingPopup.subtitle}}"><text>{{marketingPopup.title}}</text><text>{{marketingPopup.subtitle}}</text></view>
+    <button wx:if="{{marketingPopup.action_type !== 'NONE'}}" class="marketing-popup-action" bindtap="onMarketingAction">立即参与</button>
+  </view>
 </view>
 
 <view class="splash-mask {{decoration.splash.displayMode === 'FULLSCREEN' ? 'fullscreen' : 'popup'}}" wx:if="{{splashVisible}}" bindtap="closeSplash">

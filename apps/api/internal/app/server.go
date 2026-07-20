@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -70,7 +71,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second))
+	r.Use(s.trustedProxyRealIP, middleware.Recoverer, middleware.Timeout(30*time.Second))
 	r.Use(s.requestID, s.accessLog, s.cors)
 	r.Get("/healthz", s.health)
 	r.Get("/readyz", s.ready)
@@ -90,6 +91,27 @@ func (s *Server) Routes() http.Handler {
 		api.Post("/payments/mock/{providerOrderNo}/confirm", s.mockConfirm)
 	})
 	return r
+}
+
+// trustedProxyRealIP accepts the client address only from the local Nginx
+// reverse proxy. The API binds to loopback in production and Nginx overwrites
+// X-Real-IP with $remote_addr. Direct clients cannot rotate forwarding headers
+// to evade abuse limits or poison audit logs.
+func (s *Server) trustedProxyRealIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteHost := strings.TrimSpace(r.RemoteAddr)
+		if host, _, err := net.SplitHostPort(remoteHost); err == nil {
+			remoteHost = host
+		}
+		remoteIP := net.ParseIP(remoteHost)
+		if remoteIP != nil && remoteIP.IsLoopback() {
+			forwarded := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+			if forwardedIP := net.ParseIP(forwarded); forwardedIP != nil {
+				r.RemoteAddr = forwardedIP.String()
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

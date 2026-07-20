@@ -20,6 +20,11 @@ import { StaffPage } from './pages/StaffPage';
 import { StoredValuePage } from './pages/StoredValuePage';
 import { TableCodesPage } from './pages/TableCodesPage';
 import { BusinessPrintTemplatePage } from './pages/BusinessPrintTemplatePage';
+import { FastFoodPlatesPage } from './pages/FastFoodPlatesPage';
+import { CouponsPage } from './pages/CouponsPage';
+import { LotteryPage } from './pages/LotteryPage';
+import { MarketingAppsPage } from './pages/MarketingAppsPage';
+import { PopupAdsPage } from './pages/PopupAdsPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -41,8 +46,10 @@ function AppRoutes() {
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/orders" element={<Navigate to="/dine-in/orders" replace />} />
-        <Route path="/dine-in/orders" element={<OrdersPage businessType="DINE_IN" />} />
+        <Route path="/dine-in/orders" element={<OrdersPage businessType="DINE_IN" sceneMode="DINE_IN" />} />
+        <Route path="/dine-in/fast-food-orders" element={<OrdersPage businessType="DINE_IN" sceneMode="TAKEOUT" />} />
         <Route path="/dine-in/table-codes" element={<ManagementOnly><TableCodesPage /></ManagementOnly>} />
+        <Route path="/dine-in/fast-food-plates" element={<ManagementOnly><FastFoodPlatesPage /></ManagementOnly>} />
         <Route path="/dine-in/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="dine-in-print-template" businessType="DINE_IN" /></ManagementOnly>} />
         <Route path="/delivery/orders" element={<ManagementOnly><OrdersPage businessType="DELIVERY" unavailable /></ManagementOnly>} />
         <Route path="/delivery/print-template" element={<ManagementOnly><BusinessPrintTemplatePage key="delivery-print-template" businessType="DELIVERY" /></ManagementOnly>} />
@@ -53,6 +60,10 @@ function AppRoutes() {
         <Route path="/membership" element={<ManagementOnly><MembershipPage /></ManagementOnly>} />
         <Route path="/stored-value" element={<ManagementOnly><StoredValuePage /></ManagementOnly>} />
         <Route path="/decoration" element={<ManagementOnly><DecorationPage /></ManagementOnly>} />
+        <Route path="/marketing" element={<ManagementOnly><MarketingAppsPage /></ManagementOnly>} />
+        <Route path="/marketing/coupons" element={<ManagementOnly><CouponsPage /></ManagementOnly>} />
+        <Route path="/marketing/popup-ads" element={<ManagementOnly><PopupAdsPage /></ManagementOnly>} />
+        <Route path="/marketing/lottery" element={<ManagementOnly><LotteryPage /></ManagementOnly>} />
         <Route path="/payments" element={<ManagementOnly><PaymentsPage /></ManagementOnly>} />
         <Route path="/printers" element={<ManagementOnly><PrintersPage /></ManagementOnly>} />
         <Route path="/staff" element={<ManagementOnly><StaffPage /></ManagementOnly>} />

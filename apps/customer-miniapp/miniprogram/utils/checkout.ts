@@ -1,4 +1,4 @@
-import type { CartItem, TableOrderingContext } from "../types/domain";
+import type { CartItem, FastFoodOrderingContext, TableOrderingContext } from "../types/domain";
 import { cartLineKey } from "./cart";
 import { ApiError, idempotencyKey } from "./request";
 
@@ -18,6 +18,8 @@ export interface CheckoutFlow {
   tablePublicId?: string;
   tablePublicScene?: string;
   tableName?: string;
+  fastFoodPlatePublicId?: string;
+  fastFoodPlateName?: string;
   createdAt: number;
 }
 
@@ -30,6 +32,13 @@ export function checkoutOrderIsClosed(status: string | null | undefined): boolea
   return String(status ?? '').toUpperCase() === 'CLOSED';
 }
 
+/** Closing the store blocks new orders, but never strands an order that was
+ * already created while the store was accepting orders. Its payment endpoint
+ * remains the source of truth for whether that order is still payable. */
+export function checkoutBlockedByStoreStatus(businessStatus: string | null | undefined, orderNo: string | null | undefined): boolean {
+  return String(businessStatus ?? '').toUpperCase() !== 'OPEN' && !String(orderNo ?? '').trim();
+}
+
 function fingerprintCart(cart: CartItem[]): string {
   return cart
     .map((item) => `${cartLineKey(item)}:p=${item.price}:q=${item.quantity}`)
@@ -37,8 +46,10 @@ function fingerprintCart(cart: CartItem[]): string {
     .join("|");
 }
 
-function orderingContextKey(context: TableOrderingContext | null | undefined): string {
-  return context ? `TABLE:${context.publicScene}:${context.tablePublicId}` : "STORE";
+function orderingContextKey(context: TableOrderingContext | null | undefined, fastFoodContext?: FastFoodOrderingContext | null): string {
+  if (context) return `TABLE:${context.publicScene}:${context.tablePublicId}`;
+  if (fastFoodContext) return `FAST_FOOD:${fastFoodContext.publicId}`;
+  return "STORE";
 }
 
 function readCheckoutFlow(now = Date.now()): CheckoutFlow | null {
@@ -71,9 +82,10 @@ export function checkoutFlowFor(
   storeCode: string,
   cart: CartItem[],
   tableContext?: TableOrderingContext | null,
+  fastFoodContext?: FastFoodOrderingContext | null,
 ): CheckoutFlow {
   const cartFingerprint = fingerprintCart(cart);
-  const contextKey = orderingContextKey(tableContext);
+  const contextKey = orderingContextKey(tableContext, fastFoodContext);
   const current = readCheckoutFlow();
   if (
     current
@@ -98,6 +110,7 @@ export function checkoutFlowFor(
       tablePublicScene: tableContext.publicScene,
       tableName: tableContext.tableName,
     } : {}),
+    ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId, fastFoodPlateName: fastFoodContext.plateName } : {}),
     createdAt: Date.now(),
   };
   writeCheckoutFlow(flow);

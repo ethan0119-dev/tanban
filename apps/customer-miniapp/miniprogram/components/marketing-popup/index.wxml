@@ -1,0 +1,8 @@
+<view class="marketing-popup-mask" wx:if="{{visible && placement}}" bindtap="close">
+  <view class="marketing-popup-card" catchtap="noop">
+    <button class="marketing-popup-close" bindtap="close">×</button>
+    <image class="marketing-popup-image" src="{{placement.image_url}}" mode="aspectFill" />
+    <view class="marketing-popup-copy" wx:if="{{placement.title || placement.subtitle}}"><text>{{placement.title}}</text><text>{{placement.subtitle}}</text></view>
+    <button wx:if="{{placement.action_type !== 'NONE'}}" class="marketing-popup-action" bindtap="action">立即参与</button>
+  </view>
+</view>

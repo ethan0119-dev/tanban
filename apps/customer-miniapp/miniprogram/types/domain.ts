@@ -132,9 +132,71 @@ export interface Store {
   logoUrl?: string;
   address?: string;
   businessStatus: "OPEN" | "CLOSED";
+  businessStatusReason?: string;
+  businessStatusMessage?: string;
+  acceptingOrders?: boolean;
+  timezone?: string;
+  nextOpenAt?: string;
+  businessHoursSummary?: string;
   theme?: StoreTheme;
   decoration?: DecorationConfig;
   decorationVersion?: number;
+}
+
+export interface MarketingCoupon {
+  id: number;
+  name: string;
+  description?: string;
+  coupon_type: "CASH" | "FULL_REDUCTION";
+  threshold_cents: number;
+  discount_cents: number;
+  distribution_mode: "PUBLIC_CLAIM" | "MANUAL_ONLY" | "LOTTERY_ONLY";
+  total_stock: number;
+  issued_count: number;
+  remaining_stock?: number;
+  per_subject_limit: number;
+  valid_from?: string;
+  valid_to?: string;
+  valid_days?: number;
+  order_types?: Array<"DINE_IN" | "TAKEOUT" | "DELIVERY">;
+  status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
+}
+
+export interface MarketingPlacement {
+  id: number;
+  name: string;
+  placement_code: "HOME_POPUP" | "MENU_POPUP" | "CHECKOUT_POPUP" | "ORDER_RESULT_POPUP" | "PROFILE_POPUP";
+  image_url: string;
+  title?: string;
+  subtitle?: string;
+  action_type: "NONE" | "OPEN_MENU" | "OPEN_COUPONS" | "CLAIM_COUPON" | "OPEN_LOTTERY";
+  action_target_id?: number;
+  frequency: "EVERY_VISIT" | "DAILY" | "ONCE_PER_CAMPAIGN";
+  priority: number;
+}
+
+export interface MarketingLotteryPrize {
+  id: number;
+  name: string;
+  prize_type: "THANKS" | "COUPON";
+  coupon_campaign_id?: number;
+  weight: number;
+  total_stock: number;
+  awarded_count: number;
+}
+
+export interface MarketingLottery {
+  id: number;
+  name: string;
+  description?: string;
+  active_from?: string;
+  active_to?: string;
+  daily_limit: number;
+  total_limit: number;
+  draw_count: number;
+  terms?: string;
+  status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
+  prizes?: MarketingLotteryPrize[];
 }
 
 /** A server-verified dine-in table route kept while the customer orders. */
@@ -146,6 +208,17 @@ export interface TableOrderingContext {
   tableName: string;
   tableCode?: string;
   areaName?: string;
+  resolvedAt: number;
+  validUntil: number;
+}
+
+/** A server-verified fast-food pickup plate route kept while the customer orders. */
+export interface FastFoodOrderingContext {
+  publicId: string;
+  storeCode: string;
+  storeName: string;
+  plateCode: string;
+  plateName: string;
   resolvedAt: number;
   validUntil: number;
 }
@@ -236,6 +309,10 @@ export interface Order {
   id: number;
   orderNo: string;
   pickupCode?: string;
+  fastFoodPlatePublicId?: string;
+  fastFoodPlateCode?: string;
+  fastFoodPlateName?: string;
+  fastFoodPlate?: { publicId?: string; plateCode?: string; plateName?: string };
   status: string;
   paymentStatus: string;
   fulfillmentType?: "PICKUP" | "DINE_IN";

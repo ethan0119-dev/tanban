@@ -49,6 +49,9 @@ export interface Order {
   id: Id;
   orderNo: string;
   pickupNo?: string;
+  fastFoodPlatePublicId?: string;
+  fastFoodPlateCode?: string;
+  fastFoodPlateName?: string;
   status: OrderStatus;
   amount: number;
   paidAmount?: number;
@@ -293,6 +296,36 @@ export interface MerchantSettings {
   pickupMode?: boolean;
   allowLatePayment?: boolean;
   paymentTimeoutMinutes?: number;
+}
+
+export interface StoreBusinessPeriod {
+  id?: Id;
+  start: string;
+  end: string;
+}
+
+export interface StoreBusinessDay {
+  weekday: number;
+  periods: StoreBusinessPeriod[];
+}
+
+export interface StoreBusinessHours {
+  storeId: Id;
+  timezone: string;
+  weeklySchedule: StoreBusinessDay[];
+  businessStatus: 'OPEN' | 'CLOSED';
+  businessStatusReason: string;
+  businessStatusMessage: string;
+  acceptingOrders: boolean;
+  businessDate?: string;
+  nextOpenAt?: string;
+  temporaryOverride?: {
+    id: Id;
+    status: 'OPEN' | 'CLOSED';
+    startsAt: string;
+    endsAt: string;
+    reason?: string;
+  };
 }
 
 export interface PageMeta {

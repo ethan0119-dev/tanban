@@ -1,5 +1,6 @@
 import { env } from "./config/env";
-import type { TableOrderingContext } from "./types/domain";
+import type { FastFoodOrderingContext, TableOrderingContext } from "./types/domain";
+import { clearFastFoodContext, resolveFastFoodContext, saveFastFoodContext } from "./utils/fast-food-context";
 import { orderingEntryKey, parseOrderingEntry, type OrderingEntryOptions } from "./utils/store-route";
 import { clearTableOrderingContext, resolveTableOrderingContext, saveTableOrderingContext } from "./utils/table-context";
 
@@ -8,6 +9,7 @@ export interface TanbanAppOption {
     storeCode: string;
     customerToken: string;
     tableContext: TableOrderingContext | null;
+    fastFoodContext: FastFoodOrderingContext | null;
     routeReady: Promise<void>;
     routeError: string;
     routeRevision: number;
@@ -22,6 +24,7 @@ App<TanbanAppOption>({
     storeCode: env.defaultStoreCode,
     customerToken: "",
     tableContext: null,
+    fastFoodContext: null,
     routeReady: Promise.resolve(),
     routeError: "",
     routeRevision: 0,
@@ -45,7 +48,9 @@ App<TanbanAppOption>({
         // previous venue's table. In-process tab/background navigation does not
         // call this branch, so a valid scanned context remains stable there.
         clearTableOrderingContext();
+        clearFastFoodContext();
         this.globalData.tableContext = null;
+        this.globalData.fastFoodContext = null;
         this.globalData.storeCode = env.defaultStoreCode;
         this.globalData.routeError = "";
       }
@@ -63,14 +68,18 @@ App<TanbanAppOption>({
 
     if (route.kind === "STORE") {
       clearTableOrderingContext();
+      clearFastFoodContext();
       this.globalData.tableContext = null;
+      this.globalData.fastFoodContext = null;
       this.globalData.storeCode = route.storeCode;
       this.globalData.routeError = "";
       return Promise.resolve();
     }
 
     clearTableOrderingContext();
+    clearFastFoodContext();
     this.globalData.tableContext = null;
+    this.globalData.fastFoodContext = null;
     this.globalData.storeCode = env.defaultStoreCode;
     if (route.kind === "INVALID") {
       this.globalData.routeError = route.message;
@@ -79,11 +88,29 @@ App<TanbanAppOption>({
     }
 
     this.globalData.routeError = "";
+    if (route.kind === "FAST_FOOD") {
+      return resolveFastFoodContext(route.publicId, route.expectedStoreCode)
+        .then((context) => {
+          if (revision !== this.globalData.routeRevision) return;
+          saveFastFoodContext(context);
+          this.globalData.fastFoodContext = context;
+          this.globalData.storeCode = context.storeCode;
+        })
+        .catch((error: unknown) => {
+          if (revision !== this.globalData.routeRevision) return;
+          clearFastFoodContext();
+          this.globalData.fastFoodContext = null;
+          this.globalData.storeCode = env.defaultStoreCode;
+          this.globalData.routeError = error instanceof Error ? error.message : "快餐码牌识别失败，请重新扫码";
+          wx.showModal({ title: "快餐码牌不可用", content: this.globalData.routeError, showCancel: false });
+        });
+    }
     return resolveTableOrderingContext(route.publicScene, route.expectedStoreCode)
       .then((context) => {
         if (revision !== this.globalData.routeRevision) return;
         saveTableOrderingContext(context);
         this.globalData.tableContext = context;
+        this.globalData.fastFoodContext = null;
         this.globalData.storeCode = context.storeCode;
       })
       .catch((error: unknown) => {

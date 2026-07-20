@@ -17,28 +17,39 @@ import (
 )
 
 type orderDTO struct {
-	ID             int64          `json:"id"`
-	TenantID       int64          `json:"tenant_id"`
-	StoreID        int64          `json:"store_id"`
-	StoreName      string         `json:"store_name"`
-	OrderNo        string         `json:"order_no"`
-	CustomerName   string         `json:"customer_name"`
-	CustomerPhone  string         `json:"customer_phone"`
-	Remark         string         `json:"remark"`
-	Source         string         `json:"source"`
-	Fulfillment    string         `json:"fulfillment_type"`
-	OrderType      string         `json:"order_type"`
-	Table          *orderTableDTO `json:"table,omitempty"`
-	Status         string         `json:"status"`
-	PaymentStatus  string         `json:"payment_status"`
-	TotalCents     int64          `json:"total_cents"`
-	PaidCents      int64          `json:"paid_cents"`
-	RefundedCents  int64          `json:"refunded_cents"`
-	PaidAt         *string        `json:"paid_at,omitempty"`
-	CreatedAt      string         `json:"created_at"`
-	Items          []orderItemDTO `json:"items,omitempty"`
-	Payment        any            `json:"payment,omitempty"`
-	AvailableSteps []string       `json:"available_transitions"`
+	ID             int64                  `json:"id"`
+	TenantID       int64                  `json:"tenant_id"`
+	StoreID        int64                  `json:"store_id"`
+	StoreName      string                 `json:"store_name"`
+	OrderNo        string                 `json:"order_no"`
+	CustomerName   string                 `json:"customer_name"`
+	CustomerPhone  string                 `json:"customer_phone"`
+	Remark         string                 `json:"remark"`
+	Source         string                 `json:"source"`
+	Fulfillment    string                 `json:"fulfillment_type"`
+	OrderType      string                 `json:"order_type"`
+	BusinessDate   string                 `json:"business_date,omitempty"`
+	PickupSequence int64                  `json:"pickup_sequence,omitempty"`
+	PickupCode     string                 `json:"pickup_code,omitempty"`
+	FastFoodPlate  *orderFastFoodPlateDTO `json:"fast_food_plate,omitempty"`
+	Table          *orderTableDTO         `json:"table,omitempty"`
+	Status         string                 `json:"status"`
+	PaymentStatus  string                 `json:"payment_status"`
+	TotalCents     int64                  `json:"total_cents"`
+	PaidCents      int64                  `json:"paid_cents"`
+	RefundedCents  int64                  `json:"refunded_cents"`
+	PaidAt         *string                `json:"paid_at,omitempty"`
+	CreatedAt      string                 `json:"created_at"`
+	Items          []orderItemDTO         `json:"items,omitempty"`
+	Payment        any                    `json:"payment,omitempty"`
+	AvailableSteps []string               `json:"available_transitions"`
+}
+
+type orderFastFoodPlateDTO struct {
+	ID        int64  `json:"id"`
+	PublicID  string `json:"publicId"`
+	Name      string `json:"plateName"`
+	PlateCode string `json:"plateCode"`
 }
 
 type orderTableDTO struct {
@@ -96,8 +107,8 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		where += " AND (order_no LIKE ? OR customer_name LIKE ? OR customer_phone LIKE ? OR table_area_name_snapshot LIKE ? OR table_name_snapshot LIKE ? OR table_code_snapshot LIKE ? OR LPAD(MOD(id,10000),4,'0') LIKE ?)"
-		args = append(args, like, like, like, like, like, like, like)
+		where += " AND (order_no LIKE ? OR customer_name LIKE ? OR customer_phone LIKE ? OR table_area_name_snapshot LIKE ? OR table_name_snapshot LIKE ? OR table_code_snapshot LIKE ? OR pickup_code LIKE ? OR fast_food_plate_name_snapshot LIKE ? OR fast_food_plate_code_snapshot LIKE ?)"
+		args = append(args, like, like, like, like, like, like, like, like, like)
 	}
 	for _, filter := range []struct {
 		camel, snake, operator string
@@ -123,7 +134,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -135,12 +146,15 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		var item orderDTO
 		var paidAt sql.NullString
 		var tableID sql.NullInt64
+		var pickupSequence, fastFoodPlateID sql.NullInt64
+		var fastFoodPublicID, fastFoodName, fastFoodCode string
 		var tablePublicID, tableArea, tableName, tableCode string
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
 		setOrderTable(&item, tableID, tablePublicID, tableArea, tableName, tableCode)
+		setOrderPickupContext(&item, pickupSequence, fastFoodPlateID, fastFoodPublicID, fastFoodName, fastFoodCode)
 		if paidAt.Valid {
 			item.PaidAt = &paidAt.String
 		}
@@ -177,7 +191,7 @@ type sqlQueryer interface {
 }
 
 func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID, id int64, orderNo string) (orderDTO, error) {
-	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders WHERE tenant_id=?`
 	args := []any{tenantID}
 	if id > 0 {
@@ -190,8 +204,10 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	var item orderDTO
 	var paidAt sql.NullString
 	var tableID sql.NullInt64
+	var pickupSequence, fastFoodPlateID sql.NullInt64
+	var fastFoodPublicID, fastFoodName, fastFoodCode string
 	var tablePublicID, tableArea, tableName, tableCode string
-	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
+	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
 	if err != nil {
 		return item, err
 	}
@@ -199,6 +215,7 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 		item.PaidAt = &paidAt.String
 	}
 	setOrderTable(&item, tableID, tablePublicID, tableArea, tableName, tableCode)
+	setOrderPickupContext(&item, pickupSequence, fastFoodPlateID, fastFoodPublicID, fastFoodName, fastFoodCode)
 	item.AvailableSteps = orderTransitions[item.Status]
 	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? ORDER BY id`, tenantID, item.ID)
 	if err != nil {
@@ -239,6 +256,15 @@ func setOrderTable(order *orderDTO, tableID sql.NullInt64, publicID, areaName, n
 		return
 	}
 	order.Table = &orderTableDTO{ID: tableID.Int64, PublicID: publicID, AreaName: areaName, Name: name, TableCode: tableCode}
+}
+
+func setOrderPickupContext(order *orderDTO, pickupSequence, plateID sql.NullInt64, publicID, name, plateCode string) {
+	if pickupSequence.Valid {
+		order.PickupSequence = pickupSequence.Int64
+	}
+	if plateID.Valid {
+		order.FastFoodPlate = &orderFastFoodPlateDTO{ID: plateID.Int64, PublicID: publicID, Name: name, PlateCode: plateCode}
+	}
 }
 
 var orderTransitions = map[string][]string{

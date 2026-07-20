@@ -5,6 +5,8 @@
     "pages/checkout/index",
     "pages/orders/index",
     "pages/order-detail/index",
+    "pages/coupons/index",
+    "pages/lottery/index",
     "pages/profile/index"
   ],
   "window": {
@@ -13,6 +15,9 @@
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f6f5f0",
     "backgroundTextStyle": "dark"
+  },
+  "usingComponents": {
+    "marketing-popup": "/components/marketing-popup/index"
   },
   "tabBar": {
     "color": "#7b807a",

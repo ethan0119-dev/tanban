@@ -6,6 +6,7 @@ import {
   saveTableOrderingContext,
   tableOrderFields,
 } from '../miniprogram/utils/table-context';
+import { normalizeFastFoodResolution, readFastFoodContext, saveFastFoodContext } from '../miniprogram/utils/fast-food-context';
 
 describe('miniapp ordering entry routes', () => {
   let storage: Map<string, unknown>;
@@ -42,6 +43,19 @@ describe('miniapp ordering entry routes', () => {
     expect(parseOrderingEntry({ query: { tableCode: '../bad' } }).kind).toBe('INVALID');
     expect(parseOrderingEntry({ query: { storeCode: 'shop-a', scene: 'store=shop-b&tc=0123456789abcdef0123456789ab' } }).kind).toBe('INVALID');
     expect(parseOrderingEntry({ query: { scene: 'tc=short' } }).kind).toBe('INVALID');
+  });
+
+  it('parses and normalizes fast-food pickup plate routes without confusing them with table routes', () => {
+    const publicId = '0123456789abcdef0123456789ab';
+    expect(parseOrderingEntry({ query: { scene: `fp=${publicId}` } })).toEqual({ kind: 'FAST_FOOD', publicId });
+    expect(parseOrderingEntry({ query: { fast_food_plate: publicId, storeCode: 'manong-coffee' } })).toEqual({ kind: 'FAST_FOOD', publicId, expectedStoreCode: 'manong-coffee' });
+    expect(parseOrderingEntry({ query: { fp: 'short' } }).kind).toBe('INVALID');
+
+    const now = 1_800_000_000_000;
+    const context = normalizeFastFoodResolution(publicId, { publicId, storeCode: 'manong-coffee', storeName: '码农咖啡', plateCode: 'K08', plateName: '取餐架 K08', status: 'ACTIVE' }, now);
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    saveFastFoodContext(context);
+    expect(readFastFoodContext(now)).toMatchObject({ storeCode: 'manong-coffee', plateCode: 'K08' });
   });
 
   it('normalizes, stores, expires, and emits only explicit dine-in order fields', () => {

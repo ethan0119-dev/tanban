@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addCartItem, changeCartItemQuantity, clearCart, readCart, writeCart } from '../miniprogram/utils/cart';
 import {
   CHECKOUT_FLOW_TTL_MS,
+  checkoutBlockedByStoreStatus,
   checkoutFlowFor,
   checkoutNeedsFreshOrder,
   checkoutOrderIsClosed,
@@ -12,7 +13,9 @@ import {
 } from '../miniprogram/utils/checkout';
 import { ApiError } from '../miniprogram/utils/request';
 import { customerGuestKey } from '../miniprogram/utils/customer';
-import type { TableOrderingContext } from '../miniprogram/types/domain';
+import type { FastFoodOrderingContext, TableOrderingContext } from '../miniprogram/types/domain';
+import { rememberMarketingPopup, shouldDisplayMarketingPopup } from '../miniprogram/utils/marketing';
+import type { MarketingPlacement } from '../miniprogram/types/domain';
 
 describe('miniapp scoped storage', () => {
   let storage: Map<string, unknown>;
@@ -123,6 +126,24 @@ describe('miniapp scoped storage', () => {
     expect(second).toBe(first);
   });
 
+  it('scopes checkout idempotency to a verified fast-food pickup plate', () => {
+    const cart = [{ productId: 1, name: '美式', price: 12, quantity: 1 }];
+    const context: FastFoodOrderingContext = {
+      publicId: '0123456789abcdef0123456789ab',
+      storeCode: 'coffee-a',
+      storeName: '码农咖啡',
+      plateCode: 'K08',
+      plateName: '取餐架 K08',
+      resolvedAt: Date.now(),
+      validUntil: Date.now() + 60_000,
+    };
+    const ordinary = checkoutFlowFor('coffee-a', cart);
+    const fastFood = checkoutFlowFor('coffee-a', cart, null, context);
+
+    expect(fastFood.idempotencyKey).not.toBe(ordinary.idempotencyKey);
+    expect(fastFood).toMatchObject({ fulfillmentType: 'PICKUP', fastFoodPlatePublicId: context.publicId, fastFoodPlateName: context.plateName });
+  });
+
   it('expires an abandoned checkout flow and generates a fresh key', () => {
     const now = 1_700_000_000_000;
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -175,5 +196,21 @@ describe('miniapp scoped storage', () => {
     expect(checkoutOrderIsClosed('PAID')).toBe(false);
     expect(checkoutNeedsFreshOrder(new ApiError('不可支付', 409, 'ORDER_NOT_PAYABLE'))).toBe(true);
     expect(checkoutNeedsFreshOrder(new ApiError('网络错误', 0, 'NETWORK_ERROR'))).toBe(false);
+  });
+
+  it('blocks new checkout while closed but allows an already-created order to continue payment', () => {
+    expect(checkoutBlockedByStoreStatus('CLOSED', '')).toBe(true);
+    expect(checkoutBlockedByStoreStatus('CLOSED', 'TB202607200001')).toBe(false);
+    expect(checkoutBlockedByStoreStatus('OPEN', '')).toBe(false);
+  });
+
+  it('uses the device local calendar day for daily marketing popup frequency', () => {
+    const placement: MarketingPlacement = { id: 9, name: '新人礼', placement_code: 'HOME_POPUP', image_url: '/coupon.jpg', action_type: 'OPEN_COUPONS', frequency: 'DAILY', priority: 10 };
+    const firstDay = new Date(2026, 6, 20, 23, 55);
+    const nextDay = new Date(2026, 6, 21, 0, 5);
+    expect(shouldDisplayMarketingPopup('coffee-a', placement, firstDay)).toBe(true);
+    rememberMarketingPopup('coffee-a', placement, firstDay);
+    expect(shouldDisplayMarketingPopup('coffee-a', placement, firstDay)).toBe(false);
+    expect(shouldDisplayMarketingPopup('coffee-a', placement, nextDay)).toBe(true);
   });
 });

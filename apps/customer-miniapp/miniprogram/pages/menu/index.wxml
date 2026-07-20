@@ -1,10 +1,11 @@
-<view class="page menu-page {{menuLayoutClass}}" style="{{appearanceStyle}}" wx:if="{{!loading && !routeError}}">
+<view class="page menu-page {{menuLayoutClass}} {{store && store.businessStatus !== 'OPEN' ? 'store-closed' : ''}}" style="{{appearanceStyle}}" wx:if="{{!loading && !routeError}}">
+  <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间'}}</text></view><text wx:if="{{store.nextOpenAt}}">下次营业 {{store.nextOpenAt}}</text></view>
   <scroll-view class="categories" scroll-y="{{decoration.menu.categoryLayout === 'LEFT'}}" scroll-x="{{decoration.menu.categoryLayout === 'TOP'}}" enhanced>
     <view wx:if="{{decoration.menu.loadMode === 'ALL'}}" class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
     <view wx:for="{{categories}}" wx:key="id" class="category {{activeCategoryId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
   </scroll-view>
   <scroll-view class="products" scroll-y enhanced>
-    <view class="menu-title"><view><text>今晚菜单</text><text class="table-inline" wx:if="{{tableContext}}">堂食 · {{tableContext.tableName}}</text></view><text class="muted">现点现做</text></view>
+    <view class="menu-title"><view><text>今晚菜单</text><text class="table-inline" wx:if="{{tableContext}}">堂食 · {{tableContext.tableName}}</text><text class="fast-food-inline" wx:elif="{{fastFoodContext}}">快餐 · {{fastFoodContext.plateName}}</text></view><text class="muted">现点现做</text></view>
     <view class="product-list">
       <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
         <image wx:if="{{item.imageUrl}}" class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
@@ -24,12 +25,12 @@
             </view>
           </view>
         </view>
-        <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
+        <view class="product-action" wx:if="{{!item.soldOut}}"><text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
         <text wx:else class="sold-out">售罄</text>
       </view>
     </view>
   </scroll-view>
-  <view class="cart-bar"><view><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><button bindtap="checkout">去结算</button></view>
+  <view class="cart-bar"><view><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">{{store && store.businessStatus !== 'OPEN' ? '休息中' : '去结算'}}</button></view>
 </view>
 <view class="empty" wx:elif="{{routeError}}"><text>{{routeError}}</text><text>请重新扫描有效二维码</text></view>
 <view class="empty" wx:else>正在准备菜单…</view>
@@ -59,3 +60,4 @@
     <view class="configuration-confirm"><view><text>本份预计</text><text class="configuration-price">¥{{pickerPrice / 100}}</text></view><button bindtap="confirmConfiguredProduct">加入购物车</button></view>
   </view>
 </view>
+<marketing-popup store-code="{{storeCode}}" placement-code="MENU_POPUP" channel-scope="{{tableContext ? 'DINE_IN' : 'TAKEOUT'}}" />

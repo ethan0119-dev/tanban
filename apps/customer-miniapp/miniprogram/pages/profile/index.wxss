@@ -3,6 +3,11 @@
 .profile-head > view:last-child { display: flex; flex-direction: column; gap: 10rpx; }
 .name { font-size: 36rpx; font-weight: 800; }
 .profile-head .muted { font-size: 23rpx; }
+.asset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; margin: -18rpx 28rpx 24rpx; }
+.asset-grid > view { display: flex; flex-direction: column; gap: 8rpx; padding: 26rpx; border-radius: 24rpx; color: white; background: linear-gradient(145deg, #b97044, #844b31); box-shadow: 0 14rpx 34rpx rgba(91,50,30,.16); }
+.asset-grid > view:last-child { background: linear-gradient(145deg, #315f4e, #183e32); }
+.asset-grid .asset-title { color: #fff; font-size: 31rpx; font-weight: 800; }
+.asset-grid text { color: rgba(255,255,255,.72); font-size: 20rpx; }
 .menu > view { display: flex; justify-content: space-between; padding: 28rpx 4rpx; border-bottom: 1rpx solid #eeeae2; }
 .menu > view:last-child { border: 0; }
 .version { margin-top: 60rpx; color: #a2a6a1; font-size: 21rpx; text-align: center; }

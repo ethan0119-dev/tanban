@@ -293,8 +293,9 @@ func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.
 		WithArgs(int64(2), int64(11)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "tenant_id", "store_id", "store_name", "order_no", "customer_name", "customer_phone", "remark", "source", "fulfillment_type", "order_type",
+			"business_date", "pickup_sequence", "pickup_code", "fast_food_plate_id", "fast_food_plate_public_id_snapshot", "fast_food_plate_name_snapshot", "fast_food_plate_code_snapshot",
 			"table_id", "table_public_id_snapshot", "table_area_name_snapshot", "table_name_snapshot", "table_code_snapshot", "status", "payment_status", "total_cents", "paid_cents", "refunded_cents", "paid_at", "created_at",
-		}).AddRow(11, 2, 5, "码农咖啡", "TB11", "", "", "", "MINI_PROGRAM", "DINE_IN", orderTypeDineIn, nil, "", "", "", "", "PAID", "PAID", 1200, 1200, 0, nil, "2026-07-20T08:00:00Z"))
+		}).AddRow(11, 2, 5, "码农咖啡", "TB11", "", "", "", "MINI_PROGRAM", "DINE_IN", orderTypeDineIn, "2026-07-20", nil, "", nil, "", "", "", nil, "", "", "", "", "PAID", "PAID", 1200, 1200, 0, nil, "2026-07-20T08:00:00Z"))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items")).
 		WithArgs(int64(2), int64(11)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "product_id", "sku_id", "product_name", "sku_name", "attributes_json", "configuration_json", "item_remark", "base_price_cents", "modifier_price_cents", "unit_price_cents", "quantity", "subtotal_cents"}).

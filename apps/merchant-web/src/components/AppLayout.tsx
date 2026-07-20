@@ -6,6 +6,7 @@ import {
   CoffeeOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  GiftOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PrinterOutlined,
@@ -31,8 +32,10 @@ const managementNavigationItems: MenuProps['items'] = [
   {
     key: 'dine-in-domain', label: '店内', icon: <ShopOutlined />,
     children: [
-      { key: '/dine-in/orders', label: '店内订单' },
+      { key: '/dine-in/orders', label: '堂食订单' },
+      { key: '/dine-in/fast-food-orders', label: '快餐订单' },
       { key: '/dine-in/table-codes', label: '桌码管理', icon: <QrcodeOutlined /> },
+      { key: '/dine-in/fast-food-plates', label: '快餐码牌', icon: <QrcodeOutlined /> },
       { key: '/dine-in/print-template', label: '店内打印模板' },
     ],
   },
@@ -59,6 +62,15 @@ const managementNavigationItems: MenuProps['items'] = [
     ],
   },
   { key: '/decoration', label: '店铺装修', icon: <BgColorsOutlined /> },
+  {
+    key: 'marketing-domain', label: '营销应用', icon: <GiftOutlined />,
+    children: [
+      { key: '/marketing', label: '应用中心' },
+      { key: '/marketing/coupons', label: '优惠券' },
+      { key: '/marketing/popup-ads', label: '弹窗广告' },
+      { key: '/marketing/lottery', label: '抽奖活动' },
+    ],
+  },
   { key: '/payments', label: '支付与退款', icon: <TransactionOutlined /> },
   { key: '/printers', label: '打印中心', icon: <PrinterOutlined /> },
   { key: '/staff', label: '员工与角色', icon: <TeamOutlined /> },
@@ -97,6 +109,7 @@ export function AppLayout() {
   }, [location.pathname, mobile]);
 
   const selectedKey = useMemo(() => navigationRouteKeys(navigationItems)
+    .sort((left, right) => right.length - left.length)
     .find((key) => location.pathname.startsWith(key)) ?? '/dashboard', [location.pathname, navigationItems]);
 
   const accountMenu: MenuProps['items'] = [
@@ -129,7 +142,7 @@ export function AppLayout() {
           theme="dark"
           items={navigationItems}
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain']}
+          defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain', 'marketing-domain']}
           onClick={({ key }) => navigate(key)}
         />
         {!collapsed && <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>}
