@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS print_outbox (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  store_id BIGINT UNSIGNED NOT NULL,
+  order_id BIGINT UNSIGNED NOT NULL,
+  event_type VARCHAR(32) NOT NULL,
+  dedupe_key VARCHAR(160) COLLATE utf8mb4_bin NOT NULL,
+  actor_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  extra_text TEXT NOT NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+  attempts INT NOT NULL DEFAULT 0,
+  available_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  last_error VARCHAR(500) NOT NULL DEFAULT '',
+  processed_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_print_outbox_fact (tenant_id, event_type, dedupe_key),
+  KEY idx_print_outbox_pending (status, available_at, id),
+  KEY idx_print_outbox_order (tenant_id, store_id, order_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -63,6 +63,7 @@ export function DecorationPage() {
   const [versionActionLoading, setVersionActionLoading] = useState(false);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetSaving, setAssetSaving] = useState(false);
+  const [assetUploading, setAssetUploading] = useState(false);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -258,6 +259,17 @@ export function DecorationPage() {
     }
   };
 
+  const uploadAsset = useCallback(async (file: File): Promise<MediaAsset> => {
+    setAssetUploading(true);
+    try {
+      const created = await decorationApi.uploadAsset(file);
+      setAssets((items) => [created, ...items.filter((item) => item.id !== created.id)]);
+      return created;
+    } finally {
+      setAssetUploading(false);
+    }
+  }, []);
+
   const updateAsset = async (id: string | number, input: Pick<MediaAsset, 'name' | 'url' | 'type'>) => {
     setAssetSaving(true);
     try {
@@ -302,7 +314,7 @@ export function DecorationPage() {
   const items = useMemo(() => tabLabels.map((tab) => ({
     key: tab.key,
     label: tab.label,
-    children: tab.key === 'pages' ? <PageModulesPanel config={config} onChange={updateConfig} />
+    children: tab.key === 'pages' ? <PageModulesPanel config={config} assets={assets} assetUploading={assetUploading} onUploadAsset={uploadAsset} onChange={updateConfig} />
       : tab.key === 'theme' ? <ThemePanel config={config} onChange={updateConfig} />
         : tab.key === 'ordering' ? <OrderingPanel config={config} onChange={updateConfig} />
           : tab.key === 'templates' ? <TemplatePanel config={config} templates={templates} loading={templatesLoading} onApply={applyTemplate} />
@@ -321,7 +333,7 @@ export function DecorationPage() {
                   onOpen={(asset) => { setEditingAsset(asset ?? null); setAssetModalOpen(true); }}
                   onClose={() => { setAssetModalOpen(false); setEditingAsset(null); }}
                 />,
-  })), [activeTab, assetModalOpen, assetSaving, assets, assetsLoading, config, editingAsset, templates, templatesLoading, updateConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+  })), [activeTab, assetModalOpen, assetSaving, assetUploading, assets, assetsLoading, config, editingAsset, templates, templatesLoading, updateConfig, uploadAsset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="page-shell decoration-page">

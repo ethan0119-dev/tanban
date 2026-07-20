@@ -71,6 +71,33 @@ paths:
       summary: 创建商品及 SKU
       security: [{bearerAuth: []}]
       responses: {'201': {description: Created product}}
+  /merchant/media-assets/upload:
+    post:
+      summary: 上传商户装修图片
+      description: 图片按当前商户和门店隔离存储，支持 JPEG、PNG 和 GIF，单文件最大 8 MiB。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                name: {type: string, maxLength: 120}
+      responses:
+        '201':
+          description: Created media asset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/MediaAsset'}
+        '400': {description: Invalid multipart form or name}
+        '413': {description: File exceeds 8 MiB}
+        '415': {description: Unsupported or invalid image}
   /merchant/orders:
     get:
       summary: 商户订单列表
@@ -181,6 +208,18 @@ paths:
           required: true
           schema: {type: string}
       responses: {'200': {description: Store, categories and products}}
+  /public/media/{storagePath}:
+    get:
+      summary: 读取已上传的公开图片
+      description: 只读取处于 ACTIVE 状态的图片；storagePath 包含服务端生成的多段路径。
+      parameters:
+        - in: path
+          name: storagePath
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Raw immutable image bytes}
+        '404': {description: Media asset is unavailable}
   /public/table-codes/{code}:
     get:
       summary: 解析不可猜测的桌码 publicId
@@ -231,3 +270,19 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    MediaAsset:
+      type: object
+      required: [id, name, kind, url, storageKey, mimeType, width, height, sizeBytes, status, createdAt]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        kind: {type: string, enum: [IMAGE]}
+        url: {type: string, format: uri}
+        storageKey: {type: string}
+        mimeType: {type: string, enum: [image/jpeg, image/png, image/gif]}
+        width: {type: integer}
+        height: {type: integer}
+        sizeBytes: {type: integer, format: int64}
+        status: {type: string, enum: [ACTIVE]}
+        createdAt: {type: string, format: date-time}

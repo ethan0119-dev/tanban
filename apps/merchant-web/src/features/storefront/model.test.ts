@@ -62,33 +62,41 @@ describe('storefront domain normalization', () => {
   });
 
   it('keeps dine-in and delivery print templates independent', () => {
-    expect(defaultPrintTemplate('DINE_IN').receipt.templateText).toContain('{{table_name}}');
-    expect(defaultPrintTemplate('TAKEOUT').receipt.templateText).toContain('{{order_no}}');
-    expect(defaultPrintTemplate('DELIVERY').receipt.templateText).toContain('{{total_cents}}');
+    expect(defaultPrintTemplate('DINE_IN').sections.MERCHANT.templateText).toContain('{{table_name}}');
+    expect(defaultPrintTemplate('TAKEOUT').sections.MERCHANT.templateText).toContain('{{order_no}}');
+    expect(defaultPrintTemplate('DELIVERY').sections.MERCHANT.templateText).toContain('{{total_cents}}');
+    expect(defaultPrintTemplate('DINE_IN').sections.CUSTOMER.enabled).toBe(false);
+    expect(defaultPrintTemplate('DINE_IN').sections.KITCHEN.layout.showPrices).toBe(false);
 
     const normalized = normalizePrintTemplates([{
       id: 1,
       businessType: 'DINE_IN',
       templateType: 'RECEIPT',
+      copyRole: 'MERCHANT',
       name: '堂食小票',
       content: '桌台 {{table_name}}',
       triggerEvent: 'PAYMENT_SUCCESS',
       copies: 2,
+      paperWidth: 80,
+      layout: { schemaVersion: 1, headerStyle: 'SIMPLE', showQrCode: true },
       status: 'ACTIVE',
     }, {
       id: 2,
       businessType: 'DINE_IN',
       templateType: 'LABEL',
+      copyRole: 'ITEM',
       name: '堂食标签',
       content: '标签',
       triggerEvent: 'ORDER_CREATED',
       copies: 1,
       status: 'DISABLED',
     }], 'DINE_IN');
-    expect(normalized.receipt.name).toBe('堂食小票');
-    expect(normalized.receipt.copies).toBe(2);
-    expect(normalized.receipt.templateText).toContain('{{table_name}}');
-    expect(normalized.label.enabled).toBe(false);
-    expect(printTemplatePayload(normalized, 'RECEIPT')).toMatchObject({ businessType: 'DINE_IN', templateType: 'RECEIPT', triggerEvent: 'PAYMENT_SUCCESS', copies: 2, enabled: true });
+    expect(normalized.sections.MERCHANT.name).toBe('堂食小票');
+    expect(normalized.sections.MERCHANT.copies).toBe(2);
+    expect(normalized.sections.MERCHANT.paperWidth).toBe(80);
+    expect(normalized.sections.MERCHANT.layout.showQrCode).toBe(true);
+    expect(normalized.sections.MERCHANT.templateText).toContain('{{table_name}}');
+    expect(normalized.sections.ITEM.enabled).toBe(false);
+    expect(printTemplatePayload(normalized, 'MERCHANT')).toMatchObject({ businessType: 'DINE_IN', templateType: 'RECEIPT', copyRole: 'MERCHANT', triggerEvent: 'PAYMENT_SUCCESS', copies: 2, paperWidth: 80, enabled: true });
   });
 });

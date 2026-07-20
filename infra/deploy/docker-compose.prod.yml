@@ -11,6 +11,8 @@ services:
       - ../../.env.production
     environment:
       TZ: Asia/Shanghai
+    volumes:
+      - tanban_media:/var/lib/tanban/media
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -32,3 +34,6 @@ services:
       timeout: 3s
       retries: 12
       start_period: 30s
+
+volumes:
+  tanban_media:

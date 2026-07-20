@@ -82,7 +82,10 @@ func (s *Server) Routes() http.Handler {
 			protected.Route("/platform", s.platformRoutes)
 			protected.Route("/merchant", s.merchantRoutes)
 		})
-		api.Route("/public", s.publicRoutes)
+		api.Route("/public", func(public chi.Router) {
+			public.Get("/media/*", s.serveMediaAsset)
+			s.publicRoutes(public)
+		})
 		api.Post("/payments/tianque/callback", s.tianQueCallback)
 		api.Post("/payments/mock/{providerOrderNo}/confirm", s.mockConfirm)
 	})

@@ -20,6 +20,7 @@ const (
 	decorationMaxBytes      = 256 * 1024
 	decorationMaxModules    = 30
 	decorationMaxBanners    = 8
+	decorationMaxHotspots   = 20
 )
 
 var decorationHexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -139,6 +140,22 @@ type decorationImageConfig struct {
 	Action   DecorationAction `json:"action"`
 }
 
+type decorationHotspotImageConfig struct {
+	ImageURL string              `json:"imageUrl"`
+	Alt      string              `json:"alt"`
+	Hotspots []decorationHotspot `json:"hotspots"`
+}
+
+type decorationHotspot struct {
+	ID     string           `json:"id"`
+	X      float64          `json:"x"`
+	Y      float64          `json:"y"`
+	Width  float64          `json:"width"`
+	Height float64          `json:"height"`
+	Label  string           `json:"label"`
+	Action DecorationAction `json:"action"`
+}
+
 type decorationTextConfig struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
@@ -217,7 +234,7 @@ func defaultDecorationConfig(store storeDTO) DecorationConfig {
 		NavSelectedColor: "#214d3f", Radius: "LG",
 	}
 	hero := decorationHeroConfig{}
-	if validHTTPSURL(store.BannerURL) {
+	if validDecorationURL(store.BannerURL) {
 		hero.Items = append(hero.Items, struct {
 			ImageURL string           `json:"imageUrl"`
 			Title    string           `json:"title"`
@@ -397,11 +414,11 @@ func validateDecorationConfig(config DecorationConfig) error {
 	if config.Splash.AutoCloseSeconds < 0 || config.Splash.AutoCloseSeconds > 30 {
 		return errors.New("splash.autoCloseSeconds must be between 0 and 30")
 	}
-	if config.Splash.Enabled && !validHTTPSURL(config.Splash.ImageURL) {
-		return errors.New("splash.imageUrl must be an HTTPS URL when splash is enabled")
+	if config.Splash.Enabled && !validDecorationURL(config.Splash.ImageURL) {
+		return errors.New("splash.imageUrl must be secure when splash is enabled")
 	}
-	if config.Splash.ImageURL != "" && !validHTTPSURL(config.Splash.ImageURL) {
-		return errors.New("splash.imageUrl must be an HTTPS URL")
+	if config.Splash.ImageURL != "" && !validDecorationURL(config.Splash.ImageURL) {
+		return errors.New("splash.imageUrl must be secure")
 	}
 	if !validText(config.Splash.Title, 60) || !validText(config.Splash.Subtitle, 160) {
 		return errors.New("splash text is too long")
@@ -444,8 +461,8 @@ func validateDecorationModule(module DecorationModule) error {
 			return fmt.Errorf("banner items cannot exceed %d", decorationMaxBanners)
 		}
 		for _, item := range config.Items {
-			if !validHTTPSURL(item.ImageURL) {
-				return errors.New("banner imageUrl must be an HTTPS URL")
+			if !validDecorationURL(item.ImageURL) {
+				return errors.New("banner imageUrl must be HTTPS (loopback HTTP is allowed in local development)")
 			}
 			if !validText(item.Title, 60) || !validText(item.Subtitle, 160) {
 				return errors.New("banner text is too long")
@@ -486,10 +503,38 @@ func validateDecorationModule(module DecorationModule) error {
 		if err := strictRawJSON(module.Config, &config); err != nil {
 			return err
 		}
-		if !validHTTPSURL(config.ImageURL) || !validText(config.Alt, 80) {
-			return errors.New("image module requires a valid HTTPS imageUrl and short alt text")
+		if !validDecorationURL(config.ImageURL) || !validText(config.Alt, 80) {
+			return errors.New("image module requires an HTTPS imageUrl (or local loopback HTTP) and short alt text")
 		}
 		return validateDecorationAction(config.Action)
+	case "HOTSPOT_IMAGE":
+		var config decorationHotspotImageConfig
+		if err := strictRawJSON(module.Config, &config); err != nil {
+			return err
+		}
+		if !validDecorationURL(config.ImageURL) || !validText(config.Alt, 80) {
+			return errors.New("hotspot image requires an HTTPS imageUrl (or local loopback HTTP) and short alt text")
+		}
+		if len(config.Hotspots) > decorationMaxHotspots {
+			return fmt.Errorf("hotspot image cannot contain more than %d hotspots", decorationMaxHotspots)
+		}
+		hotspotIDs := map[string]bool{}
+		for index, hotspot := range config.Hotspots {
+			if !validIdentifier(hotspot.ID, 64) || hotspotIDs[hotspot.ID] {
+				return fmt.Errorf("hotspots[%d].id is invalid or duplicated", index)
+			}
+			hotspotIDs[hotspot.ID] = true
+			if hotspot.X < 0 || hotspot.Y < 0 || hotspot.Width <= 0 || hotspot.Height <= 0 ||
+				hotspot.X+hotspot.Width > 100 || hotspot.Y+hotspot.Height > 100 {
+				return fmt.Errorf("hotspots[%d] must fit within 0-100 percent coordinates", index)
+			}
+			if !validRequiredText(hotspot.Label, 60) {
+				return fmt.Errorf("hotspots[%d].label is required and limited to 60 characters", index)
+			}
+			if err := validateDecorationAction(hotspot.Action); err != nil {
+				return fmt.Errorf("hotspots[%d].action: %w", index, err)
+			}
+		}
 	case "TEXT":
 		var config decorationTextConfig
 		if err := strictRawJSON(module.Config, &config); err != nil {
@@ -556,9 +601,92 @@ func validText(value string, limit int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= limit
 }
 
-func validHTTPSURL(value string) bool {
+func validDecorationURL(value string) bool {
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
-	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	if parsed.Scheme == "https" {
+		return true
+	}
+	if parsed.Scheme != "http" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+var errDecorationAssetUnavailable = errors.New("managed decoration image is unavailable")
+
+func lockDecorationStore(ctx context.Context, tx *sql.Tx, tenantID, storeID int64) error {
+	var lockedID int64
+	return tx.QueryRowContext(ctx, `SELECT id FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE`, storeID, tenantID).Scan(&lockedID)
+}
+
+// validateManagedDecorationAssets locks every locally uploaded image referenced
+// by a decoration while the caller is already holding the store row lock. The
+// delete path takes the same locks in the same order, so a draft/publish cannot
+// start referencing an image after deletion has passed its reference checks.
+func (s *Server) validateManagedDecorationAssets(ctx context.Context, tx *sql.Tx, tenantID, storeID int64, config DecorationConfig) error {
+	storageKeys, err := managedDecorationStorageKeys(config, s.Config.MediaPublicBaseURL)
+	if err != nil {
+		return err
+	}
+	for _, storageKey := range storageKeys {
+		keyTenantID, keyStoreID, ok := parseLocalMediaStorageKey(storageKey)
+		if !ok || keyTenantID != tenantID || keyStoreID != storeID {
+			return fmt.Errorf("%w: image belongs to a different store", errDecorationAssetUnavailable)
+		}
+		var assetID int64
+		err = tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey).Scan(&assetID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %s", errDecorationAssetUnavailable, storageKey)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func managedDecorationStorageKeys(config DecorationConfig, publicBaseURL string) ([]string, error) {
+	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if base == "" {
+		return nil, nil
+	}
+	body, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err = json.Unmarshal(body, &value); err != nil {
+		return nil, err
+	}
+	keys := map[string]struct{}{}
+	collectManagedDecorationStorageKeys(value, base+"/", keys)
+	result := make([]string, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func collectManagedDecorationStorageKeys(value any, prefix string, keys map[string]struct{}) {
+	switch typed := value.(type) {
+	case string:
+		if strings.HasPrefix(typed, prefix) {
+			keys[strings.TrimPrefix(typed, prefix)] = struct{}{}
+		}
+	case []any:
+		for _, item := range typed {
+			collectManagedDecorationStorageKeys(item, prefix, keys)
+		}
+	case map[string]any:
+		for _, item := range typed {
+			collectManagedDecorationStorageKeys(item, prefix, keys)
+		}
+	}
 }
 
 func oneOf(value string, allowed ...string) bool {
@@ -614,9 +742,27 @@ func (s *Server) saveDecorationDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, _ := json.Marshal(input.Config)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, store.ID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = s.validateManagedDecorationAssets(r.Context(), tx, identity.TenantID, store.ID, input.Config); err != nil {
+		if errors.Is(err, errDecorationAssetUnavailable) {
+			writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+		} else {
+			handleSQLError(w, err)
+		}
+		return
+	}
 	var newRevision int64
 	if input.ExpectedRevision == 0 {
-		result, insertErr := s.DB.ExecContext(r.Context(), `INSERT INTO store_decorations(tenant_id,store_id,schema_version,draft_json,draft_revision,created_by,updated_by) VALUES(?,?,?,?,1,?,?)`, identity.TenantID, store.ID, input.Config.SchemaVersion, string(body), identity.UserID, identity.UserID)
+		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO store_decorations(tenant_id,store_id,schema_version,draft_json,draft_revision,created_by,updated_by) VALUES(?,?,?,?,1,?,?)`, identity.TenantID, store.ID, input.Config.SchemaVersion, string(body), identity.UserID, identity.UserID)
 		if insertErr != nil {
 			if strings.Contains(insertErr.Error(), "1062") {
 				writeError(w, http.StatusConflict, "DRAFT_CONFLICT", "decoration draft changed; reload before saving")
@@ -631,7 +777,7 @@ func (s *Server) saveDecorationDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		newRevision = 1
 	} else {
-		result, updateErr := s.DB.ExecContext(r.Context(), `UPDATE store_decorations SET schema_version=?,draft_json=?,draft_revision=draft_revision+1,updated_by=? WHERE tenant_id=? AND store_id=? AND draft_revision=?`, input.Config.SchemaVersion, string(body), identity.UserID, identity.TenantID, store.ID, input.ExpectedRevision)
+		result, updateErr := tx.ExecContext(r.Context(), `UPDATE store_decorations SET schema_version=?,draft_json=?,draft_revision=draft_revision+1,updated_by=? WHERE tenant_id=? AND store_id=? AND draft_revision=?`, input.Config.SchemaVersion, string(body), identity.UserID, identity.TenantID, store.ID, input.ExpectedRevision)
 		if updateErr != nil {
 			handleSQLError(w, updateErr)
 			return
@@ -642,6 +788,10 @@ func (s *Server) saveDecorationDraft(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		newRevision = input.ExpectedRevision + 1
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
 	}
 	s.audit(r.Context(), identity, "decoration.draft.save", "store_decoration", int64String(store.ID), map[string]any{"revision": newRevision}, r)
 	writeData(w, http.StatusOK, decorationDraftView{Revision: newRevision, Config: input.Config})
@@ -668,6 +818,10 @@ func (s *Server) publishDecoration(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "DRAFT_CONFLICT", "decoration draft changed; reload before publishing")
 		return
 	}
+	if errors.Is(err, errDecorationAssetUnavailable) {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
+		return
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -684,6 +838,9 @@ func (s *Server) publishDecorationVersion(ctx context.Context, actor identity, s
 		return decorationPublishedView{}, err
 	}
 	defer tx.Rollback()
+	if err = lockDecorationStore(ctx, tx, actor.TenantID, storeID); err != nil {
+		return decorationPublishedView{}, err
+	}
 	var draftJSON string
 	var revision int64
 	if err = tx.QueryRowContext(ctx, `SELECT draft_json,draft_revision FROM store_decorations WHERE tenant_id=? AND store_id=? FOR UPDATE`, actor.TenantID, storeID).Scan(&draftJSON, &revision); err != nil {
@@ -701,6 +858,9 @@ func (s *Server) publishDecorationVersion(ctx context.Context, actor identity, s
 	}
 	normalizeDecorationConfig(&config)
 	if err = validateDecorationConfig(config); err != nil {
+		return decorationPublishedView{}, err
+	}
+	if err = s.validateManagedDecorationAssets(ctx, tx, actor.TenantID, storeID, config); err != nil {
 		return decorationPublishedView{}, err
 	}
 	canonical, _ := json.Marshal(config)
@@ -815,6 +975,10 @@ func (s *Server) rollbackDecoration(w http.ResponseWriter, r *http.Request) {
 	published, err := s.publishDecorationVersion(r.Context(), identity, store.ID, input.ExpectedRevision, input.Note, versionID, sourceJSON)
 	if errors.Is(err, errDecorationConflict) {
 		writeError(w, http.StatusConflict, "DRAFT_CONFLICT", "decoration draft changed; reload before rolling back")
+		return
+	}
+	if errors.Is(err, errDecorationAssetUnavailable) {
+		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
 		return
 	}
 	if err != nil {
@@ -1001,6 +1165,34 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	var existing mediaAssetView
+	err = s.DB.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID).
+		Scan(&existing.ID, &existing.Name, &existing.Kind, &existing.URL, &existing.StorageKey, &existing.MimeType, &existing.Width, &existing.Height, &existing.SizeBytes, &existing.Status, &existing.CreatedAt)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if isLocalMediaStorageKey(existing.StorageKey) {
+		if err = validateLocalMediaRename(input, existing); err != nil {
+			writeError(w, http.StatusBadRequest, "IMMUTABLE_MEDIA_METADATA", err.Error())
+			return
+		}
+		name := strings.TrimSpace(input.Name)
+		result, updateErr := s.DB.ExecContext(r.Context(), `UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+		if updateErr != nil {
+			handleSQLError(w, updateErr)
+			return
+		}
+		affected, _ := result.RowsAffected()
+		if affected != 1 {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
+			return
+		}
+		existing.Name = name
+		s.audit(r.Context(), identity, "media_asset.update", "media_asset", int64String(id), map[string]any{"name": name}, r)
+		writeData(w, http.StatusOK, existing)
+		return
+	}
 	if err = validateMediaAssetInput(input); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
@@ -1030,7 +1222,71 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	if err = lockDecorationStore(r.Context(), tx, identity.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var assetURL string
+	if err = tx.QueryRowContext(r.Context(), `SELECT url FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).Scan(&assetURL); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var draftJSON, publishedJSON string
+	err = tx.QueryRowContext(r.Context(), `SELECT d.draft_json,COALESCE(v.config_json,'') FROM store_decorations d LEFT JOIN store_decoration_versions v ON v.id=d.published_version_id AND v.tenant_id=d.tenant_id AND v.store_id=d.store_id WHERE d.tenant_id=? AND d.store_id=?`, identity.TenantID, storeID).Scan(&draftJSON, &publishedJSON)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
+	for _, body := range []string{draftJSON, publishedJSON} {
+		referenced, referenceErr := decorationJSONReferencesURL(body, assetURL)
+		if referenceErr != nil {
+			s.Logger.Error("inspect media decoration reference", "error", referenceErr, "asset_id", id, "tenant_id", identity.TenantID, "store_id", storeID)
+			writeError(w, http.StatusInternalServerError, "INVALID_DECORATION_DATA", "failed to verify whether the image is in use")
+			return
+		}
+		if referenced {
+			writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from the current draft and published decoration before deleting it")
+			return
+		}
+	}
+	versionRows, err := tx.QueryContext(r.Context(), `SELECT config_json FROM store_decoration_versions WHERE tenant_id=? AND store_id=? ORDER BY id`, identity.TenantID, storeID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	for versionRows.Next() {
+		var versionJSON string
+		if err = versionRows.Scan(&versionJSON); err != nil {
+			versionRows.Close()
+			handleSQLError(w, err)
+			return
+		}
+		referenced, referenceErr := decorationJSONReferencesURL(versionJSON, assetURL)
+		if referenceErr != nil {
+			versionRows.Close()
+			s.Logger.Error("inspect historical media decoration reference", "error", referenceErr, "asset_id", id, "tenant_id", identity.TenantID, "store_id", storeID)
+			writeError(w, http.StatusInternalServerError, "INVALID_DECORATION_DATA", "failed to verify whether the image is in use")
+			return
+		}
+		if referenced {
+			versionRows.Close()
+			writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from all decoration versions before deleting it")
+			return
+		}
+	}
+	if err = versionRows.Err(); err != nil {
+		versionRows.Close()
+		handleSQLError(w, err)
+		return
+	}
+	versionRows.Close()
+	result, err := tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1038,6 +1294,10 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 	affected, _ := result.RowsAffected()
 	if affected != 1 {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
 		return
 	}
 	s.audit(r.Context(), identity, "media_asset.delete", "media_asset", int64String(id), nil, r)
@@ -1048,11 +1308,14 @@ func validateMediaAssetInput(input mediaAssetInput) error {
 	if !validRequiredText(input.Name, 120) {
 		return errors.New("name is required and limited to 120 characters")
 	}
-	if !validHTTPSURL(input.URL) || len(input.URL) > 1024 {
-		return errors.New("url must be an HTTPS URL no longer than 1024 characters")
+	if !validDecorationURL(input.URL) || len(input.URL) > 1024 {
+		return errors.New("url must be HTTPS (or loopback HTTP in local development) and no longer than 1024 characters")
 	}
 	if len(input.StorageKey) > 512 || len(input.MimeType) > 100 {
 		return errors.New("storageKey or mimeType is too long")
+	}
+	if input.StorageKey != "" && isLocalMediaStorageKey(input.StorageKey) {
+		return errors.New("storageKey uses a reserved server-managed prefix")
 	}
 	if input.Width < 0 || input.Height < 0 || input.Width > 20000 || input.Height > 20000 || input.SizeBytes < 0 || input.SizeBytes > 100*1024*1024 {
 		return errors.New("image metadata is outside the allowed range")
@@ -1061,4 +1324,54 @@ func validateMediaAssetInput(input mediaAssetInput) error {
 		return errors.New("mimeType must be an image type")
 	}
 	return nil
+}
+
+func validateLocalMediaRename(input mediaAssetInput, existing mediaAssetView) error {
+	if !validRequiredText(input.Name, 120) {
+		return errors.New("name is required and limited to 120 characters")
+	}
+	if value := strings.TrimSpace(input.URL); value != "" && value != existing.URL {
+		return errors.New("the URL of an uploaded image is server-managed and cannot be changed")
+	}
+	if value := strings.TrimSpace(input.StorageKey); value != "" && value != existing.StorageKey {
+		return errors.New("the storage key of an uploaded image is server-managed and cannot be changed")
+	}
+	if value := strings.TrimSpace(input.MimeType); value != "" && value != existing.MimeType {
+		return errors.New("the MIME type of an uploaded image is server-managed and cannot be changed")
+	}
+	if input.Width != 0 && input.Width != existing.Width || input.Height != 0 && input.Height != existing.Height || input.SizeBytes != 0 && input.SizeBytes != existing.SizeBytes {
+		return errors.New("the dimensions and size of an uploaded image are server-managed and cannot be changed")
+	}
+	return nil
+}
+
+func decorationJSONReferencesURL(body, targetURL string) (bool, error) {
+	if strings.TrimSpace(body) == "" || strings.TrimSpace(targetURL) == "" {
+		return false, nil
+	}
+	var value any
+	if err := json.Unmarshal([]byte(body), &value); err != nil {
+		return false, err
+	}
+	return decorationValueReferencesURL(value, targetURL), nil
+}
+
+func decorationValueReferencesURL(value any, targetURL string) bool {
+	switch typed := value.(type) {
+	case string:
+		return typed == targetURL
+	case []any:
+		for _, item := range typed {
+			if decorationValueReferencesURL(item, targetURL) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if decorationValueReferencesURL(item, targetURL) {
+				return true
+			}
+		}
+	}
+	return false
 }

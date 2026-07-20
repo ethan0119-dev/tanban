@@ -83,9 +83,9 @@ sequenceDiagram
 - 店内 → 店内订单、桌码管理、店内打印模板；
 - 外卖 → 外卖订单、外卖打印模板。
 
-模板底层以 `tenant_id + store_id + business_type + template_type` 唯一定位。当前 `business_type` 包含 `DINE_IN/TAKEOUT/DELIVERY`，一期模板类型包含整单 `RECEIPT` 和逐品 `LABEL`；后续再扩展顾客联、厨房联和退款单。
+模板底层以 `tenant_id + store_id + business_type + template_type + copy_role` 唯一定位。当前 `business_type` 包含 `DINE_IN/TAKEOUT/DELIVERY`，一期模板类型包含整单 `RECEIPT` 和逐品 `LABEL`；整单已拆分为 `MERCHANT/CUSTOMER/KITCHEN`，标签使用 `ITEM`。旧整单和标签模板分别迁移为商家联和商品标签，新增顾客联、厨房联默认关闭，避免升级后意外增加打印量。
 
-创建打印任务时读取订单已经固化的 `order_type`，只选择相同业务类型的模板。整单小票按模板份数生成任务；商品标签按“订单明细 × 商品数量 × 模板份数”拆分，支持商品名、规格、选项、加料和单品备注。堂食模板还可使用 `{{table_area}}`、`{{table_name}}`；外卖模板未来再增加收货人、地址、配送方式等字段。外卖尚未开放不妨碍商户提前维护模板，但界面必须明确标注“暂未开放配送下单”。
+创建打印任务时读取订单已经固化的 `order_type`，只选择相同业务类型、输出类型和已启用联次的模板。整单各联按自身份数生成任务；商品标签按“订单明细 × 商品数量 × 模板份数”拆分，支持商品名、规格、选项、加料和单品备注。结构化布局可配置 58/80mm、字号、抬头、字段显隐和二维码，服务端把订单快照渲染为定宽内容后再进入设备适配层。详细模型见 `DECORATION_HOTSPOTS_AND_STRUCTURED_PRINTING.md`。
 
 门店设置中的“小票/标签自动打印”是输出类型总开关，关闭后所有经营场景都不再自动生成对应任务，但运营人员仍可明确发起补打。每个经营场景模板自己的 `trigger_event` 决定下单后还是付款后打印；门店的默认触发点只用于首次生成模板，避免全局设置覆盖已经单独配置的堂食、自提或外卖模板。
 

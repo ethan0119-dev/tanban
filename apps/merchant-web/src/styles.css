@@ -222,17 +222,88 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .print-scene-switch { margin-bottom: 16px; }
 .print-scene-switch .ant-card-body { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-block: 15px; }
 .print-policy-card { margin-bottom: 16px; }
-.print-template-tabs .ant-card-body { padding-top: 8px; }
+.print-copy-tabs { margin-bottom: 18px; }
+.print-copy-tabs .ant-card-body { padding-top: 8px; }
+.print-copy-tabs .ant-tabs-nav { margin-bottom: 14px; }
+.print-copy-tabs .ant-tag { margin-inline-end: 0; font-size: 10px; }
+.print-builder-grid { align-items: flex-start; }
+.print-builder-grid.is-loading { pointer-events: none; opacity: .58; }
 .print-template-editor, .print-paper-preview { height: 100%; border-color: #eee7e2; box-shadow: none; }
 .print-template-switch-row { min-height: 58px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
 .print-template-switch-row p { margin: 4px 0 0 !important; }
 .template-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.7; }
-.print-paper-preview { background: #f8f5f1; }
-.print-paper-preview pre { min-height: 280px; margin: 0; padding: 22px 18px; overflow: auto; border: 1px solid #e8dfd8; background: #fff; color: #28211d; font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; box-shadow: 0 4px 18px rgba(64,44,32,.06); }
+.print-preview-stage { position: sticky; top: 86px; min-height: 620px; background: #ece9e6; }
+.print-preview-stage .ant-card-head { background: rgba(255,255,255,.72); }
+.print-preview-stage .ant-card-body { padding: 28px 22px 18px; }
+.print-preview-note { max-width: 480px; margin: 20px auto 0 !important; text-align: center; font-size: 12px; line-height: 1.7; }
+.print-layout-editor { margin-bottom: 16px; }
+.print-layout-editor .field-label { display: block; margin: 2px 0 7px; color: #675b54; font-size: 13px; }
+.print-layout-editor .ant-col { margin-bottom: 15px; }
+.print-visibility-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px 12px; }
+.print-advanced-card .ant-card-body { padding: 7px 16px; }
+.printer-compatibility-note { margin-top: 18px; }
 .template-variable-box { padding: 15px; border-radius: 11px; background: #faf7f4; }
 .template-variable-box strong { display: block; margin-bottom: 10px; }
 .template-variable-box .ant-tag { margin-bottom: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .template-meta { margin: 12px 4px 0 !important; text-align: right; font-size: 12px; }
+
+.thermal-paper {
+  width: min(100%, 390px);
+  min-height: 570px;
+  margin: 0 auto;
+  padding: 26px 22px 30px;
+  color: #171412;
+  background: #fff;
+  box-shadow: 0 10px 32px rgba(56,44,36,.13);
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.thermal-paper.paper-58 { max-width: 318px; }
+.thermal-paper.paper-80 { max-width: 410px; }
+.thermal-paper.font-large { font-size: 15px; line-height: 1.58; }
+.thermal-copy-mark { margin-bottom: 8px; text-align: center; font-weight: 700; }
+.thermal-custom { margin-bottom: 9px; padding: 6px 8px; border: 1px solid #1c1917; text-align: center; font-weight: 700; }
+.thermal-store { text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+.thermal-store.header-prominent { margin-block: 3px 8px; font-size: 23px; }
+.thermal-scene { text-align: center; font-weight: 700; }
+.thermal-pickup { margin: 8px 0 5px; text-align: center; font-size: 22px; font-weight: 800; }
+.thermal-rule { margin: 10px 0; border-top: 1px dashed #3c3936; }
+.thermal-pair { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 4px 0; }
+.thermal-pair span { flex: 0 0 auto; color: #4c4845; }
+.thermal-pair b { text-align: right; font-weight: 600; }
+.thermal-address { margin: 7px 0; padding: 7px 0; border-block: 1px dotted #77716d; font-weight: 600; }
+.thermal-items-head, .thermal-item-line { display: grid; grid-template-columns: minmax(0, 1fr) 36px 55px 58px; align-items: start; gap: 4px; }
+.thermal-items-head > *:nth-child(n+2), .thermal-item-line > *:nth-child(n+2) { text-align: right; }
+.thermal-items-head:not(:has(> :nth-child(3))), .thermal-item-line:not(:has(> :nth-child(3))) { grid-template-columns: minmax(0, 1fr) 42px; }
+.thermal-item { margin: 8px 0 10px; }
+.thermal-item-line b small { display: block; color: #4c4845; font-size: .82em; font-weight: 500; }
+.thermal-item > small { display: block; margin-top: 3px; color: #4e4946; }
+.thermal-total { display: flex; align-items: baseline; justify-content: space-between; margin: 9px 0; font-size: 17px; font-weight: 700; }
+.thermal-total strong { font-size: 24px; }
+.thermal-note { margin: 10px 0; padding: 8px 0; border-block: 1px dashed #4c4743; }
+.thermal-note b { margin-right: 6px; }
+.thermal-qr { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 13px 0 8px; }
+.thermal-qr span { color: #403b38; font-size: 11px; }
+.thermal-footer { margin-top: 13px; text-align: center; font-weight: 600; }
+.thermal-end { margin-top: 16px; text-align: center; color: #5b5551; font-size: 11px; }
+.thermal-label { min-height: 320px; }
+.thermal-label-product { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 12px 0 8px; }
+.thermal-label-product strong { font-size: 23px; }
+.thermal-emphasis { margin: 9px 0; padding: 8px 5px; border-block: 2px solid #201c19; text-align: center; font-size: 17px; font-weight: 800; }
+.thermal-muted { margin-top: 4px; color: #4b4642; }
+
+@media (max-width: 1199px) {
+  .print-preview-stage { position: static; min-height: 0; }
+  .thermal-paper { min-height: 520px; }
+}
+
+@media (max-width: 720px) {
+  .print-scene-switch .ant-card-body { align-items: flex-start; flex-direction: column; }
+  .print-copy-tabs .ant-tabs-nav-wrap { overflow-x: auto; }
+  .print-visibility-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .print-preview-stage .ant-card-body { padding-inline: 12px; }
+  .thermal-paper { padding-inline: 15px; font-size: 12px; }
+  .thermal-items-head, .thermal-item-line { grid-template-columns: minmax(0, 1fr) 30px 48px 50px; }
+}
 
 .role-grid { margin-bottom: 16px; }
 .role-card { height: 100%; box-shadow: 0 3px 16px rgba(70,54,43,.045); }

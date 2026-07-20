@@ -40,6 +40,22 @@
       <image src="{{item.config.imageUrl}}" mode="widthFix" aria-label="{{item.config.alt}}" />
     </view>
 
+    <view wx:elif="{{item.type === 'HOTSPOT_IMAGE'}}" class="decor-module hotspot-image-module">
+      <image src="{{item.config.imageUrl}}" mode="widthFix" aria-label="{{item.config.alt}}" />
+      <view
+        wx:for="{{item.config.hotspots}}"
+        wx:for-item="hotspot"
+        wx:key="id"
+        class="hotspot-hit"
+        style="left: {{hotspot.x}}%; top: {{hotspot.y}}%; width: {{hotspot.width}}%; height: {{hotspot.height}}%;"
+        role="button"
+        aria-label="{{hotspot.label}}"
+        data-action-type="{{hotspot.action.type}}"
+        data-action-phone="{{hotspot.action.phone}}"
+        bindtap="onDecorationAction"
+      />
+    </view>
+
     <view wx:elif="{{item.type === 'TEXT'}}" class="decor-module card text-module" style="text-align: {{item.config.textAlign}}">
       <text class="text-module-title" wx:if="{{item.config.title}}">{{item.config.title}}</text><text class="muted">{{item.config.body}}</text>
     </view>

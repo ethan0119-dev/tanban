@@ -375,7 +375,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err = s.enqueueOrderPrintsWith(r.Context(), tx, store.TenantID, store.ID, orderID, "ORDER_CREATED", false, 0, ""); err != nil {
+	if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, orderID, "ORDER_CREATED", orderCreatedPrintDedupeKey(orderID), 0, ""); err != nil {
 		handleSQLError(w, err)
 		return
 	}

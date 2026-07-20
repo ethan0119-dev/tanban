@@ -27,6 +27,10 @@
 .secondary { background: var(--surface, #f0ddbd); color: var(--ink); border-radius: var(--radius, 26rpx); }
 .image-module { padding: 0; overflow: hidden; }
 .image-module image { display: block; width: 100%; }
+.hotspot-image-module { position: relative; margin: 24rpx 28rpx 0; overflow: hidden; border-radius: var(--radius, 28rpx); background: var(--surface, #fffefa); }
+.hotspot-image-module > image { display: block; width: 100%; }
+.hotspot-hit { position: absolute; z-index: 2; background: transparent; }
+.hotspot-hit:active { background: rgba(255,255,255,.08); }
 .text-module { display: flex; flex-direction: column; gap: 14rpx; background: var(--surface, #fffefa); }
 .text-module-title { font-size: 34rpx; font-weight: 800; }
 .splash-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 50rpx; background: rgba(14, 20, 17, .68); box-sizing: border-box; }

@@ -100,29 +100,61 @@ export interface TableArea {
 
 export interface PrintTemplateSection {
   id?: Id;
+  templateType: 'RECEIPT' | 'LABEL';
+  copyRole: PrintCopyRole;
   name: string;
   enabled: boolean;
   triggerEvent: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
   copies: number;
+  paperWidth: 58 | 80;
   templateText: string;
+  layout: PrintTemplateLayout;
   updatedAt?: string;
 }
 
 export interface BusinessPrintTemplate {
-  id?: Id;
   businessType: PrintBusinessType;
-  receipt: PrintTemplateSection;
-  label: PrintTemplateSection;
+  sections: Record<PrintCopyRole, PrintTemplateSection>;
+}
+
+export type PrintCopyRole = 'MERCHANT' | 'CUSTOMER' | 'KITCHEN' | 'ITEM';
+
+/**
+ * 与具体打印机厂商无关的票据布局。服务端会把它渲染成 58/80mm 定宽文本；
+ * 厂商适配器接入后，同一份结构还可以映射为 ESC/POS 或云打印指令。
+ */
+export interface PrintTemplateLayout {
+  schemaVersion: 1;
+  headerStyle: 'SIMPLE' | 'PROMINENT';
+  fontSize: 'NORMAL' | 'LARGE';
+  showStoreName: boolean;
+  showOrderType: boolean;
+  showOrderNo: boolean;
+  showPickupNo: boolean;
+  showTable: boolean;
+  showItems: boolean;
+  showItemOptions: boolean;
+  showPrices: boolean;
+  showPayment: boolean;
+  showRemark: boolean;
+  showCustomer: boolean;
+  showAddress: boolean;
+  showQrCode: boolean;
+  customHeader: string;
+  customFooter: string;
 }
 
 export interface PrintTemplateRecord {
   id: Id;
   businessType: PrintBusinessType;
   templateType: 'RECEIPT' | 'LABEL';
+  copyRole?: PrintCopyRole;
   name: string;
   content: string;
   triggerEvent: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
   copies: number;
+  paperWidth?: 58 | 80;
+  layout?: Partial<PrintTemplateLayout>;
   enabled?: boolean;
   status: 'ACTIVE' | 'DISABLED';
   updatedAt?: string;
@@ -204,6 +236,7 @@ export interface Printer {
   paperWidth?: number;
   printTrigger?: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
   outputType?: 'RECEIPT' | 'LABEL';
+  copyRoles?: PrintCopyRole[];
   templateText?: string;
 }
 
@@ -212,6 +245,9 @@ export interface PrintJob {
   orderNo: string;
   printerName?: string;
   type: string;
+  templateId?: Id;
+  copyRole?: PrintCopyRole;
+  paperWidth?: 58 | 80;
   status: 'PENDING' | 'PROCESSING' | 'PRINTING' | 'SUCCESS' | 'FAILED' | 'UNKNOWN';
   retryCount?: number;
   errorMessage?: string;

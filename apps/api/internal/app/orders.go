@@ -831,7 +831,7 @@ func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, prov
 		}
 		if targetStatus == "PAYMENT_EXCEPTION" {
 			s.Logger.Error("payment succeeded on an exceptional order path", "order_id", orderID, "provider_order_no", providerNo, "previous_order_status", orderStatus, "newer_payment_id", newerActiveID, "newer_payment_close_error", newerCloseError)
-		} else if err = s.enqueueOrderPrintsWith(ctx, tx, tenantID, storeID, orderID, "PAYMENT_SUCCESS", false, 0, ""); err != nil {
+		} else if err = enqueuePrintOutboxWith(ctx, tx, tenantID, storeID, orderID, "PAYMENT_SUCCESS", paymentPrintDedupeKey(paymentID), 0, ""); err != nil {
 			return err
 		}
 	} else if newlySucceeded {
@@ -1021,7 +1021,7 @@ func (s *Server) finalizeRefund(ctx context.Context, refundID int64, providerRef
 	if _, err = tx.ExecContext(ctx, `UPDATE orders SET refunded_cents=?,payment_status=?,status=IF(?='REFUNDED','REFUNDED',status) WHERE id=? AND tenant_id=?`, newRefunded, paymentStatus, paymentStatus, orderID, tenantID); err != nil {
 		return err
 	}
-	if err = s.enqueueOrderPrintsWith(ctx, tx, tenantID, storeID, orderID, "REFUND", false, actorID, fmt.Sprintf("退款 %d 分：%s", amount, reason)); err != nil {
+	if err = enqueuePrintOutboxWith(ctx, tx, tenantID, storeID, orderID, "REFUND", refundPrintDedupeKey(refundID), actorID, fmt.Sprintf("退款 %d 分：%s", amount, reason)); err != nil {
 		return err
 	}
 	return tx.Commit()

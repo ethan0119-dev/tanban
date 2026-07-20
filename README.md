@@ -78,6 +78,7 @@ go test ./...
 - [对标商户后台完整菜单清单](docs/REFERENCE_FIREPOS_MERCHANT_ADMIN_MENU.md)
 - [商户运营后台 V2：商品、用户会员与店铺装修](docs/MERCHANT_OPERATIONS_V2.md)
 - [店内桌码、订单场景与打印模板设计](docs/DINE_IN_TABLE_CODES.md)
+- [首页图片热区与结构化打印模板](docs/DECORATION_HOTSPOTS_AND_STRUCTURED_PRINTING.md)
 - [一期技术架构、交易链路和扩容边界](docs/TECHNICAL_ARCHITECTURE.md)
 - [支付 Provider 与天阙接入](docs/PAYMENT_PROVIDER.md)
 - [服务器部署](docs/DEPLOYMENT.md)

@@ -1,5 +1,6 @@
 import {
   HomeOutlined,
+  PictureOutlined,
   ShoppingCartOutlined,
   SnippetsOutlined,
   UserOutlined,
@@ -112,6 +113,18 @@ function HomePreview({ config, storeName }: { config: DecorationConfig; storeNam
             return <section className="mini-feature" key={module.id}><small>FOR SMALL BUSINESS</small><strong>{module.title}</strong><span>{module.subtitle}</span></section>;
           case 'IMAGE':
             return <section className="mini-hero" key={module.id} style={backgroundImage(module.imageUrl)}><strong>{module.title}</strong></section>;
+          case 'HOTSPOT_IMAGE':
+            return (
+              <section className="mini-hotspot-image" key={module.id}>
+                {module.imageUrl
+                  ? <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={module.imageUrl} alt={module.title || '热区图片'} />
+                  </>
+                  : <div className="mini-hotspot-placeholder"><PicturePlaceholder />上传首页热区图片</div>}
+                {(module.hotspots ?? []).map((hotspot, index) => <span key={hotspot.id} title={`${hotspot.label} · ${hotspot.action.type}`} style={hotspotStyle(hotspot)}>{index + 1}</span>)}
+              </section>
+            );
           case 'SPACER':
             return <div key={module.id} style={{ height: Math.min(80, Math.max(4, Number.parseInt(module.subtitle, 10) || 24)) }} />;
           default:
@@ -167,4 +180,12 @@ function AssetCircle({ url, children }: { url: string; children: ReactNode }) {
 
 function backgroundImage(url?: string): CSSProperties | undefined {
   return url ? { backgroundImage: `linear-gradient(180deg, transparent, rgba(17, 24, 20, .45)), url("${url.replaceAll('"', '%22')}")` } : undefined;
+}
+
+function hotspotStyle(value: { x: number; y: number; width: number; height: number }): CSSProperties {
+  return { left: `${value.x}%`, top: `${value.y}%`, width: `${value.width}%`, height: `${value.height}%` };
+}
+
+function PicturePlaceholder() {
+  return <PictureOutlined aria-hidden="true" />;
 }

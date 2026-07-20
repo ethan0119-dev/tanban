@@ -63,6 +63,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Get("/decoration/templates", s.getDecorationTemplates)
 		managers.Get("/media-assets", s.listMediaAssets)
 		managers.Post("/media-assets", s.createMediaAsset)
+		managers.Post("/media-assets/upload", s.uploadMediaAsset)
 		managers.Put("/media-assets/{assetID}", s.updateMediaAsset)
 		managers.Delete("/media-assets/{assetID}", s.deleteMediaAsset)
 		managers.Post("/orders/{orderID}/pay", s.createPayment)

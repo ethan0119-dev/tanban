@@ -3,12 +3,32 @@ package app
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
+
+type fixedWidthPrintContent struct{ columns int }
+
+func (matcher fixedWidthPrintContent) Match(value driver.Value) bool {
+	content, ok := value.(string)
+	if !ok {
+		return false
+	}
+	foundSeparator := false
+	for _, line := range strings.Split(content, "\n") {
+		if printDisplayWidth(line) > matcher.columns {
+			return false
+		}
+		if line == strings.Repeat("-", matcher.columns) {
+			foundSeparator = true
+		}
+	}
+	return foundSeparator
+}
 
 func TestRenderTicketIncludesProductConfiguration(t *testing.T) {
 	order := orderDTO{OrderNo: "TB1", OrderType: orderTypeDineIn, TotalCents: 1800, Table: &orderTableDTO{Name: "B02", AreaName: "大厅", TableCode: "B02"}, Items: []orderItemDTO{{
@@ -44,6 +64,33 @@ func TestPrintPlanRespectsTemplateTriggerCopiesAndEnabled(t *testing.T) {
 	content, copies, ok = resolvePrintPlan(device, activePrintTemplate{}, "ORDER_CREATED")
 	if !ok || content != "legacy" || copies != 1 {
 		t.Fatal("a store without business templates must retain the legacy device behavior")
+	}
+}
+
+func TestNormalizePrinterCopyRoleRoutingAndLegacyDefaults(t *testing.T) {
+	t.Parallel()
+	receipt := printerInput{OutputType: "receipt", PaperWidth: 58, CopyRoles: []string{"kitchen", "merchant", "kitchen"}}
+	if err := normalizePrinterInput(&receipt); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(receipt.CopyRoles, ","); got != "MERCHANT,KITCHEN" || receipt.CopyRolesDatabase != got {
+		t.Fatalf("unexpected normalized receipt roles: %+v", receipt.CopyRoles)
+	}
+	legacyReceipt := printerInput{OutputType: "RECEIPT"}
+	if err := normalizePrinterInput(&legacyReceipt); err != nil || strings.Join(legacyReceipt.CopyRoles, ",") != "MERCHANT" {
+		t.Fatalf("legacy receipt must conservatively default to MERCHANT: %+v err=%v", legacyReceipt, err)
+	}
+	legacyLabel := printerInput{OutputType: "LABEL"}
+	if err := normalizePrinterInput(&legacyLabel); err != nil || strings.Join(legacyLabel.CopyRoles, ",") != "ITEM" {
+		t.Fatalf("legacy label must default to ITEM: %+v err=%v", legacyLabel, err)
+	}
+	invalid := printerInput{OutputType: "RECEIPT", CopyRoles: []string{"ITEM"}}
+	if err := normalizePrinterInput(&invalid); err == nil {
+		t.Fatal("receipt printers must reject ITEM routing")
+	}
+	invalid = printerInput{OutputType: "LABEL", CopyRoles: []string{"MERCHANT"}}
+	if err := normalizePrinterInput(&invalid); err == nil {
+		t.Fatal("label printers must reject receipt copy roles")
 	}
 }
 
@@ -109,5 +156,178 @@ func TestLabelRenderingSplitsByItemQuantityAndReplacesItemVariables(t *testing.T
 		if strings.Contains(content, "{{") {
 			t.Fatalf("supported template variable remained unresolved: %s", content)
 		}
+	}
+}
+
+func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.T) {
+	t.Parallel()
+	order := orderDTO{
+		ID: 23, StoreName: "码农咖啡", OrderNo: "TB202607200001", OrderType: orderTypeDineIn,
+		CustomerName: "张三", CustomerPhone: "13800000000", Remark: "打包带走", TotalCents: 3780, PaidCents: 3780,
+		CreatedAt: "2026-07-20T18:26:00Z", Payment: map[string]any{"provider": "tianque"},
+		Table: &orderTableDTO{Name: "B02", AreaName: "露台", TableCode: "B02"},
+		Items: []orderItemDTO{{
+			ProductName: "超长名称燕麦奶生椰水拿铁", SKUName: "超大杯", Quantity: 2, UnitPriceCents: 1890, SubtotalCents: 3780, ItemRemark: "少冰不要吸管",
+			Configuration: map[string]any{
+				"options":   []any{map[string]any{"groupName": "温度", "valueName": "少冰"}},
+				"modifiers": []any{map[string]any{"name": "燕麦奶", "quantity": float64(1)}},
+			},
+		}},
+	}
+	layout := defaultStructuredPrintLayout("MERCHANT")
+	layout["showCustomer"] = true
+	layout["customFooter"] = "谢谢惠顾 {{order_no}}"
+	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, Layout: layout}
+	content := renderStructuredReceipt(template, order, "", false)
+	for _, expected := range []string{"【商家联】", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "拿铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001"} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("structured receipt missing %q:\n%s", expected, content)
+		}
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if got := printDisplayWidth(line); got > 32 {
+			t.Fatalf("58mm line exceeds 32 display columns (%d): %q", got, line)
+		}
+	}
+	if !strings.Contains(content, strings.Repeat("-", 32)) {
+		t.Fatalf("58mm receipt must use a 32-column separator:\n%s", content)
+	}
+
+	template.CopyRole = "KITCHEN"
+	template.PaperWidth = 80
+	template.Layout = defaultStructuredPrintLayout("KITCHEN")
+	kitchen := renderStructuredReceipt(template, order, "", false)
+	if !strings.Contains(kitchen, "【后厨联】") || strings.Contains(kitchen, "¥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
+		t.Fatalf("kitchen copy must emphasize production data without prices:\n%s", kitchen)
+	}
+	for _, line := range strings.Split(kitchen, "\n") {
+		if got := printDisplayWidth(line); got > 24 {
+			t.Fatalf("80mm LARGE line exceeds 24 display columns (%d): %q", got, line)
+		}
+	}
+}
+
+func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) {
+	t.Parallel()
+	order := orderDTO{
+		ID: 8, StoreName: "码农咖啡", OrderNo: "TB8", OrderType: orderTypeDineIn, PaidCents: 2400, Remark: "整单加急",
+		Table: &orderTableDTO{Name: "A01", AreaName: "大厅"},
+		Items: []orderItemDTO{{ProductName: "美式", SKUName: "大杯", Quantity: 2, UnitPriceCents: 1200, ItemRemark: "不要糖", Configuration: map[string]any{
+			"options": []any{map[string]any{"groupName": "温度", "valueName": "热"}},
+		}}},
+	}
+	layout := defaultStructuredPrintLayout("ITEM")
+	layout["showPrices"] = true
+	layout["showPayment"] = true
+	layout["showQrCode"] = true
+	template := activePrintTemplate{CopyRole: "ITEM", PaperWidth: 80, Layout: layout}
+	contents := renderTemplateContents("LABEL", "ignored", template, order, "", false)
+	if len(contents) != 2 {
+		t.Fatalf("quantity two must create two structured item labels, got %d", len(contents))
+	}
+	for _, content := range contents {
+		for _, expected := range []string{"商品标签", "商品：美式", "规格：大杯", "温度：热", "备注：不要糖", "价格", "实付", "订单备注：整单加急", "订单码"} {
+			if !strings.Contains(content, expected) {
+				t.Fatalf("structured label missing %q:\n%s", expected, content)
+			}
+		}
+		if strings.Contains(content, "店内堂食") || strings.Contains(content, "码农咖啡") {
+			t.Fatalf("default item label must keep the compact frontend contract:\n%s", content)
+		}
+		for _, line := range strings.Split(content, "\n") {
+			if got := printDisplayWidth(line); got > 48 {
+				t.Fatalf("80mm line exceeds 48 display columns (%d): %q", got, line)
+			}
+		}
+	}
+
+	layout["showRemark"] = false
+	withoutRemarks := renderStructuredLabel(templateWithLayout(template, layout), order, order.Items[0], "", false)
+	if strings.Contains(withoutRemarks, "不要糖") || strings.Contains(withoutRemarks, "整单加急") {
+		t.Fatalf("showRemark=false must hide item and order remarks:\n%s", withoutRemarks)
+	}
+}
+
+func templateWithLayout(template activePrintTemplate, layout map[string]any) activePrintTemplate {
+	template.Layout = layout
+	return template
+}
+
+func TestLoadPrintTemplatesReturnsEveryCopyRoleIncludingDisabledRows(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := regexp.QuoteMeta("SELECT id,template_type,copy_role,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")
+	mock.ExpectQuery(query).WithArgs(int64(2), int64(5), orderTypeDineIn, "RECEIPT").WillReturnRows(
+		sqlmock.NewRows([]string{"id", "template_type", "copy_role", "content_text", "trigger_event", "copies", "paper_width", "layout_json", "status"}).
+			AddRow(1, "RECEIPT", "MERCHANT", "legacy", "PAYMENT_SUCCESS", 1, 58, `{}`, "ACTIVE").
+			AddRow(2, "RECEIPT", "CUSTOMER", "", "PAYMENT_SUCCESS", 2, 80, `{"schemaVersion":1,"headerStyle":"PROMINENT"}`, "DISABLED").
+			AddRow(3, "RECEIPT", "KITCHEN", "", "ORDER_CREATED", 1, 80, `{"schemaVersion":1,"fontSize":"LARGE"}`, "ACTIVE"),
+	)
+	templates, err := loadPrintTemplates(context.Background(), db, 2, 5, orderTypeDineIn, "RECEIPT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(templates) != 3 || templates[0].CopyRole != "MERCHANT" || templates[1].CopyRole != "CUSTOMER" || templates[1].Enabled || templates[2].CopyRole != "KITCHEN" || !templates[2].Enabled || templates[2].PaperWidth != 80 {
+		t.Fatalf("unexpected copy-role templates: %+v", templates)
+	}
+	if len(templates[0].Layout) != 0 || templates[1].Layout["headerStyle"] != "PROMINENT" {
+		t.Fatalf("legacy and structured layouts were not preserved: %+v", templates)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no")).
+		WithArgs(int64(2), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "tenant_id", "store_id", "store_name", "order_no", "customer_name", "customer_phone", "remark", "source", "fulfillment_type", "order_type",
+			"table_id", "table_public_id_snapshot", "table_area_name_snapshot", "table_name_snapshot", "table_code_snapshot", "status", "payment_status", "total_cents", "paid_cents", "refunded_cents", "paid_at", "created_at",
+		}).AddRow(11, 2, 5, "码农咖啡", "TB11", "", "", "", "MINI_PROGRAM", "DINE_IN", orderTypeDineIn, nil, "", "", "", "", "PAID", "PAID", 1200, 1200, 0, nil, "2026-07-20T08:00:00Z"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items")).
+		WithArgs(int64(2), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "product_id", "sku_id", "product_name", "sku_name", "attributes_json", "configuration_json", "item_remark", "base_price_cents", "modifier_price_cents", "unit_price_cents", "quantity", "subtotal_cents"}).
+			AddRow(101, 201, 301, "美式", "大杯", `{}`, `{}`, "", 1200, 0, 1200, 1, 1200))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,provider,provider_order_no,amount_cents,status FROM payment_transactions")).
+		WithArgs(int64(2), int64(11)).WillReturnError(sql.ErrNoRows)
+
+	defaultInsert := regexp.QuoteMeta("INSERT IGNORE INTO print_templates(tenant_id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,layout_json,status)")
+	for index := 0; index < 12; index++ {
+		mock.ExpectExec(defaultInsert).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,status,deleted_at FROM stores")).
+		WithArgs(int64(5), int64(2)).
+		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "status", "deleted_at"}).AddRow(true, false, "ACTIVE", nil))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices")).
+		WithArgs(int64(2), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
+			AddRow(31, 5, "收银台", "mock", "virtual", "SN31", 58, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT,CUSTOMER", "legacy", "ACTIVE"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,template_type,copy_role,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")).
+		WithArgs(int64(2), int64(5), orderTypeDineIn, "RECEIPT").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "template_type", "copy_role", "content_text", "trigger_event", "copies", "paper_width", "layout_json", "status"}).
+			AddRow(41, "RECEIPT", "MERCHANT", "", "PAYMENT_SUCCESS", 1, 58, `{"schemaVersion":1,"headerStyle":"PROMINENT"}`, "ACTIVE").
+			AddRow(42, "RECEIPT", "CUSTOMER", "", "PAYMENT_SUCCESS", 1, 80, `{"schemaVersion":1,"headerStyle":"SIMPLE"}`, "ACTIVE").
+			AddRow(43, "RECEIPT", "KITCHEN", "", "PAYMENT_SUCCESS", 1, 58, `{"schemaVersion":1}`, "ACTIVE"))
+	jobInsert := regexp.QuoteMeta("INSERT INTO print_jobs(tenant_id,store_id,order_id,printer_id,template_id,copy_role,paper_width,content_text,status,is_reprint,created_by) VALUES(?,?,?,?,?,?,?,?,'PENDING',?,?)")
+	mock.ExpectExec(jobInsert).WithArgs(int64(2), int64(5), int64(11), int64(31), int64(41), "MERCHANT", 58, fixedWidthPrintContent{columns: 32}, false, int64(9)).WillReturnResult(sqlmock.NewResult(51, 1))
+	mock.ExpectExec(jobInsert).WithArgs(int64(2), int64(5), int64(11), int64(31), int64(42), "CUSTOMER", 58, fixedWidthPrintContent{columns: 32}, false, int64(9)).WillReturnResult(sqlmock.NewResult(52, 1))
+
+	server := &Server{}
+	if err = server.enqueueOrderPrintsWithOutput(context.Background(), db, 2, 5, 11, "PAYMENT_SUCCESS", false, 9, "", "RECEIPT"); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

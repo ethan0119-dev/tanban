@@ -21,6 +21,7 @@ NGINX_MUTATED=0
 DEPLOY_COMMITTED=0
 API_MUTATED=0
 API_HAD_PRIOR_IMAGE=0
+API_ROLLBACK_ALLOWED=1
 API_ROLLBACK_IMAGE="tanban-api:rollback-$RELEASE_ID"
 
 declare -A STATIC_RELEASE_DIR=()
@@ -98,7 +99,9 @@ on_exit() {
     fi
     restore_static_releases
     if ((API_MUTATED == 1)); then
-      if ((API_HAD_PRIOR_IMAGE == 1)); then
+      if ((API_ROLLBACK_ALLOWED == 0)); then
+        echo "keeping the new API because it passed readiness with a forward-only schema; restore static/Nginx only and fix forward" >&2
+      elif ((API_HAD_PRIOR_IMAGE == 1)); then
         echo "restoring previous API image" >&2
         docker tag "$API_ROLLBACK_IMAGE" tanban-api:local
         compose up -d --no-build api
@@ -388,6 +391,11 @@ compose build api
 echo "starting API"
 compose up -d --no-build api
 wait_for_api
+# Migration 011 expands one legacy template scope into multiple copy roles and
+# changes its unique key. Once the new API has reached readiness, a later
+# frontend/Nginx failure must not replace it with the old API. The exit trap
+# will still restore static files and Nginx, leaving this healthy API in place.
+API_ROLLBACK_ALLOWED=0
 
 echo "building static frontends"
 npm ci \

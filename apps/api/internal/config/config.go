@@ -26,6 +26,8 @@ type Config struct {
 	BootstrapAdminPass    string
 	PaymentProvider       string
 	PrinterProvider       string
+	MediaStorageDir       string
+	MediaPublicBaseURL    string
 	RedisAddr             string
 	AutoMigrate           bool
 	AllowMockConfirmation bool
@@ -46,6 +48,8 @@ func Load() (Config, error) {
 		BootstrapAdminPass:    os.Getenv("TB_BOOTSTRAP_ADMIN_PASSWORD"),
 		PaymentProvider:       strings.ToLower(env("TB_PAYMENT_PROVIDER", "mock")),
 		PrinterProvider:       strings.ToLower(env("TB_PRINTER_PROVIDER", "mock")),
+		MediaStorageDir:       env("TB_MEDIA_STORAGE_DIR", "./data/media"),
+		MediaPublicBaseURL:    strings.TrimRight(env("TB_MEDIA_PUBLIC_BASE_URL", "http://127.0.0.1:18090/api/v1/public/media"), "/"),
 		RedisAddr:             os.Getenv("TB_REDIS_ADDR"),
 		AutoMigrate:           envBool("TB_AUTO_MIGRATE", true),
 		AllowMockConfirmation: envBool("TB_ALLOW_MOCK_CONFIRMATION", false),

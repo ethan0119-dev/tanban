@@ -2,8 +2,9 @@ package app
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -23,34 +24,142 @@ var defaultLabelTemplateContent = map[string]string{
 }
 
 type printTemplateDTO struct {
-	ID           int64  `json:"id"`
-	StoreID      int64  `json:"storeId"`
-	BusinessType string `json:"businessType"`
-	TemplateType string `json:"templateType"`
-	Name         string `json:"name"`
-	Content      string `json:"content"`
-	TriggerEvent string `json:"triggerEvent"`
-	Copies       int    `json:"copies"`
-	Enabled      bool   `json:"enabled"`
-	Status       string `json:"status"`
-	UpdatedAt    string `json:"updatedAt"`
+	ID           int64          `json:"id"`
+	StoreID      int64          `json:"storeId"`
+	BusinessType string         `json:"businessType"`
+	TemplateType string         `json:"templateType"`
+	CopyRole     string         `json:"copyRole"`
+	Name         string         `json:"name"`
+	Content      string         `json:"content"`
+	TriggerEvent string         `json:"triggerEvent"`
+	Copies       int            `json:"copies"`
+	PaperWidth   int            `json:"paperWidth"`
+	Layout       map[string]any `json:"layout"`
+	Enabled      bool           `json:"enabled"`
+	Status       string         `json:"status"`
+	UpdatedAt    string         `json:"updatedAt"`
 }
 
 type printTemplateInput struct {
-	StoreID           int64  `json:"storeId"`
-	LegacyStoreID     int64  `json:"store_id"`
-	BusinessType      string `json:"businessType"`
-	LegacyBusiness    string `json:"business_type"`
-	TemplateType      string `json:"templateType"`
-	LegacyTemplate    string `json:"template_type"`
-	Name              string `json:"name"`
-	Content           string `json:"content"`
-	LegacyContentText string `json:"content_text"`
-	TriggerEvent      string `json:"triggerEvent"`
-	LegacyTrigger     string `json:"trigger_event"`
-	Copies            int    `json:"copies"`
-	Enabled           *bool  `json:"enabled"`
-	Status            string `json:"status"`
+	StoreID           int64          `json:"storeId"`
+	LegacyStoreID     int64          `json:"store_id"`
+	BusinessType      string         `json:"businessType"`
+	LegacyBusiness    string         `json:"business_type"`
+	TemplateType      string         `json:"templateType"`
+	LegacyTemplate    string         `json:"template_type"`
+	CopyRole          string         `json:"copyRole"`
+	LegacyCopyRole    string         `json:"copy_role"`
+	Name              string         `json:"name"`
+	Content           string         `json:"content"`
+	LegacyContentText string         `json:"content_text"`
+	TriggerEvent      string         `json:"triggerEvent"`
+	LegacyTrigger     string         `json:"trigger_event"`
+	Copies            int            `json:"copies"`
+	PaperWidth        int            `json:"paperWidth"`
+	LegacyPaperWidth  int            `json:"paper_width"`
+	Layout            map[string]any `json:"layout"`
+	LayoutJSON        string         `json:"-"`
+	Enabled           *bool          `json:"enabled"`
+	Status            string         `json:"status"`
+}
+
+var printLayoutKeys = map[string]string{
+	"schemaVersion": "number", "headerStyle": "string", "fontSize": "string",
+	"showStoreName": "bool", "showOrderType": "bool", "showOrderNo": "bool",
+	"showPickupNo": "bool", "showTable": "bool", "showItems": "bool",
+	"showItemOptions": "bool", "showPrices": "bool", "showPayment": "bool",
+	"showRemark": "bool", "showCustomer": "bool", "showAddress": "bool",
+	"showQrCode": "bool", "customHeader": "string", "customFooter": "string",
+}
+
+func defaultStructuredPrintLayout(copyRole string) map[string]any {
+	customer := copyRole == "CUSTOMER"
+	showPrices := copyRole != "KITCHEN" && copyRole != "ITEM"
+	showPayment := copyRole != "KITCHEN" && copyRole != "ITEM"
+	showStoreName := copyRole != "ITEM"
+	showOrderType := copyRole != "ITEM"
+	headerStyle := "PROMINENT"
+	fontSize := "NORMAL"
+	customFooter := ""
+	if copyRole == "KITCHEN" {
+		fontSize = "LARGE"
+	}
+	if copyRole == "ITEM" {
+		headerStyle = "SIMPLE"
+		fontSize = "LARGE"
+	}
+	if customer {
+		customFooter = "感谢光临，欢迎再次惠顾"
+	}
+	return map[string]any{
+		"schemaVersion": 1, "headerStyle": headerStyle, "fontSize": fontSize,
+		"showStoreName": showStoreName, "showOrderType": showOrderType, "showOrderNo": true, "showPickupNo": true,
+		"showTable": true, "showItems": true, "showItemOptions": true, "showPrices": showPrices,
+		"showPayment": showPayment, "showRemark": true, "showCustomer": customer,
+		"showAddress": customer, "showQrCode": customer, "customHeader": "", "customFooter": customFooter,
+	}
+}
+
+func normalizePrintLayout(layout map[string]any, copyRole string) (map[string]any, string, error) {
+	if len(layout) == 0 {
+		return map[string]any{}, "{}", nil
+	}
+	normalized := defaultStructuredPrintLayout(copyRole)
+	for key, value := range layout {
+		kind, ok := printLayoutKeys[key]
+		if !ok {
+			return nil, "", fmt.Errorf("layout.%s is not supported", key)
+		}
+		switch kind {
+		case "bool":
+			if _, ok = value.(bool); !ok {
+				return nil, "", fmt.Errorf("layout.%s must be boolean", key)
+			}
+		case "string":
+			text, stringOK := value.(string)
+			if !stringOK {
+				return nil, "", fmt.Errorf("layout.%s must be a string", key)
+			}
+			if len([]rune(text)) > 500 {
+				return nil, "", fmt.Errorf("layout.%s must not exceed 500 characters", key)
+			}
+		case "number":
+			version, numberOK := layoutInt(value)
+			if !numberOK || version != 1 {
+				return nil, "", errors.New("layout.schemaVersion must be 1")
+			}
+			value = version
+		}
+		normalized[key] = value
+	}
+	headerStyle := strings.ToUpper(strings.TrimSpace(fmt.Sprint(normalized["headerStyle"])))
+	if !validStatus(headerStyle, "SIMPLE", "PROMINENT") {
+		return nil, "", errors.New("layout.headerStyle must be SIMPLE or PROMINENT")
+	}
+	normalized["headerStyle"] = headerStyle
+	fontSize := strings.ToUpper(strings.TrimSpace(fmt.Sprint(normalized["fontSize"])))
+	if !validStatus(fontSize, "NORMAL", "LARGE") {
+		return nil, "", errors.New("layout.fontSize must be NORMAL or LARGE")
+	}
+	normalized["fontSize"] = fontSize
+	body, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, "", err
+	}
+	return normalized, string(body), nil
+}
+
+func layoutInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int64:
+		return int(number), true
+	case float64:
+		return int(number), number == float64(int(number))
+	default:
+		return 0, false
+	}
 }
 
 func normalizePrintTemplateInput(input *printTemplateInput) error {
@@ -63,6 +172,9 @@ func normalizePrintTemplateInput(input *printTemplateInput) error {
 	if input.TemplateType == "" {
 		input.TemplateType = input.LegacyTemplate
 	}
+	if input.CopyRole == "" {
+		input.CopyRole = input.LegacyCopyRole
+	}
 	if input.Content == "" {
 		input.Content = input.LegacyContentText
 	}
@@ -71,11 +183,25 @@ func normalizePrintTemplateInput(input *printTemplateInput) error {
 	}
 	input.BusinessType = strings.ToUpper(strings.TrimSpace(input.BusinessType))
 	input.TemplateType = strings.ToUpper(strings.TrimSpace(input.TemplateType))
+	input.CopyRole = strings.ToUpper(strings.TrimSpace(input.CopyRole))
 	input.Name = strings.TrimSpace(input.Name)
 	input.TriggerEvent = strings.ToUpper(strings.TrimSpace(input.TriggerEvent))
 	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
 	if input.TemplateType == "" {
 		input.TemplateType = "RECEIPT"
+	}
+	if input.CopyRole == "" {
+		if input.TemplateType == "LABEL" {
+			input.CopyRole = "ITEM"
+		} else {
+			input.CopyRole = "MERCHANT"
+		}
+	}
+	if input.PaperWidth == 0 {
+		input.PaperWidth = input.LegacyPaperWidth
+	}
+	if input.PaperWidth == 0 {
+		input.PaperWidth = 58
 	}
 	if input.Status == "" {
 		input.Status = "ACTIVE"
@@ -99,6 +225,12 @@ func normalizePrintTemplateInput(input *printTemplateInput) error {
 	if !validStatus(input.TemplateType, "RECEIPT", "LABEL") {
 		return errors.New("templateType must be RECEIPT or LABEL")
 	}
+	if input.TemplateType == "RECEIPT" && !validStatus(input.CopyRole, "MERCHANT", "CUSTOMER", "KITCHEN") {
+		return errors.New("RECEIPT copyRole must be MERCHANT, CUSTOMER or KITCHEN")
+	}
+	if input.TemplateType == "LABEL" && input.CopyRole != "ITEM" {
+		return errors.New("LABEL copyRole must be ITEM")
+	}
 	if !validStatus(input.Status, "ACTIVE", "DISABLED") {
 		return errors.New("status must be ACTIVE or DISABLED")
 	}
@@ -108,28 +240,44 @@ func normalizePrintTemplateInput(input *printTemplateInput) error {
 	if input.Copies < 1 || input.Copies > 5 {
 		return errors.New("copies must be between 1 and 5")
 	}
+	if input.PaperWidth != 58 && input.PaperWidth != 80 {
+		return errors.New("paperWidth must be 58 or 80")
+	}
 	if input.Name == "" || len([]rune(input.Name)) > 100 {
 		return errors.New("name is required and must not exceed 100 characters")
 	}
-	if strings.TrimSpace(input.Content) == "" || len([]rune(input.Content)) > 20000 {
-		return errors.New("content is required and must not exceed 20000 characters")
+	if len([]rune(input.Content)) > 20000 {
+		return errors.New("content must not exceed 20000 characters")
+	}
+	var err error
+	input.Layout, input.LayoutJSON, err = normalizePrintLayout(input.Layout, input.CopyRole)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(input.Content) == "" && len(input.Layout) == 0 {
+		return errors.New("content or a structured layout is required")
 	}
 	return nil
 }
 
 func ensureDefaultPrintTemplates(ctx context.Context, executor sqlExecer, tenantID, storeID int64) error {
 	for _, businessType := range []string{orderTypeDineIn, orderTypeTakeout, orderTypeDelivery} {
-		for _, templateType := range []string{"RECEIPT", "LABEL"} {
-			name := map[string]string{orderTypeDineIn: "店内", orderTypeTakeout: "自提", orderTypeDelivery: "外卖"}[businessType]
-			content := defaultPrintTemplateContent[businessType]
-			if templateType == "LABEL" {
-				content = defaultLabelTemplateContent[businessType]
-				name += "标签"
-			} else {
-				name += "小票"
+		prefix := map[string]string{orderTypeDineIn: "店内", orderTypeTakeout: "自提", orderTypeDelivery: "外卖"}[businessType]
+		specs := []struct {
+			templateType, copyRole, name, content, status string
+		}{
+			{"RECEIPT", "MERCHANT", prefix + "商家联", defaultPrintTemplateContent[businessType], "ACTIVE"},
+			{"RECEIPT", "CUSTOMER", prefix + "顾客联", defaultPrintTemplateContent[businessType], "DISABLED"},
+			{"RECEIPT", "KITCHEN", prefix + "后厨联", defaultPrintTemplateContent[businessType], "DISABLED"},
+			{"LABEL", "ITEM", prefix + "商品标签", defaultLabelTemplateContent[businessType], "ACTIVE"},
+		}
+		for _, spec := range specs {
+			_, layoutJSON, err := normalizePrintLayout(defaultStructuredPrintLayout(spec.copyRole), spec.copyRole)
+			if err != nil {
+				return err
 			}
-			if _, err := executor.ExecContext(ctx, `INSERT IGNORE INTO print_templates(tenant_id,store_id,business_type,template_type,name,content_text,trigger_event,copies,status)
-				SELECT ?,id,?,?,?,?,default_print_trigger,1,'ACTIVE' FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, tenantID, businessType, templateType, name, content, storeID, tenantID); err != nil {
+			if _, err = executor.ExecContext(ctx, `INSERT IGNORE INTO print_templates(tenant_id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,layout_json,status)
+				SELECT ?,id,?,?,?,?,?,default_print_trigger,1,58,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, tenantID, businessType, spec.templateType, spec.copyRole, spec.name, spec.content, layoutJSON, spec.status, storeID, tenantID); err != nil {
 				return err
 			}
 		}
@@ -164,6 +312,9 @@ func (s *Server) listPrintTemplates(w http.ResponseWriter, r *http.Request) {
 		args = append(args, businessType)
 	}
 	templateType := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("templateType")))
+	if templateType == "" {
+		templateType = strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("template_type")))
+	}
 	if templateType != "" {
 		if !validStatus(templateType, "RECEIPT", "LABEL") {
 			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "templateType must be RECEIPT or LABEL")
@@ -172,8 +323,21 @@ func (s *Server) listPrintTemplates(w http.ResponseWriter, r *http.Request) {
 		where += " AND template_type=?"
 		args = append(args, templateType)
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,business_type,template_type,name,content_text,trigger_event,copies,status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
-		FROM print_templates`+where+" ORDER BY FIELD(business_type,'DINE_IN','TAKEOUT','DELIVERY'),template_type,id", args...)
+	copyRole := r.URL.Query().Get("copyRole")
+	if copyRole == "" {
+		copyRole = r.URL.Query().Get("copy_role")
+	}
+	if copyRole != "" {
+		copyRole = strings.ToUpper(strings.TrimSpace(copyRole))
+		if !validStatus(copyRole, "MERCHANT", "CUSTOMER", "KITCHEN", "ITEM") {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "copyRole is invalid")
+			return
+		}
+		where += " AND copy_role=?"
+		args = append(args, copyRole)
+	}
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
+		FROM print_templates`+where+" ORDER BY FIELD(business_type,'DINE_IN','TAKEOUT','DELIVERY'),FIELD(template_type,'RECEIPT','LABEL'),FIELD(copy_role,'MERCHANT','CUSTOMER','KITCHEN','ITEM'),id", args...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -210,9 +374,9 @@ func (s *Server) createPrintTemplate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO print_templates(tenant_id,store_id,business_type,template_type,name,content_text,trigger_event,copies,status)
-		SELECT ?,id,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL
-		ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),name=VALUES(name),content_text=VALUES(content_text),trigger_event=VALUES(trigger_event),copies=VALUES(copies),status=VALUES(status),deleted_at=NULL`, identity.TenantID, input.BusinessType, input.TemplateType, input.Name, input.Content, input.TriggerEvent, input.Copies, input.Status, storeID, identity.TenantID)
+	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO print_templates(tenant_id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,layout_json,status)
+		SELECT ?,id,?,?,?,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL
+		ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),name=VALUES(name),content_text=VALUES(content_text),trigger_event=VALUES(trigger_event),copies=VALUES(copies),paper_width=VALUES(paper_width),layout_json=VALUES(layout_json),status=VALUES(status),deleted_at=NULL`, identity.TenantID, input.BusinessType, input.TemplateType, input.CopyRole, input.Name, input.Content, input.TriggerEvent, input.Copies, input.PaperWidth, input.LayoutJSON, input.Status, storeID, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -222,13 +386,20 @@ func (s *Server) createPrintTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "STORE_NOT_FOUND", "store not found")
 		return
 	}
-	s.audit(r.Context(), identity, "print_template.upsert", "print_template", int64String(id), map[string]any{"business_type": input.BusinessType, "template_type": input.TemplateType}, r)
+	s.audit(r.Context(), identity, "print_template.upsert", "print_template", int64String(id), map[string]any{"business_type": input.BusinessType, "template_type": input.TemplateType, "copy_role": input.CopyRole}, r)
 	s.getPrintTemplateByID(w, r, identity.TenantID, id)
 }
 
 func scanPrintTemplate(row scanner, item *printTemplateDTO) error {
-	if err := row.Scan(&item.ID, &item.StoreID, &item.BusinessType, &item.TemplateType, &item.Name, &item.Content, &item.TriggerEvent, &item.Copies, &item.Status, &item.UpdatedAt); err != nil {
+	var layoutJSON string
+	if err := row.Scan(&item.ID, &item.StoreID, &item.BusinessType, &item.TemplateType, &item.CopyRole, &item.Name, &item.Content, &item.TriggerEvent, &item.Copies, &item.PaperWidth, &layoutJSON, &item.Status, &item.UpdatedAt); err != nil {
 		return err
+	}
+	item.Layout = map[string]any{}
+	if strings.TrimSpace(layoutJSON) != "" {
+		if err := json.Unmarshal([]byte(layoutJSON), &item.Layout); err != nil {
+			return err
+		}
 	}
 	item.Enabled = item.Status == "ACTIVE"
 	return nil
@@ -243,7 +414,7 @@ func (s *Server) getPrintTemplate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getPrintTemplateByID(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
 	var item printTemplateDTO
-	err := scanPrintTemplate(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,business_type,template_type,name,content_text,trigger_event,copies,status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
+	err := scanPrintTemplate(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
 		FROM print_templates WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, tenantID), &item)
 	if err != nil {
 		handleSQLError(w, err)
@@ -266,13 +437,13 @@ func (s *Server) updatePrintTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
-	_, err := s.DB.ExecContext(r.Context(), `UPDATE print_templates SET business_type=?,template_type=?,name=?,content_text=?,trigger_event=?,copies=?,status=?
-		WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.BusinessType, input.TemplateType, input.Name, input.Content, input.TriggerEvent, input.Copies, input.Status, id, identity.TenantID)
+	_, err := s.DB.ExecContext(r.Context(), `UPDATE print_templates SET business_type=?,template_type=?,copy_role=?,name=?,content_text=?,trigger_event=?,copies=?,paper_width=?,layout_json=?,status=?
+		WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.BusinessType, input.TemplateType, input.CopyRole, input.Name, input.Content, input.TriggerEvent, input.Copies, input.PaperWidth, input.LayoutJSON, input.Status, id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	s.audit(r.Context(), identity, "print_template.update", "print_template", int64String(id), map[string]any{"business_type": input.BusinessType, "template_type": input.TemplateType}, r)
+	s.audit(r.Context(), identity, "print_template.update", "print_template", int64String(id), map[string]any{"business_type": input.BusinessType, "template_type": input.TemplateType, "copy_role": input.CopyRole}, r)
 	s.getPrintTemplateByID(w, r, identity.TenantID, id)
 }
 
@@ -296,24 +467,42 @@ func (s *Server) deletePrintTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 type activePrintTemplate struct {
+	ID           int64
+	TemplateType string
+	CopyRole     string
 	Content      string
 	TriggerEvent string
 	Copies       int
+	PaperWidth   int
+	Layout       map[string]any
 	Found        bool
 	Enabled      bool
 }
 
-func loadActivePrintTemplate(ctx context.Context, queryer sqlQueryer, tenantID, storeID int64, businessType, templateType string) (activePrintTemplate, error) {
-	var item activePrintTemplate
-	var status string
-	err := queryer.QueryRowContext(ctx, `SELECT content_text,trigger_event,copies,status FROM print_templates WHERE tenant_id=? AND store_id=?
-		AND business_type=? AND template_type=? AND deleted_at IS NULL LIMIT 1`, tenantID, storeID, businessType, templateType).Scan(&item.Content, &item.TriggerEvent, &item.Copies, &status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return item, nil
+func loadPrintTemplates(ctx context.Context, queryer sqlQueryer, tenantID, storeID int64, businessType, templateType string) ([]activePrintTemplate, error) {
+	rows, err := queryer.QueryContext(ctx, `SELECT id,template_type,copy_role,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status
+		FROM print_templates WHERE tenant_id=? AND store_id=? AND business_type=? AND template_type=? AND deleted_at IS NULL
+		ORDER BY FIELD(copy_role,'MERCHANT','CUSTOMER','KITCHEN','ITEM'),id`, tenantID, storeID, businessType, templateType)
+	if err != nil {
+		return nil, err
 	}
-	if err == nil {
+	defer rows.Close()
+	items := []activePrintTemplate{}
+	for rows.Next() {
+		var item activePrintTemplate
+		var layoutJSON, status string
+		if err = rows.Scan(&item.ID, &item.TemplateType, &item.CopyRole, &item.Content, &item.TriggerEvent, &item.Copies, &item.PaperWidth, &layoutJSON, &status); err != nil {
+			return nil, err
+		}
 		item.Found = true
 		item.Enabled = status == "ACTIVE"
+		item.Layout = map[string]any{}
+		if strings.TrimSpace(layoutJSON) != "" {
+			if err = json.Unmarshal([]byte(layoutJSON), &item.Layout); err != nil {
+				return nil, err
+			}
+		}
+		items = append(items, item)
 	}
-	return item, err
+	return items, rows.Err()
 }

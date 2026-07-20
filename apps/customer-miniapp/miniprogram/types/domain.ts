@@ -31,6 +31,16 @@ export interface DecorationModuleItem {
   action?: DecorationAction;
 }
 
+export interface DecorationHotspot {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  action: DecorationAction;
+}
+
 export interface DecorationModuleConfig {
   items?: DecorationModuleItem[];
   showLogo?: boolean;
@@ -45,6 +55,7 @@ export interface DecorationModuleConfig {
   align?: "LEFT" | "CENTER" | "RIGHT";
   textAlign?: "left" | "center" | "right";
   height?: number;
+  hotspots?: DecorationHotspot[];
 }
 
 export type DecorationModuleType =
@@ -53,6 +64,7 @@ export type DecorationModuleType =
   | "ANNOUNCEMENT"
   | "QUICK_ACTIONS"
   | "IMAGE"
+  | "HOTSPOT_IMAGE"
   | "TEXT"
   | "SPACER";
 

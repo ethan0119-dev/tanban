@@ -1,6 +1,23 @@
 export type DecorationStatus = 'DRAFT' | 'PUBLISHED';
 
-export type HomeModuleType = 'HERO_BANNER' | 'STORE_HEADER' | 'ANNOUNCEMENT' | 'QUICK_ACTIONS' | 'IMAGE' | 'TEXT' | 'SPACER';
+export type HomeModuleType = 'HERO_BANNER' | 'STORE_HEADER' | 'ANNOUNCEMENT' | 'QUICK_ACTIONS' | 'IMAGE' | 'HOTSPOT_IMAGE' | 'TEXT' | 'SPACER';
+
+export type DecorationActionType = 'NONE' | 'OPEN_MENU' | 'OPEN_ORDERS' | 'OPEN_PROFILE' | 'CALL_PHONE';
+
+export interface DecorationAction {
+  type: DecorationActionType;
+  phone?: string;
+}
+
+export interface ImageHotspot {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  action: DecorationAction;
+}
 
 export interface HomeModuleConfig {
   id: string;
@@ -10,6 +27,7 @@ export interface HomeModuleConfig {
   title: string;
   subtitle: string;
   imageUrl?: string;
+  hotspots?: ImageHotspot[];
 }
 
 export interface ThemeConfig {
@@ -120,6 +138,7 @@ export const HOME_MODULE_LABELS: Record<HomeModuleType, string> = {
   ANNOUNCEMENT: '门店公告',
   QUICK_ACTIONS: '快捷入口',
   IMAGE: '单图模块',
+  HOTSPOT_IMAGE: '单图热区',
   TEXT: '图文介绍',
   SPACER: '留白间距',
 };

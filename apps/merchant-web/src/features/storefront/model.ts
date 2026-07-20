@@ -4,6 +4,8 @@ import type {
   OrderBusinessType,
   OrderType,
   PrintBusinessType,
+  PrintCopyRole,
+  PrintTemplateLayout,
   PrintTemplateRecord,
   PrintTemplateSection,
   TableCode,
@@ -133,13 +135,68 @@ const TAKEOUT_LABEL = `【到店自取】#{{pickup_no}}\n{{product_name}} {{sku_
 const DELIVERY_RECEIPT = `【外卖单】\n订单号：{{order_no}}\n----------------\n{{items}}\n----------------\n合计：{{total_cents}} 分\n备注：{{remark}}`;
 const DELIVERY_LABEL = `【外卖】#{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
 
+export const PRINT_COPY_ROLES: PrintCopyRole[] = ['MERCHANT', 'CUSTOMER', 'KITCHEN', 'ITEM'];
+
+const COPY_ROLE_NAMES: Record<PrintCopyRole, string> = {
+  MERCHANT: '商家联',
+  CUSTOMER: '顾客联',
+  KITCHEN: '厨房联',
+  ITEM: '商品标签',
+};
+
+function defaultLayout(copyRole: PrintCopyRole): PrintTemplateLayout {
+  const kitchen = copyRole === 'KITCHEN';
+  const item = copyRole === 'ITEM';
+  const customer = copyRole === 'CUSTOMER';
+  return {
+    schemaVersion: 1,
+    headerStyle: item ? 'SIMPLE' : 'PROMINENT',
+    fontSize: kitchen || item ? 'LARGE' : 'NORMAL',
+    showStoreName: !item,
+    showOrderType: !item,
+    showOrderNo: true,
+    showPickupNo: true,
+    showTable: true,
+    showItems: true,
+    showItemOptions: true,
+    showPrices: !kitchen && !item,
+    showPayment: !kitchen && !item,
+    showRemark: true,
+    showCustomer: customer,
+    showAddress: customer,
+    showQrCode: customer,
+    customHeader: '',
+    customFooter: customer ? '感谢光临，欢迎再次惠顾' : '',
+  };
+}
+
+function defaultContent(businessType: PrintBusinessType, copyRole: PrintCopyRole): string {
+  if (copyRole === 'ITEM') {
+    return businessType === 'DELIVERY' ? DELIVERY_LABEL : businessType === 'TAKEOUT' ? TAKEOUT_LABEL : DINE_IN_LABEL;
+  }
+  const base = businessType === 'DELIVERY' ? DELIVERY_RECEIPT : businessType === 'TAKEOUT' ? TAKEOUT_RECEIPT : DINE_IN_RECEIPT;
+  return `【${COPY_ROLE_NAMES[copyRole]}】\n${base}`;
+}
+
+function defaultSection(businessType: PrintBusinessType, copyRole: PrintCopyRole): PrintTemplateSection {
+  const scene = businessType === 'DELIVERY' ? '外卖' : businessType === 'TAKEOUT' ? '自提' : '店内';
+  return {
+    templateType: copyRole === 'ITEM' ? 'LABEL' : 'RECEIPT',
+    copyRole,
+    name: `${scene}${COPY_ROLE_NAMES[copyRole]}`,
+    enabled: copyRole === 'MERCHANT' || copyRole === 'ITEM',
+    triggerEvent: 'PAYMENT_SUCCESS',
+    copies: 1,
+    paperWidth: 58,
+    templateText: defaultContent(businessType, copyRole),
+    layout: defaultLayout(copyRole),
+  };
+}
+
 export function defaultPrintTemplate(businessType: PrintBusinessType): BusinessPrintTemplate {
-  const delivery = businessType === 'DELIVERY';
-  const takeout = businessType === 'TAKEOUT';
   return {
     businessType,
-    receipt: { name: `${takeout ? '自提' : delivery ? '外卖' : '店内'}小票`, enabled: true, triggerEvent: 'PAYMENT_SUCCESS', copies: 1, templateText: delivery ? DELIVERY_RECEIPT : takeout ? TAKEOUT_RECEIPT : DINE_IN_RECEIPT },
-    label: { name: `${takeout ? '自提' : delivery ? '外卖' : '店内'}标签`, enabled: true, triggerEvent: 'PAYMENT_SUCCESS', copies: 1, templateText: delivery ? DELIVERY_LABEL : takeout ? TAKEOUT_LABEL : DINE_IN_LABEL },
+    sections: Object.fromEntries(PRINT_COPY_ROLES.map((copyRole) => [copyRole, defaultSection(businessType, copyRole)])) as Record<PrintCopyRole, PrintTemplateSection>,
   };
 }
 
@@ -147,13 +204,23 @@ function normalizePrintTemplateSection(value: PrintTemplateRecord | undefined, f
   if (!value) return fallback;
   const raw = record(value);
   const status = stringValue(value.status, raw.status).toUpperCase();
+  const rawLayout = value.layout ?? raw.layout ?? raw.layout_json;
+  let layout = record(rawLayout);
+  if (typeof rawLayout === 'string') {
+    try { layout = record(JSON.parse(rawLayout)); } catch { layout = {}; }
+  }
+  const width = numberValue(value.paperWidth, raw.paper_width, fallback.paperWidth);
   return {
     id: value.id ?? raw.id as PrintTemplateSection['id'],
+    templateType: stringValue(value.templateType, raw.template_type, fallback.templateType).toUpperCase() === 'LABEL' ? 'LABEL' : 'RECEIPT',
+    copyRole: stringValue(value.copyRole, raw.copy_role, fallback.copyRole).toUpperCase() as PrintCopyRole,
     name: stringValue(value.name, raw.name, fallback.name),
     enabled: value.enabled ?? status !== 'DISABLED',
     triggerEvent: stringValue(value.triggerEvent, raw.trigger_event).toUpperCase() === 'ORDER_CREATED' ? 'ORDER_CREATED' : 'PAYMENT_SUCCESS',
     copies: Math.min(5, Math.max(1, numberValue(value.copies, raw.copies, 1))),
+    paperWidth: width === 80 ? 80 : 58,
     templateText: stringValue(value.content, raw.content, raw.content_text, fallback.templateText),
+    layout: { ...fallback.layout, ...layout, schemaVersion: 1 } as PrintTemplateLayout,
     updatedAt: stringValue(value.updatedAt, raw.updated_at) || undefined,
   };
 }
@@ -166,24 +233,31 @@ export function normalizePrintTemplates(values: PrintTemplateRecord[], businessT
       ...item,
       businessType: stringValue(item.businessType, raw.business_type) as PrintBusinessType,
       templateType: stringValue(item.templateType, raw.template_type).toUpperCase() as PrintTemplateRecord['templateType'],
+      copyRole: (stringValue(item.copyRole, raw.copy_role)
+        || (stringValue(item.templateType, raw.template_type).toUpperCase() === 'LABEL' ? 'ITEM' : 'MERCHANT')).toUpperCase() as PrintCopyRole,
     };
   }).filter((item) => item.businessType === businessType);
   return {
     businessType,
-    receipt: normalizePrintTemplateSection(normalized.find((item) => item.templateType === 'RECEIPT'), fallback.receipt),
-    label: normalizePrintTemplateSection(normalized.find((item) => item.templateType === 'LABEL'), fallback.label),
+    sections: Object.fromEntries(PRINT_COPY_ROLES.map((copyRole) => [
+      copyRole,
+      normalizePrintTemplateSection(normalized.find((item) => item.copyRole === copyRole), fallback.sections[copyRole]),
+    ])) as Record<PrintCopyRole, PrintTemplateSection>,
   };
 }
 
-export function printTemplatePayload(value: BusinessPrintTemplate, templateType: PrintTemplateRecord['templateType']) {
-  const section = templateType === 'RECEIPT' ? value.receipt : value.label;
+export function printTemplatePayload(value: BusinessPrintTemplate, copyRole: PrintCopyRole) {
+  const section = value.sections[copyRole];
   return {
     businessType: value.businessType,
-    templateType,
+    templateType: section.templateType,
+    copyRole,
     name: section.name,
     content: section.templateText,
     triggerEvent: section.triggerEvent,
     copies: section.copies,
+    paperWidth: section.paperWidth,
+    layout: section.layout,
     enabled: section.enabled,
   };
 }

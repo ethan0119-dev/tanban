@@ -1,18 +1,24 @@
 import {
-  FileTextOutlined,
+  FireOutlined,
+  QrcodeOutlined,
   ReloadOutlined,
   SaveOutlined,
+  ShopOutlined,
   TagsOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
+  Collapse,
   Divider,
-  Form,
   Input,
   InputNumber,
+  Modal,
+  QRCode,
   Row,
   Segmented,
   Select,
@@ -23,6 +29,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
@@ -32,8 +39,23 @@ import {
   normalizePrintTemplates,
   printTemplatePayload,
 } from '../features/storefront/model';
-import type { BusinessPrintTemplate, OrderBusinessType, PrintBusinessType, PrintTemplateRecord } from '../types';
+import type {
+  BusinessPrintTemplate,
+  OrderBusinessType,
+  PrintBusinessType,
+  PrintCopyRole,
+  PrintTemplateLayout,
+  PrintTemplateRecord,
+  PrintTemplateSection,
+} from '../types';
 import { dateTime } from '../utils/format';
+
+const roleMeta: Record<PrintCopyRole, { label: string; description: string; icon: ReactNode; color: string }> = {
+  MERCHANT: { label: '商家联', description: '留给门店核对整单、支付和桌台信息', icon: <ShopOutlined />, color: 'brown' },
+  CUSTOMER: { label: '顾客联', description: '交给顾客，可展示金额、联系方式和取单二维码', icon: <UserOutlined />, color: 'blue' },
+  KITCHEN: { label: '厨房联', description: '突出商品、规格、加料和备注，默认隐藏价格', icon: <FireOutlined />, color: 'orange' },
+  ITEM: { label: '商品标签', description: '按商品数量拆分杯贴或餐品标签', icon: <TagsOutlined />, color: 'green' },
+};
 
 const commonVariables = [
   '{{store_name}}', '{{order_no}}', '{{order_type}}', '{{pickup_no}}', '{{items}}',
@@ -45,67 +67,124 @@ const labelItemVariables = [
   '{{options}}', '{{modifiers}}', '{{item_remark}}',
 ];
 
-const previewValues: Record<string, string> = {
-  store_name: '码农咖啡', order_no: 'TB202607200001', order_type: 'DINE_IN', pickup_no: '0038',
-  table_area: '露台', table_name: 'B02 桌', table_code: 'B02',
-  items: '冰美式 中杯 x1\n拿铁 大杯 x1\n  温度：少冰\n  加料：燕麦奶', total_cents: '3700', paid_amount: '37.00', remark: '拿铁少冰',
-  product_name: '拿铁', sku_name: '大杯', quantity: '1', ordered_quantity: '1',
-  options: '温度：少冰', modifiers: '加料：燕麦奶', item_remark: '杯身写 Ethan',
-};
+const visibilityOptions: Array<{ key: keyof PrintTemplateLayout; label: string; roles?: PrintCopyRole[] }> = [
+  { key: 'showStoreName', label: '店铺名称' },
+  { key: 'showOrderType', label: '订单类型' },
+  { key: 'showOrderNo', label: '订单编号' },
+  { key: 'showPickupNo', label: '取单号' },
+  { key: 'showTable', label: '桌台信息' },
+  { key: 'showItems', label: '商品明细' },
+  { key: 'showItemOptions', label: '规格与加料' },
+  { key: 'showPrices', label: '单价与金额', roles: ['MERCHANT', 'CUSTOMER'] },
+  { key: 'showPayment', label: '支付与合计', roles: ['MERCHANT', 'CUSTOMER'] },
+  { key: 'showRemark', label: '订单备注' },
+  { key: 'showCustomer', label: '顾客信息', roles: ['MERCHANT', 'CUSTOMER'] },
+  { key: 'showAddress', label: '配送地址', roles: ['MERCHANT', 'CUSTOMER'] },
+  { key: 'showQrCode', label: '取单二维码', roles: ['CUSTOMER'] },
+];
 
-function renderPreview(template: string): string {
-  return template.replace(/{{\s*([a-z_]+)\s*}}/gi, (token, name: string) => previewValues[name] ?? token);
+function cents(value: number): string {
+  return `¥${(value / 100).toFixed(2)}`;
 }
 
-function TemplateEditor({ section }: { section: 'receipt' | 'label' }) {
-  const title = section === 'receipt' ? '订单小票' : '商品标签';
-  const text = Form.useWatch([section, 'templateText']) ?? '';
-  return (
-    <Row gutter={[18, 18]}>
-      <Col xs={24} xl={14}>
-        <Card size="small" className="print-template-editor" title={<Space><FileTextOutlined />{title}内容</Space>}>
-          <div className="print-template-switch-row">
-            <div><strong>启用{title}</strong><Typography.Paragraph type="secondary">{section === 'receipt' ? '每笔订单按模板打印整单信息' : '按商品数量拆分杯贴或餐品标签'}</Typography.Paragraph></div>
-            <Form.Item name={[section, 'enabled']} valuePropName="checked" noStyle><Switch /></Form.Item>
+function PaperPreview({ section, businessType }: { section: PrintTemplateSection; businessType: PrintBusinessType }) {
+  const { layout } = section;
+  const label = section.copyRole === 'ITEM';
+  const scene = businessType === 'DINE_IN' ? '桌码堂食' : businessType === 'TAKEOUT' ? '到店自取' : '外卖配送';
+  const products = [
+    { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰 / 不另外加糖' },
+    { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热 / 加燕麦奶' },
+  ];
+
+  if (label) {
+    return (
+      <div className={`thermal-paper thermal-label paper-${section.paperWidth} font-${layout.fontSize.toLowerCase()}`}>
+        <div className="thermal-copy-mark">{roleMeta[section.copyRole].label}</div>
+        {layout.customHeader && <div className="thermal-custom">{layout.customHeader}</div>}
+        {layout.showStoreName && <div className="thermal-store">码农咖啡</div>}
+        {layout.showPickupNo && <div className="thermal-pickup">#0038</div>}
+        {layout.showItems && (
+          <div className="thermal-label-product">
+            <strong>燕麦拿铁</strong>
+            <span>大杯 × 1</span>
           </div>
-          <Form.Item label="模板名称" name={[section, 'name']} rules={[{ required: true, message: '请输入模板名称' }]}><Input maxLength={100} /></Form.Item>
-          <Row gutter={12}>
-            <Col span={15}><Form.Item label="打印触发点" name={[section, 'triggerEvent']} rules={[{ required: true }]}><Select options={[{ value: 'PAYMENT_SUCCESS', label: '付款成功后打印' }, { value: 'ORDER_CREATED', label: '下单后打印（含待付款）' }]} /></Form.Item></Col>
-            <Col span={9}><Form.Item label="打印份数" name={[section, 'copies']} rules={[{ required: true }]}><InputNumber min={1} max={5} precision={0} addonAfter="份" style={{ width: '100%' }} /></Form.Item></Col>
-          </Row>
-          <Form.Item label="模板内容" name={[section, 'templateText']} rules={[{ required: true, message: '请输入模板内容' }]}>
-            <Input.TextArea rows={section === 'receipt' ? 14 : 9} className="template-textarea" spellCheck={false} />
-          </Form.Item>
-          <Typography.Paragraph type="secondary">变量必须保留双大括号，例如 <Typography.Text code>{'{{order_no}}'}</Typography.Text>。服务端只替换白名单变量，未知变量按原文打印。</Typography.Paragraph>
-        </Card>
-      </Col>
-      <Col xs={24} xl={10}>
-        <Card size="small" className="print-paper-preview" title={`${title}预览`}>
-          <pre>{renderPreview(text)}</pre>
-          <Divider dashed />
-          <Typography.Text type="secondary">预览使用示例数据；真正打印时由订单快照填充。</Typography.Text>
-        </Card>
-      </Col>
-    </Row>
+        )}
+        {layout.showItemOptions && <div className="thermal-emphasis">热 · 少糖 · 加燕麦奶</div>}
+        {layout.showRemark && <div className="thermal-note"><b>杯贴备注</b> 写 Ethan</div>}
+        {layout.showOrderNo && <div className="thermal-muted">订单 TB202607200001</div>}
+        {layout.showTable && businessType === 'DINE_IN' && <div className="thermal-muted">露台 · B02 桌</div>}
+        {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`thermal-paper paper-${section.paperWidth} font-${layout.fontSize.toLowerCase()}`}>
+      <div className="thermal-copy-mark">{roleMeta[section.copyRole].label}</div>
+      {layout.customHeader && <div className="thermal-custom">{layout.customHeader}</div>}
+      {layout.showStoreName && <div className={`thermal-store header-${layout.headerStyle.toLowerCase()}`}>码农咖啡</div>}
+      {layout.showOrderType && <div className="thermal-scene">【{scene}】</div>}
+      {layout.showPickupNo && <div className="thermal-pickup">取单号 #0038</div>}
+      <div className="thermal-rule" />
+      {layout.showOrderNo && <div className="thermal-pair"><span>订单编号</span><b>TB202607200001</b></div>}
+      {layout.showTable && businessType === 'DINE_IN' && <div className="thermal-pair"><span>桌台</span><b>露台 · B02 桌</b></div>}
+      <div className="thermal-pair"><span>下单时间</span><b>2026-07-20 18:26</b></div>
+      {layout.showCustomer && <div className="thermal-pair"><span>顾客</span><b>赵先生 186****6557</b></div>}
+      {layout.showAddress && businessType === 'DELIVERY' && <div className="thermal-address">天津市和平区南京路 88 号 A 座 1206</div>}
+      {layout.showItems && (
+        <>
+          <div className="thermal-rule" />
+          <div className="thermal-items-head"><b>商品</b><b>数量</b>{layout.showPrices && <><b>单价</b><b>金额</b></>}</div>
+          {products.map((product) => (
+            <div className="thermal-item" key={product.name}>
+              <div className="thermal-item-line">
+                <b>{product.name} <small>{product.sku}</small></b>
+                <span>×{product.quantity}</span>
+                {layout.showPrices && <><span>{cents(product.price)}</span><span>{cents(product.price * product.quantity)}</span></>}
+              </div>
+              {layout.showItemOptions && <small>{product.options}</small>}
+            </div>
+          ))}
+        </>
+      )}
+      {layout.showPayment && (
+        <>
+          <div className="thermal-rule" />
+          <div className="thermal-pair"><span>商品金额</span><b>¥37.00</b></div>
+          <div className="thermal-total"><span>实付</span><strong>¥37.00</strong></div>
+          <div className="thermal-pair"><span>支付方式</span><b>会生活聚合支付</b></div>
+        </>
+      )}
+      {layout.showRemark && <div className="thermal-note"><b>备注</b> 燕麦拿铁少冰，杯身写 Ethan</div>}
+      {layout.showQrCode && <div className="thermal-qr"><QRCode value="https://miniapp.example/order/TB202607200001" size={112} bordered={false} /><span>扫码查看订单</span></div>}
+      {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
+      <div className="thermal-end">— {roleMeta[section.copyRole].label}打印完毕 —</div>
+    </div>
   );
 }
 
 export function BusinessPrintTemplatePage({ businessType }: { businessType: OrderBusinessType }) {
-  const [form] = Form.useForm<BusinessPrintTemplate>();
+  const [template, setTemplate] = useState<BusinessPrintTemplate>(() => defaultPrintTemplate(businessType));
   const [activeType, setActiveType] = useState<PrintBusinessType>(businessType);
+  const [activeRole, setActiveRole] = useState<PrintCopyRole>('MERCHANT');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadWarning, setLoadWarning] = useState('');
+  const [dirtyRoles, setDirtyRoles] = useState<Set<PrintCopyRole>>(() => new Set());
   const loadRevision = useRef(0);
   const [messageApi, contextHolder] = message.useMessage();
+  const [modal, modalContextHolder] = Modal.useModal();
   const domainName = businessType === 'DINE_IN' ? '店内' : '外卖';
   const sceneName = activeType === 'DINE_IN' ? '桌码堂食' : activeType === 'TAKEOUT' ? '快餐 / 到店自取' : '外卖配送';
+  const section = template.sections[activeRole];
   const orderVariables = [...commonVariables, ...(activeType === 'DINE_IN' ? dineInVariables : [])];
 
   useEffect(() => {
     setActiveType(businessType);
-    form.resetFields();
-  }, [businessType, form]);
+    setActiveRole('MERCHANT');
+    setTemplate(defaultPrintTemplate(businessType));
+    setDirtyRoles(new Set());
+  }, [businessType]);
 
   const load = useCallback(async () => {
     const revision = ++loadRevision.current;
@@ -114,32 +193,54 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
     try {
       const result = await api.getList<PrintTemplateRecord>(PRINT_TEMPLATES_ENDPOINT, { business_type: activeType, page_size: 20 });
       if (revision !== loadRevision.current) return;
-      form.setFieldsValue(normalizePrintTemplates(result.items, activeType));
+      setTemplate(normalizePrintTemplates(result.items, activeType));
+      setDirtyRoles(new Set());
     } catch (error) {
       if (revision !== loadRevision.current) return;
-      form.setFieldsValue(defaultPrintTemplate(activeType));
+      setTemplate(defaultPrintTemplate(activeType));
+      setDirtyRoles(new Set());
       setLoadWarning(`尚未读取到已保存模板，当前展示安全默认值：${errorMessage(error)}`);
     } finally {
       if (revision === loadRevision.current) setLoading(false);
     }
-  }, [activeType, form]);
+  }, [activeType]);
 
   useEffect(() => { void load(); }, [load]);
 
+  const updateSection = (patch: Partial<PrintTemplateSection>) => {
+    setTemplate((current) => ({
+      ...current,
+      sections: { ...current.sections, [activeRole]: { ...current.sections[activeRole], ...patch } },
+    }));
+    setDirtyRoles((current) => new Set(current).add(activeRole));
+  };
+
+  const updateLayout = <K extends keyof PrintTemplateLayout>(key: K, value: PrintTemplateLayout[K]) => {
+    updateSection({ layout: { ...section.layout, [key]: value } });
+  };
+
   const save = async () => {
-    const values = await form.validateFields();
-    const normalized: BusinessPrintTemplate = { ...values, businessType: activeType };
+    if (!section.name.trim()) {
+      messageApi.warning('请填写模板名称');
+      return;
+    }
     setSaving(true);
     try {
-      const saved = await Promise.all((['RECEIPT', 'LABEL'] as const).map((templateType) => {
-        const section = templateType === 'RECEIPT' ? normalized.receipt : normalized.label;
-        return section.id
-          ? api.put<PrintTemplateRecord>(`${PRINT_TEMPLATES_ENDPOINT}/${section.id}`, printTemplatePayload(normalized, templateType))
-          : api.post<PrintTemplateRecord>(PRINT_TEMPLATES_ENDPOINT, printTemplatePayload(normalized, templateType));
+      const saved = section.id
+        ? await api.put<PrintTemplateRecord>(`${PRINT_TEMPLATES_ENDPOINT}/${section.id}`, printTemplatePayload(template, activeRole))
+        : await api.post<PrintTemplateRecord>(PRINT_TEMPLATES_ENDPOINT, printTemplatePayload(template, activeRole));
+      const normalized = normalizePrintTemplates([saved], activeType).sections[activeRole];
+      setTemplate((current) => ({
+        ...current,
+        sections: { ...current.sections, [activeRole]: normalized },
       }));
-      form.setFieldsValue(normalizePrintTemplates(saved, activeType));
+      setDirtyRoles((current) => {
+        const next = new Set(current);
+        next.delete(activeRole);
+        return next;
+      });
       setLoadWarning('');
-      messageApi.success(`${sceneName}打印模板已保存`);
+      messageApi.success(`${sceneName}${roleMeta[activeRole].label}模板已保存`);
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
@@ -148,45 +249,120 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
   };
 
   const reset = () => {
-    form.setFieldsValue(defaultPrintTemplate(activeType));
-    messageApi.info('已恢复默认模板，点击保存后才会生效');
+    updateSection(defaultPrintTemplate(activeType).sections[activeRole]);
+    messageApi.info(`已恢复${roleMeta[activeRole].label}默认格式，点击保存后才会生效`);
   };
+
+  const dirtyRoleNames = (Object.keys(roleMeta) as PrintCopyRole[])
+    .filter((role) => dirtyRoles.has(role))
+    .map((role) => roleMeta[role].label);
+
+  const confirmDiscard = (target: string, onConfirm: () => void) => {
+    if (dirtyRoles.size === 0) {
+      onConfirm();
+      return;
+    }
+    modal.confirm({
+      title: `放弃未保存的模板修改并${target}？`,
+      content: `${dirtyRoleNames.join('、')}存在未保存修改。继续后这些修改将无法恢复。`,
+      okText: `放弃并${target}`,
+      cancelText: '继续编辑',
+      okButtonProps: { danger: true },
+      onOk: onConfirm,
+    });
+  };
+
+  const reloadWithGuard = () => confirmDiscard('重新加载', () => { void load(); });
+
+  const changeSceneWithGuard = (nextType: PrintBusinessType) => {
+    if (nextType === activeType) return;
+    confirmDiscard('切换场景', () => {
+      setActiveRole('MERCHANT');
+      setActiveType(nextType);
+    });
+  };
+
+  const tabItems = (Object.keys(roleMeta) as PrintCopyRole[]).map((role) => ({
+    key: role,
+    label: <Space>{roleMeta[role].icon}<span>{roleMeta[role].label}</span>{dirtyRoles.has(role) ? <Tag color="warning">未保存</Tag> : template.sections[role].enabled && <Tag color="success">启用</Tag>}</Space>,
+  }));
+
+  const availableVisibility = visibilityOptions.filter((item) => !item.roles || item.roles.includes(activeRole));
 
   return (
     <div className="page-shell">
       {contextHolder}
+      {modalContextHolder}
       <PageHeading
         title={`${domainName}打印模板`}
-        description={`${domainName}订单使用独立的小票和商品标签模板，不与另一经营域混用`}
-        extra={<Space><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>重新加载</Button><Button onClick={reset}>恢复默认</Button><Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={loading} onClick={() => void save()}>保存模板</Button></Space>}
+        description="为 58/80mm 热敏打印机维护结构化票据；不同经营场景、不同联次互不串用"
+        extra={<Space><Button icon={<ReloadOutlined />} loading={loading} disabled={saving} onClick={reloadWithGuard}>重新加载</Button><Button disabled={loading || saving} onClick={reset}>恢复当前默认</Button><Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={loading || !dirtyRoles.has(activeRole)} onClick={() => void save()}>保存当前联次</Button></Space>}
       />
-      {businessType === 'DELIVERY' && <Alert className="printer-tip" type="info" showIcon message="可提前配置外卖打印模板" description="外卖订单和实际打印一期尚未启用，但模板可以正常保存；以后开启配送能力时直接使用 DELIVERY 独立模板，不会影响店内出单。" />}
-      {businessType === 'DINE_IN' && <Card bordered={false} className="content-card print-scene-switch"><Typography.Text strong>店内订单场景</Typography.Text><Segmented value={activeType} onChange={(value) => setActiveType(value as PrintBusinessType)} options={[{ label: '桌码堂食', value: 'DINE_IN' }, { label: '快餐 / 到店自取', value: 'TAKEOUT' }]} /></Card>}
+      {businessType === 'DELIVERY' && <Alert className="printer-tip" type="info" showIcon message="可提前配置外卖打印模板" description="外卖履约一期尚未启用，但商家联、顾客联、厨房联和标签可以预先维护；开放配送后直接按 DELIVERY 订单使用。" />}
+      {businessType === 'DINE_IN' && (
+        <Card bordered={false} className="content-card print-scene-switch">
+          <Typography.Text strong>店内订单场景</Typography.Text>
+          <Segmented value={activeType} disabled={loading || saving} onChange={(value) => changeSceneWithGuard(value as PrintBusinessType)} options={[{ label: '桌码堂食', value: 'DINE_IN' }, { label: '快餐 / 到店自取', value: 'TAKEOUT' }]} />
+        </Card>
+      )}
       {loadWarning && <Alert className="printer-tip" type="warning" showIcon message="使用默认打印模板" description={loadWarning} />}
-      <Form<BusinessPrintTemplate> form={form} layout="vertical" disabled={loading}>
-        <Card bordered={false} className="content-card print-policy-card">
-          <Row gutter={[20, 16]} align="middle">
-            <Col xs={24} xl={14}>
-              <Alert type="info" showIcon message={`${sceneName}使用独立模板`} description="订单小票与商品标签分别保存触发点、份数和内容。生成任务时服务端按订单 order_type 选择对应模板，避免店内堂食、自提和外卖串用内容。" />
-            </Col>
-            <Col xs={24} xl={10}>
-              <div className="template-variable-box">
-                <strong><TagsOutlined /> 订单级变量</strong>
-                <div>{orderVariables.map((value) => <Tag key={value}>{value}</Tag>)}</div>
-                <strong>商品标签额外变量</strong>
-                <div>{labelItemVariables.map((value) => <Tag key={value} color="blue">{value}</Tag>)}</div>
-              </div>
-            </Col>
-          </Row>
-        </Card>
-        <Card bordered={false} className="content-card print-template-tabs">
-          <Tabs items={[
-            { key: 'receipt', label: '订单小票', children: <TemplateEditor section="receipt" /> },
-            { key: 'label', label: '商品标签', children: <TemplateEditor section="label" /> },
-          ]} />
-        </Card>
-        <Typography.Paragraph type="secondary" className="template-meta">小票更新：{dateTime(Form.useWatch(['receipt', 'updatedAt'], form))} · 标签更新：{dateTime(Form.useWatch(['label', 'updatedAt'], form))}</Typography.Paragraph>
-      </Form>
+
+      <Card bordered={false} className="content-card print-copy-tabs" loading={loading}>
+        <Tabs activeKey={activeRole} items={tabItems} onChange={(value) => setActiveRole(value as PrintCopyRole)} />
+        <Alert type="info" showIcon message={`${sceneName} · ${roleMeta[activeRole].label}`} description={roleMeta[activeRole].description} />
+      </Card>
+
+      <Row gutter={[18, 18]} className={`print-builder-grid ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+        <Col xs={24} xxl={10}>
+          <Card bordered={false} className="content-card print-preview-stage" title={<Space>{roleMeta[activeRole].icon}<span>打印效果预览</span><Tag>{section.paperWidth}mm</Tag></Space>}>
+            <PaperPreview section={section} businessType={activeType} />
+            <Typography.Paragraph type="secondary" className="print-preview-note">预览使用示例订单。真实任务由服务端按设备纸宽定宽排版；当前虚拟打印保留二维码对应的订单码，接入云打印硬件后再输出原生二维码、倍高和切纸指令。</Typography.Paragraph>
+          </Card>
+        </Col>
+        <Col xs={24} xxl={14}>
+          <Card bordered={false} className="content-card print-layout-editor" title="联次与纸张">
+            <div className="print-template-switch-row">
+              <div><strong>启用{roleMeta[activeRole].label}</strong><Typography.Paragraph type="secondary">关闭后该联次不会自动生成打印任务，手工补打仍受操作权限控制。</Typography.Paragraph></div>
+              <Switch checked={section.enabled} onChange={(checked) => updateSection({ enabled: checked })} />
+            </div>
+            <Row gutter={14}>
+              <Col xs={24} md={12}><label className="field-label">模板名称</label><Input value={section.name} maxLength={100} onChange={(event) => updateSection({ name: event.target.value })} /></Col>
+              <Col xs={24} md={12}><label className="field-label">打印触发点</label><Select value={section.triggerEvent} style={{ width: '100%' }} onChange={(value) => updateSection({ triggerEvent: value })} options={[{ value: 'PAYMENT_SUCCESS', label: '付款成功后打印' }, { value: 'ORDER_CREATED', label: '下单后打印（含待付款）' }]} /></Col>
+              <Col xs={24} md={8}><label className="field-label">纸张宽度</label><Segmented block value={section.paperWidth} onChange={(value) => updateSection({ paperWidth: value as 58 | 80 })} options={[{ value: 58, label: '58mm' }, { value: 80, label: '80mm' }]} /></Col>
+              <Col xs={24} md={8}><label className="field-label">打印份数</label><InputNumber min={1} max={5} precision={0} value={section.copies} addonAfter="份" style={{ width: '100%' }} onChange={(value) => updateSection({ copies: Number(value || 1) })} /></Col>
+              <Col xs={24} md={8}><label className="field-label">字号</label><Segmented block value={section.layout.fontSize} onChange={(value) => updateLayout('fontSize', value as PrintTemplateLayout['fontSize'])} options={[{ value: 'NORMAL', label: '普通' }, { value: 'LARGE', label: '大字' }]} /></Col>
+              {activeRole !== 'ITEM' && <Col xs={24}><label className="field-label">抬头样式</label><Segmented value={section.layout.headerStyle} onChange={(value) => updateLayout('headerStyle', value as PrintTemplateLayout['headerStyle'])} options={[{ value: 'SIMPLE', label: '简洁模式' }, { value: 'PROMINENT', label: '突出店名' }]} /></Col>}
+            </Row>
+          </Card>
+
+          <Card bordered={false} className="content-card print-layout-editor" title="票据内容">
+            <div className="print-visibility-grid">
+              {availableVisibility.map((item) => (
+                <Checkbox key={item.key} checked={Boolean(section.layout[item.key])} onChange={(event) => updateLayout(item.key, event.target.checked as never)}>{item.label}</Checkbox>
+              ))}
+            </div>
+            <Divider />
+            <Row gutter={14}>
+              <Col xs={24} md={12}><label className="field-label">自定义抬头文案</label><Input value={section.layout.customHeader} maxLength={100} placeholder="例如：预订单 / 请优先制作" onChange={(event) => updateLayout('customHeader', event.target.value)} /></Col>
+              <Col xs={24} md={12}><label className="field-label">自定义底部文案</label><Input value={section.layout.customFooter} maxLength={200} placeholder="例如：感谢光临" onChange={(event) => updateLayout('customFooter', event.target.value)} /></Col>
+            </Row>
+          </Card>
+
+          <Card bordered={false} className="content-card print-layout-editor print-advanced-card">
+            <Collapse ghost items={[{
+              key: 'advanced',
+              label: '高级兼容：查看纯文本回退模板',
+              children: <><Input.TextArea rows={8} className="template-textarea" value={section.templateText} spellCheck={false} onChange={(event) => updateSection({ templateText: event.target.value })} /><Typography.Paragraph type="secondary">结构化布局优先用于新打印任务；此文本用于旧设备或布局解析失败时安全回退。</Typography.Paragraph></>,
+            }, {
+              key: 'variables',
+              label: '可用打印变量',
+              children: <div className="template-variable-box"><strong><TagsOutlined /> 订单级变量</strong><div>{orderVariables.map((value) => <Tag key={value}>{value}</Tag>)}</div>{activeRole === 'ITEM' && <><strong>商品标签额外变量</strong><div>{labelItemVariables.map((value) => <Tag key={value} color="blue">{value}</Tag>)}</div></>}</div>,
+            }]} />
+          </Card>
+          <Typography.Paragraph type="secondary" className="template-meta">当前联次更新：{dateTime(section.updatedAt)}</Typography.Paragraph>
+        </Col>
+      </Row>
+      <Alert className="printer-compatibility-note" icon={<QrcodeOutlined />} type="success" showIcon message="同一份模板同时支持页面预览与设备输出" description="当前虚拟打印机接收服务端生成的定宽票据；接入芯烨等云打印 API 后，由厂商适配层把纸宽、字号和二维码映射为设备指令，不需要商户重新配置模板。" />
     </div>
   );
 }

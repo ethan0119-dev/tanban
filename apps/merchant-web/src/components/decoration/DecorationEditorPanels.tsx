@@ -18,14 +18,21 @@ import {
   Typography,
 } from 'antd';
 import { useState } from 'react';
-import { HOME_MODULE_LABELS, NAVIGATION_LABELS, type DecorationConfig, type DecorationTemplate, type HomeModuleType } from '../../features/decoration/model';
+import { HOME_MODULE_LABELS, NAVIGATION_LABELS, type DecorationConfig, type DecorationTemplate, type HomeModuleType, type MediaAsset } from '../../features/decoration/model';
+import { HotspotImageEditor } from './HotspotImageEditor';
 
 interface ConfigPanelProps {
   config: DecorationConfig;
   onChange: (config: DecorationConfig) => void;
 }
 
-export function PageModulesPanel({ config, onChange }: ConfigPanelProps) {
+interface PageModulesPanelProps extends ConfigPanelProps {
+  assets?: MediaAsset[];
+  assetUploading?: boolean;
+  onUploadAsset?: (file: File) => Promise<MediaAsset>;
+}
+
+export function PageModulesPanel({ config, onChange, assets = [], assetUploading = false, onUploadAsset }: PageModulesPanelProps) {
   const [newType, setNewType] = useState<HomeModuleType>('TEXT');
   const updateModule = (index: number, patch: Partial<DecorationConfig['homeModules'][number]>) => {
     const modules = config.homeModules.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
@@ -67,7 +74,15 @@ export function PageModulesPanel({ config, onChange }: ConfigPanelProps) {
             <Switch size="small" checked={module.enabled} onChange={(enabled) => updateModule(index, { enabled })} />
           </Space>}
         >
-          {module.type === 'STORE_HEADER'
+          {module.type === 'HOTSPOT_IMAGE'
+            ? <HotspotImageEditor
+              module={module}
+              assets={assets}
+              uploading={assetUploading}
+              onChange={(patch) => updateModule(index, patch)}
+              onUpload={onUploadAsset ?? (async () => { throw new Error('图片上传服务暂不可用'); })}
+            />
+            : module.type === 'STORE_HEADER'
             ? <Typography.Text type="secondary">展示门店设置中的 Logo、营业状态和经营地址。</Typography.Text>
             : module.type === 'SPACER'
               ? <Form.Item label="留白高度"><InputNumber min={4} max={160} addonAfter="px" value={Number.parseInt(module.subtitle, 10) || 24} onChange={(value) => updateModule(index, { subtitle: String(value ?? 24) })} /></Form.Item>
@@ -85,13 +100,14 @@ export function PageModulesPanel({ config, onChange }: ConfigPanelProps) {
   );
 }
 
-function moduleDefaults(type: HomeModuleType): Pick<DecorationConfig['homeModules'][number], 'title' | 'subtitle' | 'imageUrl'> {
+function moduleDefaults(type: HomeModuleType): Pick<DecorationConfig['homeModules'][number], 'title' | 'subtitle' | 'imageUrl' | 'hotspots'> {
   switch (type) {
     case 'HERO_BANNER': return { title: '首页主视觉', subtitle: '点击进入点单', imageUrl: '' };
     case 'STORE_HEADER': return { title: '营业中', subtitle: '展示门店信息', imageUrl: '' };
     case 'ANNOUNCEMENT': return { title: '公告', subtitle: '门店公告正文来自门店设置', imageUrl: '' };
     case 'QUICK_ACTIONS': return { title: '堂食 / 自提点单', subtitle: '选好口味，在线下单', imageUrl: '' };
     case 'IMAGE': return { title: '活动图片', subtitle: '', imageUrl: 'https://placehold.co/1200x600/png' };
+    case 'HOTSPOT_IMAGE': return { title: '首页导航图', subtitle: '', imageUrl: '', hotspots: [] };
     case 'SPACER': return { title: '留白', subtitle: '24', imageUrl: '' };
     case 'TEXT':
     default: return { title: '品牌故事', subtitle: '在这里介绍门店或活动内容', imageUrl: '' };

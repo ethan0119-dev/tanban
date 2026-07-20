@@ -124,6 +124,7 @@ export const api = {
   get: <T>(url: string, params?: unknown) => request<T>({ method: 'GET', url, params }),
   getList: <T>(url: string, params?: unknown) => requestList<T>(url, params),
   post: <T>(url: string, data?: unknown) => request<T>({ method: 'POST', url, data }),
+  postForm: <T>(url: string, data: FormData) => request<T>({ method: 'POST', url, data, headers: { 'Content-Type': 'multipart/form-data' } }),
   postIdempotent: <T>(url: string, data: unknown, idempotencyKey: string) => request<T>({ method: 'POST', url, data, headers: { 'Idempotency-Key': idempotencyKey } }),
   put: <T>(url: string, data?: unknown) => request<T>({ method: 'PUT', url, data }),
   patch: <T>(url: string, data?: unknown) => request<T>({ method: 'PATCH', url, data }),

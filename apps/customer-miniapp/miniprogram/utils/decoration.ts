@@ -15,6 +15,7 @@ const MODULE_TYPES: DecorationModuleType[] = [
   "ANNOUNCEMENT",
   "QUICK_ACTIONS",
   "IMAGE",
+  "HOTSPOT_IMAGE",
   "TEXT",
   "SPACER",
 ];
@@ -137,6 +138,20 @@ function safeModules(value: unknown, fallback: DecorationModule[]): DecorationMo
         action: safeAction(row.action),
       };
     }) : [];
+    const hotspots = Array.isArray(source.hotspots) ? source.hotspots.slice(0, 20).map((item, hotspotIndex) => {
+      const row = item && typeof item === "object" ? item as unknown as Record<string, unknown> : {};
+      const x = numberIn(row.x, 0, 0, 99);
+      const y = numberIn(row.y, 0, 0, 99);
+      return {
+        id: text(row.id, `hotspot-${hotspotIndex + 1}`, 64).replace(/[^a-zA-Z0-9_-]/g, "-"),
+        x,
+        y,
+        width: numberIn(row.width, 20, 1, 100 - x),
+        height: numberIn(row.height, 12, 1, 100 - y),
+        label: text(row.label, `热区 ${hotspotIndex + 1}`, 30),
+        action: safeAction(row.action),
+      };
+    }) : [];
     return [{
       id,
       type,
@@ -156,6 +171,7 @@ function safeModules(value: unknown, fallback: DecorationModule[]): DecorationMo
         align,
         textAlign,
         height: numberIn(source.height, 24, 4, 160),
+        hotspots,
       },
     }];
   }).sort((a, b) => a.sortOrder - b.sortOrder);

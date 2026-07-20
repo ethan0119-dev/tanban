@@ -8,6 +8,7 @@ import type {
   DecorationWorkspace,
   HomeModuleConfig,
   HomeModuleType,
+  ImageHotspot,
   MediaAsset,
   PublishedDecoration,
 } from './model';
@@ -86,6 +87,36 @@ function booleanValue(fallback: boolean, ...values: unknown[]): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
+function actionView(payload: unknown): ImageHotspot['action'] {
+  const value = record(payload);
+  const rawType = stringValue(value.type).toUpperCase();
+  const type = ['NONE', 'OPEN_MENU', 'OPEN_ORDERS', 'OPEN_PROFILE', 'CALL_PHONE'].includes(rawType)
+    ? rawType as ImageHotspot['action']['type']
+    : 'NONE';
+  return type === 'CALL_PHONE' ? { type, phone: stringValue(value.phone).slice(0, 20) } : { type };
+}
+
+function clampPercent(value: unknown, fallback: number, minimum = 0): number {
+  return Math.min(100, Math.max(minimum, numberValue(fallback, value)));
+}
+
+function hotspotView(payload: unknown, index: number): ImageHotspot {
+  const value = record(payload);
+  const x = Math.min(99.999, clampPercent(value.x, 0));
+  const y = Math.min(99.999, clampPercent(value.y, 0));
+  const width = Math.min(100 - x, clampPercent(value.width, 20, 1));
+  const height = Math.min(100 - y, clampPercent(value.height, 12, 1));
+  return {
+    id: stringValue(value.id).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 64) || `hotspot-${index + 1}`,
+    x,
+    y,
+    width,
+    height,
+    label: stringValue(value.label).slice(0, 30) || `热区 ${index + 1}`,
+    action: actionView(value.action),
+  };
+}
+
 function arrayPayload(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   const value = record(payload);
@@ -107,6 +138,7 @@ function moduleView(payload: unknown, index: number): HomeModuleConfig {
     title: '',
     subtitle: '',
     imageUrl: '',
+    hotspots: [],
   };
   if (type === 'HERO_BANNER') {
     return { ...fallback, title: stringValue(first.title), subtitle: stringValue(first.subtitle), imageUrl: stringValue(first.imageUrl, first.image_url) };
@@ -115,6 +147,10 @@ function moduleView(payload: unknown, index: number): HomeModuleConfig {
   if (type === 'ANNOUNCEMENT') return { ...fallback, title: stringValue(moduleConfig.prefix) || '公告', subtitle: '门店公告正文来自门店设置' };
   if (type === 'QUICK_ACTIONS') return { ...fallback, title: stringValue(first.title) || '堂食 / 自提点单', subtitle: stringValue(first.subtitle) || '选好口味，在线下单' };
   if (type === 'IMAGE') return { ...fallback, title: stringValue(moduleConfig.alt), imageUrl: stringValue(moduleConfig.imageUrl, moduleConfig.image_url) };
+  if (type === 'HOTSPOT_IMAGE') {
+    const hotspots = Array.isArray(moduleConfig.hotspots) ? moduleConfig.hotspots.slice(0, 20).map(hotspotView) : [];
+    return { ...fallback, title: stringValue(moduleConfig.alt) || '热区图片', imageUrl: stringValue(moduleConfig.imageUrl, moduleConfig.image_url), hotspots };
+  }
   if (type === 'TEXT') return { ...fallback, title: stringValue(moduleConfig.title), subtitle: stringValue(moduleConfig.body) };
   if (type === 'SPACER') return { ...fallback, title: '留白', subtitle: `${numberValue(24, moduleConfig.height)}px` };
   return fallback;
@@ -202,6 +238,23 @@ function modulePayload(module: HomeModuleConfig, index: number): ApiDecorationMo
       break;
     case 'IMAGE':
       config = { imageUrl: module.imageUrl ?? '', alt: module.title, action: { type: 'NONE' } };
+      break;
+    case 'HOTSPOT_IMAGE':
+      config = {
+        imageUrl: module.imageUrl?.trim() ?? '',
+        alt: module.title,
+        hotspots: (module.hotspots ?? []).slice(0, 20).map((hotspot) => ({
+          id: hotspot.id,
+          x: Number(hotspot.x.toFixed(3)),
+          y: Number(hotspot.y.toFixed(3)),
+          width: Number(Math.min(100 - hotspot.x, hotspot.width).toFixed(3)),
+          height: Number(Math.min(100 - hotspot.y, hotspot.height).toFixed(3)),
+          label: hotspot.label,
+          action: hotspot.action.type === 'CALL_PHONE'
+            ? { type: hotspot.action.type, phone: hotspot.action.phone?.trim() ?? '' }
+            : { type: hotspot.action.type },
+        })),
+      };
       break;
     case 'SPACER':
       config = { height: Math.min(160, Math.max(4, Number.parseInt(module.subtitle, 10) || 24)) };
@@ -350,6 +403,12 @@ export const decorationApi = {
   },
   async createAsset(input: Pick<MediaAsset, 'name' | 'url' | 'type'>): Promise<MediaAsset> {
     return normalizeAsset(await api.post('/merchant/media-assets', assetPayload(input)));
+  },
+  async uploadAsset(file: File, name = file.name): Promise<MediaAsset> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('name', name);
+    return normalizeAsset(await api.postForm('/merchant/media-assets/upload', form));
   },
   async updateAsset(id: string | number, input: Pick<MediaAsset, 'name' | 'url' | 'type'>): Promise<MediaAsset> {
     return normalizeAsset(await api.put(`/merchant/media-assets/${encodeURIComponent(String(id))}`, assetPayload(input)));

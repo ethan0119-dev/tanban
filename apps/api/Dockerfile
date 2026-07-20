@@ -11,10 +11,13 @@ FROM alpine:3.21
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
     && apk add --no-cache ca-certificates tzdata \
     && addgroup -S tanban \
-    && adduser -S -G tanban tanban
+    && adduser -S -G tanban tanban \
+    && mkdir -p /var/lib/tanban/media \
+    && chown -R tanban:tanban /var/lib/tanban
 WORKDIR /app
 COPY --from=build /out/tanban-api /app/tanban-api
 COPY migrations /app/migrations
 USER tanban
+VOLUME ["/var/lib/tanban/media"]
 EXPOSE 18090
 ENTRYPOINT ["/app/tanban-api"]
