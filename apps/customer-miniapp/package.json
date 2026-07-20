@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build": "node scripts/build-miniapp.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests"
   },

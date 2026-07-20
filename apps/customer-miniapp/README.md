@@ -2,6 +2,14 @@
 
 使用微信开发者工具导入本目录。正式 AppID 在微信开发者工具的项目配置中填写，开发工具会生成不入库的 `project.private.config.json`。AppSecret 只保存在 API 服务器的 root-only 环境文件中，不能进入本目录。
 
+首次导入、上传以及每次修改 TypeScript 后，先生成微信开发者工具直接运行的 JavaScript 产物：
+
+```bash
+npm run build
+```
+
+开发者工具通过 `project.config.json` 加载不入库的 `dist/miniprogram`，源码仍维护在 `miniprogram`。
+
 环境配置位于 `miniprogram/config/env.ts`：
 
 - `apiBaseUrl`：API 地址，生产环境默认为 `https://tbapi.666qwe.cn/api/v1`。

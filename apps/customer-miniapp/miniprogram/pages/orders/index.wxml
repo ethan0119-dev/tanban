@@ -1,4 +1,6 @@
 <view class="page">
-  <view wx:if="{{orders.length}}" class="order card" wx:for="{{orders}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="openOrder"><view class="order-head"><text>{{item.orderNo}}</text><text class="status">{{item.status}}</text></view><view class="order-main"><view><text>取餐号 {{item.pickupCode || '--'}}</text><text class="muted">{{item.createdAt}}</text></view><text class="price">¥{{item.amount / 100}}</text></view></view>
+  <block wx:if="{{orders.length}}">
+    <view class="order card" wx:for="{{orders}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="openOrder"><view class="order-head"><text>{{item.orderNo}}</text><text class="status">{{item.status}}</text></view><view class="order-main"><view><text>取餐号 {{item.pickupCode || '--'}}</text><text class="muted">{{item.createdAt}}</text></view><text class="price">¥{{item.amount / 100}}</text></view></view>
+  </block>
   <view wx:elif="{{!loading}}" class="empty">还没有订单，去点一杯吧</view><view wx:else class="empty">正在加载订单…</view>
 </view>
