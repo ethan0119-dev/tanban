@@ -28,6 +28,7 @@ The reference and implementation captures are desktop states. For visual compari
 - Entered draw mode and dragged a rectangle on the image. The editor produced percentage coordinates (`x`, `y`, `width`, `height`) and synchronized the overlay into the phone preview.
 - Opened the action selector and confirmed the safe action set: no action, menu, orders, profile, and phone call.
 - Changed the hotspot action from menu to orders and confirmed the preview state changed to `OPEN_ORDERS`.
+- The Codex in-app browser cannot attach files through an operating-system file picker. The production upload was therefore exercised against the same authenticated multipart endpoint with the real `public/og.png`; the visible upload control, returned asset, editor rendering, and mini-program preview were then verified on the live page.
 - No draft was published during QA.
 - Browser console errors: none.
 
