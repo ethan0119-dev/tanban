@@ -158,6 +158,10 @@ button, input, textarea, select { font: inherit; }
 .entity-name--store > span { background: #eaf4ff; color: #3978bd; }
 
 .table-toolbar { margin-bottom: 18px; }
+.announcement-title-cell { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.announcement-title-cell strong { color: #37322e; }
+.announcement-title-cell small { color: #99918a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.announcement-content { padding: 16px; border-radius: 10px; white-space: pre-wrap; background: #faf8f6; line-height: 1.8; }
 .modal-form { margin-top: 16px; }
 .form-section-title { margin: 4px 0 16px; padding-top: 14px; border-top: 1px solid #efede9; color: #5d5650; font-weight: 600; }
 .drawer-entity { display: flex; align-items: center; gap: 14px; padding: 4px 0 22px; }

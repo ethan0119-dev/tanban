@@ -107,6 +107,12 @@ func (s *Server) platformRoutes(r chi.Router) {
 	r.Get("/settings/system", s.getPlatformSystemSettings)
 	r.With(requireRoles(RolePlatformAdmin)).Put("/settings/system", s.updatePlatformSystemSettings)
 	r.Get("/tenants", s.listTenants)
+	r.Get("/announcements", s.listPlatformAnnouncements)
+	r.Get("/announcements/{announcementID}", s.getPlatformAnnouncement)
+	r.With(requireRoles(RolePlatformAdmin)).Post("/announcements", s.createPlatformAnnouncement)
+	r.With(requireRoles(RolePlatformAdmin)).Put("/announcements/{announcementID}", s.updatePlatformAnnouncement)
+	r.With(requireRoles(RolePlatformAdmin)).Post("/announcements/{announcementID}/publish", s.publishPlatformAnnouncement)
+	r.With(requireRoles(RolePlatformAdmin)).Post("/announcements/{announcementID}/withdraw", s.withdrawPlatformAnnouncement)
 	r.With(requireRoles(RolePlatformAdmin)).Post("/tenants", s.createTenant)
 	r.Route("/tenants/{tenantID}", func(t chi.Router) {
 		t.Get("/", s.getTenant)

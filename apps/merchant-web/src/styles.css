@@ -175,9 +175,26 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .merchant-license-card .ant-image { flex: 1; width: 100%; min-height: 180px; overflow: hidden; border-radius: 9px; background: #fff; }
 .merchant-license-card .ant-image-img { width: 100%; height: 180px; object-fit: contain; }
 .merchant-license-empty { flex: 1; min-height: 180px; display: grid; place-items: center; border: 1px dashed #dcd1ca; border-radius: 9px; color: #a2968e; background: #fff; }
+.notification-inbox-card .ant-card-body { padding-top: 14px; }
+.notification-toolbar { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.notification-item { padding: 19px 12px !important; border-radius: 12px; cursor: pointer; transition: background .18s ease; }
+.notification-item:hover { background: #faf7f4; }
+.notification-item.is-read { opacity: .78; }
+.notification-item .ant-list-item-meta-description .ant-typography { margin-bottom: 4px; }
+.notification-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: #4f7796; background: #edf4f8; font-size: 19px; }
+.notification-icon.severity-important { color: #a86928; background: #fff3df; }
+.notification-icon.severity-urgent { color: #b34842; background: #fff0ef; }
+.notification-detail h3 { margin: 20px 0 6px; }
+.notification-summary { margin-top: 24px; padding: 14px 16px; border-left: 4px solid #b77a50; border-radius: 0 10px 10px 0; background: #faf5f1; font-weight: 600; }
+.notification-content { margin-top: 20px; white-space: pre-wrap; line-height: 1.85; }
 @media (max-width: 640px) {
   .business-day-row { grid-template-columns: 1fr; gap: 8px; }
   .business-day-name { padding-top: 0; }
+  .notification-item { display: block !important; }
+  .notification-item .ant-list-item-meta { align-items: flex-start; }
+  .notification-item .ant-list-item-meta-content { min-width: 0; }
+  .notification-item .ant-list-item-action { margin: 10px 0 0 58px !important; justify-content: flex-start; }
+  .notification-item .ant-list-item-action > li { padding-inline: 0; }
 }
 .tab-count { margin-left: 5px; padding: 0 6px; min-width: 20px; display: inline-block; border-radius: 10px; background: #f3ebe5; color: #a05d37; font-style: normal; font-size: 11px; text-align: center; }
 .order-product-cell { max-width: 420px; }

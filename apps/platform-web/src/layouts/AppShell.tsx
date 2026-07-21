@@ -6,6 +6,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  NotificationOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -27,6 +28,7 @@ const allMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/users', label: <Link to="/users">管理员用户</Link>, icon: <TeamOutlined /> },
   { key: '/tenants', label: <Link to="/tenants">商户管理</Link>, icon: <ShopOutlined /> },
   { key: '/stores', label: <Link to="/stores">门店管理</Link>, icon: <ApartmentOutlined /> },
+  { key: '/announcements', label: <Link to="/announcements">通知中心</Link>, icon: <NotificationOutlined /> },
   {
     key: 'configuration',
     label: '平台配置',

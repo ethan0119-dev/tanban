@@ -6,6 +6,8 @@ import type {
   LoginResponse,
   PageResult,
   PaymentSettings,
+  PlatformAnnouncement,
+  AnnouncementValues,
   PlatformUser,
   QueryParams,
   Store,
@@ -123,6 +125,41 @@ function auditLogFromRaw(value: unknown): AuditLog {
     ip: text(item.ip) || undefined,
     detail: text(item.details ?? item.detail) || undefined,
     createdAt: text(item.created_at ?? item.createdAt),
+  };
+}
+
+function announcementFromRaw(value: unknown): PlatformAnnouncement {
+  const item = raw(value);
+  const tenantIds = item.tenant_ids ?? item.tenantIds;
+  return {
+    id: text(item.id),
+    title: text(item.title),
+    summary: text(item.summary),
+    content: text(item.content),
+    category: text(item.category).toUpperCase() as PlatformAnnouncement['category'],
+    severity: text(item.severity).toUpperCase() as PlatformAnnouncement['severity'],
+    audienceType: text(item.audience_type ?? item.audienceType).toUpperCase() as PlatformAnnouncement['audienceType'],
+    status: text(item.status).toUpperCase() as PlatformAnnouncement['status'],
+    tenantIds: Array.isArray(tenantIds) ? tenantIds.map(text) : [],
+    targetCount: numberValue(item.target_count ?? item.targetCount),
+    readCount: numberValue(item.read_count ?? item.readCount),
+    createdBy: text(item.created_by ?? item.createdBy) || undefined,
+    createdAt: text(item.created_at ?? item.createdAt),
+    updatedAt: text(item.updated_at ?? item.updatedAt),
+    publishedAt: text(item.published_at ?? item.publishedAt) || undefined,
+    withdrawnAt: text(item.withdrawn_at ?? item.withdrawnAt) || undefined,
+  };
+}
+
+function announcementPayload(values: AnnouncementValues): RawRecord {
+  return {
+    title: values.title,
+    summary: values.summary || '',
+    content: values.content,
+    category: values.category,
+    severity: values.severity,
+    audience_type: values.audienceType,
+    tenant_ids: (values.tenantIds || []).map(Number),
   };
 }
 
@@ -303,6 +340,15 @@ export const storeService = {
 
 export const auditService = {
   list: (params?: QueryParams) => getPage<AuditLog>('/platform/audit-logs', params, auditLogFromRaw),
+};
+
+export const announcementService = {
+  list: (params?: QueryParams) => getPage<PlatformAnnouncement>('/platform/announcements', params, announcementFromRaw),
+  get: async (id: string) => announcementFromRaw((await http.get<RawRecord>(`/platform/announcements/${id}`)).data),
+  create: async (values: AnnouncementValues) => announcementFromRaw((await http.post<RawRecord>('/platform/announcements', announcementPayload(values))).data),
+  update: async (id: string, values: AnnouncementValues) => announcementFromRaw((await http.put<RawRecord>(`/platform/announcements/${id}`, announcementPayload(values))).data),
+  publish: async (id: string) => announcementFromRaw((await http.post<RawRecord>(`/platform/announcements/${id}/publish`)).data),
+  withdraw: async (id: string) => announcementFromRaw((await http.post<RawRecord>(`/platform/announcements/${id}/withdraw`)).data),
 };
 
 export const settingsService = {

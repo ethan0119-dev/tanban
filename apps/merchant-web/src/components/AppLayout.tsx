@@ -19,12 +19,13 @@ import {
   UsergroupAddOutlined,
 } from '@ant-design/icons';
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import tanbanLogo from '../assets/brand/tanban-logo-web.png';
 import { useAuth } from '../auth/AuthContext';
 import { isMerchantStaff } from '../auth/permissions';
 import { initials } from '../utils/format';
+import { notificationApi, NOTIFICATIONS_CHANGED_EVENT } from '../features/notifications/api';
 
 const { Header, Sider, Content } = Layout;
 
@@ -111,6 +112,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const navigationItems = useMemo(
     () => isMerchantStaff(user) ? staffNavigationItems : managementNavigationItems,
     [user],
@@ -119,6 +121,28 @@ export function AppLayout() {
   useEffect(() => {
     if (mobile) setCollapsed(true);
   }, [location.pathname, mobile]);
+
+  const loadUnreadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      setUnreadNotifications(await notificationApi.unreadCount());
+    } catch {
+      // Header polling must not interrupt order operations when the notification service is unavailable.
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void loadUnreadNotifications();
+    const timer = window.setInterval(() => void loadUnreadNotifications(), 60_000);
+    const refresh = () => void loadUnreadNotifications();
+    window.addEventListener('focus', refresh);
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh);
+    };
+  }, [loadUnreadNotifications]);
 
   const selectedKey = useMemo(() => navigationRouteKeys(navigationItems)
     .sort((left, right) => right.length - left.length)
@@ -168,8 +192,8 @@ export function AppLayout() {
             onClick={() => setCollapsed((value) => !value)}
           />
           <div className="header-spacer" />
-          <Tooltip title="订单消息">
-            <Badge dot offset={[-3, 3]}><Button type="text" className="header-action" icon={<BellOutlined />} /></Badge>
+          <Tooltip title="系统通知">
+            <Badge count={unreadNotifications} overflowCount={99} size="small" offset={[-3, 3]}><Button aria-label="打开系统通知" type="text" className="header-action" icon={<BellOutlined />} onClick={() => navigate('/notifications')} /></Badge>
           </Tooltip>
           <span className="header-divider" />
           <Dropdown

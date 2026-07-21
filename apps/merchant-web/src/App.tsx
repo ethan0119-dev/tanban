@@ -27,6 +27,7 @@ import { MarketingAppsPage } from './pages/MarketingAppsPage';
 import { PopupAdsPage } from './pages/PopupAdsPage';
 import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { OperationSettingsPage } from './pages/OperationSettingsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -47,6 +48,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orders" element={<Navigate to="/dine-in/orders" replace />} />
         <Route path="/dine-in/orders" element={<OrdersPage businessType="DINE_IN" sceneMode="DINE_IN" />} />
         <Route path="/dine-in/fast-food-orders" element={<OrdersPage businessType="DINE_IN" sceneMode="TAKEOUT" />} />

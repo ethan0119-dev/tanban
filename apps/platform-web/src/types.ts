@@ -147,3 +147,37 @@ export interface SystemSettings {
   loginFailureLimit?: number;
   sessionExpireMinutes?: number;
 }
+
+export type AnnouncementCategory = 'SYSTEM_UPDATE' | 'BUG_FIX' | 'NEW_FEATURE' | 'NOTICE' | 'ACTION_REQUIRED';
+export type AnnouncementSeverity = 'INFO' | 'IMPORTANT' | 'URGENT';
+export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN';
+export type AnnouncementAudience = 'ALL' | 'SELECTED';
+
+export interface PlatformAnnouncement {
+  id: string;
+  title: string;
+  summary: string;
+  content: string;
+  category: AnnouncementCategory;
+  severity: AnnouncementSeverity;
+  audienceType: AnnouncementAudience;
+  status: AnnouncementStatus;
+  tenantIds: string[];
+  targetCount: number;
+  readCount: number;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+  withdrawnAt?: string;
+}
+
+export interface AnnouncementValues {
+  title: string;
+  summary?: string;
+  content: string;
+  category: AnnouncementCategory;
+  severity: AnnouncementSeverity;
+  audienceType: AnnouncementAudience;
+  tenantIds?: string[];
+}

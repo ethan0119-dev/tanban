@@ -23,6 +23,11 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	r.Post("/orders/{orderID}/reprint", s.reprintOrder)
 	r.Get("/print-jobs", s.listPrintJobs)
 	r.Post("/print-jobs/{jobID}/retry", s.retryPrintJob)
+	r.Get("/notifications", s.listMerchantNotifications)
+	r.Get("/notifications/unread-count", s.merchantNotificationUnreadCount)
+	r.Post("/notifications/read-all", s.markAllMerchantNotificationsRead)
+	r.Get("/notifications/{notificationID}", s.getMerchantNotification)
+	r.Post("/notifications/{notificationID}/read", s.markMerchantNotificationRead)
 
 	r.Group(func(managers chi.Router) {
 		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
