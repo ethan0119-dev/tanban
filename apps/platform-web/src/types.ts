@@ -88,6 +88,8 @@ export interface Tenant {
   paymentMerchantNo?: string;
   paymentProvider?: string;
   paymentSubAppId?: string;
+  businessLicenseUrl?: string;
+  foodBusinessLicenseUrl?: string;
   paymentStatus?: 'unbound' | 'pending' | 'active' | 'rejected';
   createdAt?: string;
   expiresAt?: string;

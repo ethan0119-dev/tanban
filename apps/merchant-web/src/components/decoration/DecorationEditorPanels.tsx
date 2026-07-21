@@ -1,4 +1,4 @@
-import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, FolderOpenOutlined, HomeOutlined, PictureOutlined, PlusOutlined, ShoppingOutlined, SnippetsOutlined, UserOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, HomeOutlined, PlusOutlined, ShoppingOutlined, SnippetsOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { HOME_MODULE_LABELS, NAVIGATION_LABELS, type DecorationConfig, type DecorationTemplate, type HomeModuleType, type MediaAsset } from '../../features/decoration/model';
 import { HotspotImageEditor } from './HotspotImageEditor';
 import { MediaLibraryModal } from '../media/MediaLibraryModal';
+import { ImagePickerField } from '../media/ImagePickerField';
 
 interface ConfigPanelProps {
   config: DecorationConfig;
@@ -93,7 +94,7 @@ export function PageModulesPanel({ config, onChange, assets = [], assetUploading
                   <Col span={12}><Form.Item label={module.type === 'ANNOUNCEMENT' ? '公告前缀' : '主标题'}><Input value={module.title} maxLength={module.type === 'ANNOUNCEMENT' ? 16 : 30} onChange={(event) => updateModule(index, { title: event.target.value })} /></Form.Item></Col>
                   {module.type !== 'ANNOUNCEMENT' && <Col span={12}><Form.Item label="辅助文案"><Input value={module.subtitle} maxLength={80} onChange={(event) => updateModule(index, { subtitle: event.target.value })} /></Form.Item></Col>}
                 </Row>
-                {(module.type === 'HERO_BANNER' || module.type === 'IMAGE') && <Form.Item label="模块图片"><Space.Compact block><Input value={module.imageUrl} prefix={<PictureOutlined />} placeholder="从图片库选择，或填入 HTTPS 地址" onChange={(event) => updateModule(index, { imageUrl: event.target.value })} /><Button icon={<FolderOpenOutlined />} onClick={() => setLibraryTarget(index)}>图片库</Button></Space.Compact></Form.Item>}
+                {(module.type === 'HERO_BANNER' || module.type === 'IMAGE') && <Form.Item label="模块图片"><ImagePickerField value={module.imageUrl} onChange={(imageUrl) => updateModule(index, { imageUrl })} alt={module.title || '装修模块图片'} hint="发布后用于小程序首页模块" onOpenLibrary={() => setLibraryTarget(index)} /></Form.Item>}
                 {module.type === 'ANNOUNCEMENT' && <Typography.Text type="secondary">公告正文沿用“门店设置”里的店铺公告，这里仅配置前缀。</Typography.Text>}
               </>}
         </Card>
@@ -238,7 +239,7 @@ export function SplashPanel({ config, onChange }: ConfigPanelProps) {
       <Card size="small" className="decor-section-card"><SwitchRow label="启用启动页" description="发布后按所选频率向进入当前门店的顾客展示" checked={config.splash.enabled} onChange={(enabled) => update({ enabled })} /></Card>
       <Card size="small" className="decor-section-card">
         <Form layout="vertical" disabled={!config.splash.enabled}>
-          <Form.Item label="背景图片"><Space.Compact block><Input value={config.splash.imageUrl} placeholder="必须为 HTTPS，建议竖图 750 × 1334" onChange={(event) => update({ imageUrl: event.target.value })} /><Button icon={<FolderOpenOutlined />} onClick={() => setLibraryOpen(true)}>图片库</Button></Space.Compact></Form.Item>
+          <Form.Item label="背景图片"><ImagePickerField value={config.splash.imageUrl} onChange={(imageUrl) => update({ imageUrl })} alt="启动页背景" hint="建议使用 750 × 1334 的竖图" onOpenLibrary={() => setLibraryOpen(true)} /></Form.Item>
           <Form.Item label="主标题"><Input value={config.splash.title} maxLength={60} onChange={(event) => update({ title: event.target.value })} /></Form.Item>
           <Form.Item label="副标题"><Input value={config.splash.subtitle} maxLength={160} onChange={(event) => update({ subtitle: event.target.value })} /></Form.Item>
           <Form.Item label="展示方式"><Segmented block value={config.splash.displayMode} options={[{ label: '弹窗', value: 'POPUP' }, { label: '全屏', value: 'FULLSCREEN' }]} onChange={(displayMode) => update({ displayMode: displayMode as DecorationConfig['splash']['displayMode'] })} /></Form.Item>

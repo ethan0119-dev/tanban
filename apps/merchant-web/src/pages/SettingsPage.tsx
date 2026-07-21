@@ -3,7 +3,6 @@ import {
   CopyOutlined,
   CoffeeOutlined,
   DeleteOutlined,
-  FolderOpenOutlined,
   PlusOutlined,
   SaveOutlined,
   ShopOutlined,
@@ -17,6 +16,7 @@ import {
   DatePicker,
   Divider,
   Form,
+  Image,
   Input,
   Radio,
   QRCode,
@@ -34,6 +34,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
+import { ImagePickerField } from '../components/media/ImagePickerField';
 import type { MerchantSettings, StoreBusinessDay, StoreBusinessHours } from '../types';
 
 type SettingsFormValues = Omit<MerchantSettings, 'businessHours'>;
@@ -62,6 +63,7 @@ export function SettingsPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [logoLibraryOpen, setLogoLibraryOpen] = useState(false);
   const [storeCode, setStoreCode] = useState('');
+  const [documents, setDocuments] = useState<Pick<MerchantSettings, 'businessLicenseUrl' | 'foodBusinessLicenseUrl'>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +88,7 @@ export function SettingsPage() {
         paymentTimeoutMinutes: settings.paymentTimeoutMinutes ?? 15,
       });
       setStoreCode(settings.storeCode || '');
+      setDocuments({ businessLicenseUrl: settings.businessLicenseUrl, foodBusinessLicenseUrl: settings.foodBusinessLicenseUrl });
       setBusinessHours(hours);
       setTimezone(hours.timezone || 'Asia/Shanghai');
       setWeeklySchedule(hours.weeklySchedule?.length ? hours.weeklySchedule : emptyWeek());
@@ -141,9 +144,19 @@ export function SettingsPage() {
                 <Col xs={24} md={12}><Form.Item label="门店名称" name="storeName" rules={[{ required: true, message: '请输入门店名称' }]}><Input prefix={<CoffeeOutlined />} placeholder="码农咖啡" /></Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item label="联系电话" name="phone"><Input placeholder="门店联系电话" /></Form.Item></Col>
               </Row>
-              <Form.Item label="门店 Logo"><Space.Compact block><Form.Item name="logo" noStyle><Input placeholder="从图片库选择，或填入 HTTPS 地址" /></Form.Item><Button icon={<FolderOpenOutlined />} onClick={() => setLogoLibraryOpen(true)}>图片库</Button></Space.Compact></Form.Item>
+              <Form.Item label="门店 Logo" name="logo"><ImagePickerField alt="门店 Logo" hint="将用于商户后台和顾客小程序的门店标识" onOpenLibrary={() => setLogoLibraryOpen(true)} /></Form.Item>
               <Form.Item label="经营地址" name="address"><Input placeholder="夜市、街区或摊位位置" /></Form.Item>
               <Form.Item label="店铺公告" name="announcement"><Input.TextArea rows={3} maxLength={120} showCount placeholder="将在顾客点单首页展示" /></Form.Item>
+            </Card>
+
+            <Card bordered={false} className="content-card settings-card" title={<Space><ShopOutlined />经营证照</Space>}>
+              <Alert type="info" showIcon message="证照由平台统一维护" description="如需上传或更换，请联系平台管理员。商户账号只能查看，无法删除或修改。" />
+              <Row gutter={[16, 16]} className="merchant-license-grid">
+                {[
+                  { title: '营业执照', url: documents.businessLicenseUrl },
+                  { title: '食品经营许可证', url: documents.foodBusinessLicenseUrl },
+                ].map((document) => <Col xs={24} md={12} key={document.title}><div className="merchant-license-card"><strong>{document.title}</strong>{document.url ? <Image src={document.url} alt={document.title} /> : <div className="merchant-license-empty">平台尚未上传</div>}</div></Col>)}
+              </Row>
             </Card>
 
             <Card bordered={false} className="content-card settings-card" title={<Space><QrcodeOutlined />门店点单入口</Space>}>

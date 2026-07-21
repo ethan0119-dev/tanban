@@ -1140,7 +1140,7 @@ func (s *Server) listMediaAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, size, offset := pagination(r)
-	where := ` WHERE a.tenant_id=? AND a.store_id=? AND a.deleted_at IS NULL`
+	where := ` WHERE a.tenant_id=? AND a.store_id=? AND a.kind='IMAGE' AND a.deleted_at IS NULL`
 	args := []any{identity.TenantID, storeID}
 	if raw := strings.TrimSpace(r.URL.Query().Get("group_id")); raw != "" {
 		groupID, parseErr := strconv.ParseInt(raw, 10, 64)
@@ -1292,7 +1292,7 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var existing mediaAssetView
-	err = tx.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).
+	err = tx.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).
 		Scan(&existing.ID, &existing.Name, &existing.Kind, &existing.URL, &existing.StorageKey, &existing.MimeType, &existing.Width, &existing.Height, &existing.SizeBytes, &existing.Status, &existing.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)
@@ -1307,13 +1307,13 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 		var result sql.Result
 		var updateErr error
 		if input.GroupID == nil {
-			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
 		} else if *input.GroupID == 0 {
-			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, name, id, identity.TenantID, storeID)
 			existing.GroupID = nil
 			existing.GroupName = ""
 		} else {
-			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, name, *input.GroupID, id, identity.TenantID, storeID)
+			result, updateErr = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, name, *input.GroupID, id, identity.TenantID, storeID)
 			existing.GroupID = input.GroupID
 		}
 		if updateErr != nil {
@@ -1358,11 +1358,11 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	var result sql.Result
 	if input.GroupID == nil {
-		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=? WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
 	} else if *input.GroupID == 0 {
-		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, id, identity.TenantID, storeID)
 	} else {
-		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, *input.GroupID, id, identity.TenantID, storeID)
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET name=?,url=?,storage_key=?,mime_type=?,width=?,height=?,size_bytes=?,group_id=? WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), strings.TrimSpace(input.StorageKey), strings.TrimSpace(input.MimeType), input.Width, input.Height, input.SizeBytes, *input.GroupID, id, identity.TenantID, storeID)
 	}
 	if err != nil {
 		handleSQLError(w, err)
@@ -1407,7 +1407,7 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var assetURL, storageKey string
-	if err = tx.QueryRowContext(r.Context(), `SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).Scan(&assetURL, &storageKey); err != nil {
+	if err = tx.QueryRowContext(r.Context(), `SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).Scan(&assetURL, &storageKey); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -1469,7 +1469,7 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from "+referenceKind+" before deleting it")
 		return
 	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, id, identity.TenantID, storeID)
+	result, err := tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, id, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

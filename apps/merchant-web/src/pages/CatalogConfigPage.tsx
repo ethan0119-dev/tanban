@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -26,6 +27,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { ImagePickerField } from '../components/media/ImagePickerField';
+import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import './catalog.css';
 
 type ResourceType = 'PACKAGE' | 'TEMP_PRODUCT' | 'UNIT' | 'PRODUCT_TAG' | 'PRINT_LABEL' | 'NOTE' | 'SPEC_TEMPLATE' | 'ATTRIBUTE_TEMPLATE' | 'MODIFIER_TEMPLATE';
@@ -147,6 +150,7 @@ export function CatalogConfigPage() {
   const [groupForm] = Form.useForm();
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [itemOpen, setItemOpen] = useState(false);
+  const [itemLibraryOpen, setItemLibraryOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
   const [editingItem, setEditingItem] = useState<ModifierItem | null>(null);
@@ -254,6 +258,7 @@ export function CatalogConfigPage() {
     <div className="catalog-type-tip">加料商品可设置独立加价，并被一个或多个加料组复用；V1 不独立扣减加料库存。</div>
     <div className="catalog-toolbar"><Typography.Text type="secondary">共 {modifierItems.length} 个加料</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openItem()}>新增加料</Button></div>
     <Table<ModifierItem> rowKey="id" dataSource={modifierItems} columns={[
+      { title: '图片', dataIndex: 'image_url', width: 76, render: (value) => value ? <Image src={value} alt="加料图片" width={44} height={44} style={{ objectFit: 'cover', borderRadius: 8 }} /> : '—' },
       { title: '名称', dataIndex: 'name' }, { title: '加价', dataIndex: 'price_cents', render: (value) => `¥${(value / 100).toFixed(2)}` },
       { title: '状态', dataIndex: 'status', render: (value) => <Tag color={value === 'ACTIVE' ? 'success' : 'default'}>{value === 'ACTIVE' ? '启用' : '停用'}</Tag> },
       { title: '操作', render: (_, row) => <Space><Button type="link" onClick={() => openItem(row)}>编辑</Button><Popconfirm title="确认删除？" onConfirm={() => void removeItem(row)}><Button type="link" danger>删除</Button></Popconfirm></Space> },
@@ -296,10 +301,11 @@ export function CatalogConfigPage() {
       <Form form={categoryForm} layout="vertical"><Form.Item label="分类名称" name="name" rules={[{ required: true }]}><Input /></Form.Item><Space align="start"><Form.Item label="排序" name="sort_order"><InputNumber min={0} /></Form.Item><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Space></Form>
     </Modal>
     <Modal title={`${editingItem ? '编辑' : '新增'}加料`} open={itemOpen} onCancel={() => setItemOpen(false)} onOk={() => void saveItem()}>
-      <Form form={itemForm} layout="vertical"><Form.Item label="名称" name="name" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="图片 URL" name="image_url"><Input /></Form.Item><Space align="start"><Form.Item label="默认加价" name="price" rules={[{ required: true }]}><InputNumber min={0} precision={2} prefix="¥" /></Form.Item><Form.Item label="排序" name="sort_order"><InputNumber min={0} /></Form.Item><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Space></Form>
+      <Form form={itemForm} layout="vertical"><Form.Item label="名称" name="name" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="加料图片" name="image_url"><ImagePickerField alt="加料图片" hint="将在商品规格与加料选择中展示" onOpenLibrary={() => setItemLibraryOpen(true)} /></Form.Item><Space align="start"><Form.Item label="默认加价" name="price" rules={[{ required: true }]}><InputNumber min={0} precision={2} prefix="¥" /></Form.Item><Form.Item label="排序" name="sort_order"><InputNumber min={0} /></Form.Item><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Space></Form>
     </Modal>
     <Modal title={`${editingGroup ? '编辑' : '新增'}加料组`} open={groupOpen} onCancel={() => setGroupOpen(false)} onOk={() => void saveGroup()}>
       <Form form={groupForm} layout="vertical"><Form.Item label="组名" name="name" rules={[{ required: true }]}><Input placeholder="如：加份小料" /></Form.Item><Space align="start"><Form.Item label="最少选择" name="min_select"><InputNumber min={0} /></Form.Item><Form.Item label="最多选择" name="max_select"><InputNumber min={1} /></Form.Item><Form.Item label="排序" name="sort_order"><InputNumber min={0} /></Form.Item><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Space><Form.Item label="包含加料" name="item_ids" rules={[{ required: true, message: '请至少选择一个加料' }]}><Select mode="multiple" options={modifierItems.filter((item) => item.status === 'ACTIVE').map((item) => ({ value: item.id, label: `${item.name}（+¥${(item.price_cents / 100).toFixed(2)}）` }))} /></Form.Item></Form>
     </Modal>
+    <MediaLibraryModal open={itemLibraryOpen} title="选择加料图片" onCancel={() => setItemLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) itemForm.setFieldValue('image_url', selected[0].url); setItemLibraryOpen(false); }} />
   </div>;
 }

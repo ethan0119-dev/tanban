@@ -300,6 +300,8 @@ export interface MerchantSettings {
   storeCode?: string;
   storeName: string;
   logo?: string;
+  businessLicenseUrl?: string;
+  foodBusinessLicenseUrl?: string;
   phone?: string;
   address?: string;
   announcement?: string;

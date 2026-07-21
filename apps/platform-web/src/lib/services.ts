@@ -80,6 +80,8 @@ function tenantFromRaw(value: unknown): Tenant {
     paymentMerchantNo: merchantNo || undefined,
     paymentProvider: text(item.payment_provider ?? item.paymentProvider) || undefined,
     paymentSubAppId: text(item.payment_sub_appid ?? item.paymentSubAppId) || undefined,
+    businessLicenseUrl: text(item.business_license_url ?? item.businessLicenseUrl) || undefined,
+    foodBusinessLicenseUrl: text(item.food_business_license_url ?? item.foodBusinessLicenseUrl) || undefined,
     paymentStatus: text(item.payment_status ?? item.paymentStatus).toLowerCase() as Tenant['paymentStatus'] || (merchantNo ? 'active' : 'unbound'),
     createdAt: text(item.created_at ?? item.createdAt) || undefined,
     expiresAt: text(item.expires_at ?? item.expiresAt) || undefined,
@@ -266,6 +268,11 @@ export const tenantService = {
       password: values.password,
       display_name: values.displayName,
     });
+  },
+  uploadDocument: async (id: string, type: 'business-license' | 'food-business-license', file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return tenantFromRaw((await http.postForm<RawRecord>(`/platform/tenants/${id}/documents/${type}`, body)).data);
   },
 };
 

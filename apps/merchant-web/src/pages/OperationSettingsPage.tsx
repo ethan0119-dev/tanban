@@ -4,7 +4,6 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   EnvironmentOutlined,
-  FolderOpenOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
   TeamOutlined,
@@ -36,6 +35,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
+import { ImagePickerField } from '../components/media/ImagePickerField';
 import type { MerchantOperationSettings, MerchantOperationSettingsResponse, MerchantPaymentSettings, MerchantSettings } from '../types';
 
 export type SettingsSection = 'ORDER' | 'PAYMENT' | 'NOTIFICATION' | 'PRIVACY' | 'PRINT';
@@ -265,12 +265,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
               <Card bordered={false} className="content-card settings-card" title="私人客服">
                 <Form.Item label="客服电话" name="customerServicePhone"><Input placeholder="顾客可点击拨打" maxLength={32} /></Form.Item>
                 <Form.Item label="客服微信" name="customerServiceWechat"><Input placeholder="客服微信号" maxLength={80} /></Form.Item>
-                <Form.Item label="客服二维码">
-                  <Space.Compact block>
-                    <Form.Item name="customerServiceQrUrl" noStyle><Input placeholder="从商户图片库选择" /></Form.Item>
-                    <Button icon={<FolderOpenOutlined />} onClick={() => setQrLibraryOpen(true)}>图片库</Button>
-                  </Space.Compact>
-                </Form.Item>
+                <Form.Item label="客服二维码" name="customerServiceQrUrl"><ImagePickerField alt="客服二维码" hint="顾客可在小程序中查看并长按识别" onOpenLibrary={() => setQrLibraryOpen(true)} /></Form.Item>
               </Card>
             </Col>
           </Row>

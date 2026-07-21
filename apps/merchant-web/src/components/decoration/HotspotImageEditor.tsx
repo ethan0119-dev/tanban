@@ -1,6 +1,6 @@
-import { AimOutlined, CloudUploadOutlined, DeleteOutlined, FolderOpenOutlined, PictureOutlined } from '@ant-design/icons';
+import { AimOutlined, CloudUploadOutlined, DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { Alert, Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Upload, Typography, message } from 'antd';
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { DecorationActionType, HomeModuleConfig, ImageHotspot, MediaAsset } from '../../features/decoration/model';
 import { MediaLibraryModal } from '../media/MediaLibraryModal';
 
@@ -40,7 +40,6 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
   const [drawMode, setDrawMode] = useState(false);
   const [drawing, setDrawing] = useState<DrawState | null>(null);
   const [selectedId, setSelectedId] = useState<string>('');
-  const [imageUrlDraft, setImageUrlDraft] = useState(module.imageUrl ?? '');
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [modal, modalContextHolder] = Modal.useModal();
@@ -49,16 +48,11 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
   const selected = hotspots.find((item) => item.id === selectedId) ?? null;
   const imageAssets = useMemo(() => assets.filter((item) => item.type === 'IMAGE' && item.url), [assets]);
 
-  useEffect(() => {
-    setImageUrlDraft(module.imageUrl ?? '');
-  }, [module.imageUrl]);
-
   const applyImageChange = async (imageUrl: string, nextTitle?: string): Promise<boolean> => {
     const nextImageUrl = imageUrl.trim();
     const currentImageUrl = (module.imageUrl ?? '').trim();
     if (nextImageUrl === currentImageUrl) {
       if (nextTitle && nextTitle !== module.title) onChange({ title: nextTitle });
-      setImageUrlDraft(nextImageUrl);
       return true;
     }
 
@@ -75,13 +69,11 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
         });
       });
       if (!confirmed) {
-        setImageUrlDraft(currentImageUrl);
         return false;
       }
     }
 
     onChange({ imageUrl: nextImageUrl, hotspots: [], ...(nextTitle ? { title: nextTitle } : {}) });
-    setImageUrlDraft(nextImageUrl);
     setSelectedId('');
     setDrawing(null);
     setDrawMode(false);
@@ -194,12 +186,6 @@ export function HotspotImageEditor({ module, assets, uploading, onChange, onUplo
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item label="图片 HTTPS 地址" extra="修改地址后点击应用；如已有热区，系统会先确认并清空旧坐标。">
-          <Space.Compact block>
-            <Input value={imageUrlDraft} prefix={<PictureOutlined />} placeholder="https://..." onChange={(event) => setImageUrlDraft(event.target.value)} onPressEnter={() => void applyImageChange(imageUrlDraft)} />
-            <Button disabled={imageUrlDraft.trim() === (module.imageUrl ?? '').trim()} onClick={() => void applyImageChange(imageUrlDraft)}>应用地址</Button>
-          </Space.Compact>
-        </Form.Item>
         <Form.Item label="图片说明">
           <Input value={module.title} maxLength={80} showCount placeholder="例如：码农咖啡首页导航" onChange={(event) => onChange({ title: event.target.value })} />
         </Form.Item>

@@ -2,7 +2,6 @@ import {
   CloudUploadOutlined,
   EditOutlined,
   EyeOutlined,
-  FolderOpenOutlined,
   LinkOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
@@ -37,6 +36,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
+import { ImagePickerField } from '../components/media/ImagePickerField';
 import { decorationApi } from '../features/decoration/api';
 import { marketingApi } from '../features/marketing/api';
 import type {
@@ -251,10 +251,11 @@ export function PopupAdsPage() {
           <Row gutter={16}><Col span={10}><Form.Item label="投放名称" name="name" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input placeholder="例如：七月新品弹窗" /></Form.Item></Col><Col span={7}><Form.Item label="展示位置" name="placement_code" rules={[{ required: true }]}><Select options={Object.entries(placementNames).map(([value, label]) => ({ value, label }))} /></Form.Item></Col><Col span={7}><Form.Item label="展示频次" name="frequency" rules={[{ required: true }]}><Select options={Object.entries(frequencyNames).map(([value, label]) => ({ value, label }))} /></Form.Item></Col></Row>
           <Form.Item label="主标题" name="title" rules={[{ max: 80 }]}><Input placeholder="例如：夏日咖啡新品" /></Form.Item>
           <Form.Item label="副标题" name="subtitle" rules={[{ max: 160 }]}><Input placeholder="一句话说明活动利益点" /></Form.Item>
-          <Form.Item label="弹窗图片" required extra="建议使用竖版活动海报；上传成功后仍可手工替换 HTTPS 地址。">
-            <Space.Compact block>
-              <Form.Item name="image_url" noStyle rules={[{ required: true }, { type: 'url', message: '请输入完整图片 URL' }, { validator: (_, value: string) => !value || value.startsWith('https://') ? Promise.resolve() : Promise.reject(new Error('生产图片必须使用 HTTPS')) }]}><Input placeholder="https://..." /></Form.Item>
-              <Button icon={<FolderOpenOutlined />} onClick={() => setImageLibraryOpen(true)}>图片库</Button>
+          <Form.Item label="弹窗图片" required extra="建议使用竖版活动海报；可从图片库选择，也可直接上传并自动入库。">
+            <Form.Item name="image_url" noStyle rules={[{ required: true }, { type: 'url', message: '请选择有效图片' }, { validator: (_, value: string) => !value || value.startsWith('https://') ? Promise.resolve() : Promise.reject(new Error('生产图片必须使用 HTTPS')) }]}>
+              <ImagePickerField alt="弹窗广告图片" hint="发布后将在所选小程序位置展示" onOpenLibrary={() => setImageLibraryOpen(true)} />
+            </Form.Item>
+            <div style={{ marginTop: 10 }}>
               <Upload
                 accept="image/jpeg,image/png,image/gif"
                 maxCount={1}
@@ -272,7 +273,7 @@ export function PopupAdsPage() {
               >
                 <Button loading={imageUploading} icon={<CloudUploadOutlined />}>上传图片</Button>
               </Upload>
-            </Space.Compact>
+            </div>
           </Form.Item>
           <Row gutter={16}><Col span={9}><Form.Item label="点击动作" name="action_type" rules={[{ required: true }]}><Select onChange={() => form.setFieldValue('action_target_id', undefined)} options={Object.entries(actionNames).map(([value, label]) => ({ value, label }))} /></Form.Item></Col><Col span={9}><Form.Item noStyle shouldUpdate={(previous, current) => previous.action_type !== current.action_type}>{({ getFieldValue }) => getFieldValue('action_type') === 'CLAIM_COUPON' ? <Form.Item label="关联优惠券" name="action_target_id" rules={[{ required: true }]}><Select options={actionTargetOptions.coupons} placeholder="选择优惠券" /></Form.Item> : getFieldValue('action_type') === 'OPEN_LOTTERY' ? <Form.Item label="关联抽奖" name="action_target_id" rules={[{ required: true }]}><Select options={actionTargetOptions.lotteries} placeholder="选择抽奖活动" /></Form.Item> : <Form.Item label="关联活动"><Input disabled placeholder="此动作无需关联 ID" /></Form.Item>}</Form.Item></Col><Col span={6}><Form.Item label="优先级" name="priority" extra="数值越大越优先"><InputNumber min={-10000} max={10000} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row>
           <Row gutter={16}><Col span={10}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（预留）', disabled: true }]} /></Form.Item></Col><Col span={14}><Form.Item label="投放时间" name="active_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item></Col></Row>

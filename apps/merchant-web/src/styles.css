@@ -169,6 +169,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .business-day-row:last-child { border-bottom: 0; }
 .business-day-name { display: flex; align-items: flex-start; gap: 9px; padding-top: 6px; }
 .business-period-list { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.merchant-license-grid { margin-top: 16px; }
+.merchant-license-card { min-height: 240px; padding: 14px; display: flex; flex-direction: column; gap: 12px; border: 1px solid #ebe4df; border-radius: 12px; background: #faf8f6; }
+.merchant-license-card > strong { color: #4e423b; }
+.merchant-license-card .ant-image { flex: 1; width: 100%; min-height: 180px; overflow: hidden; border-radius: 9px; background: #fff; }
+.merchant-license-card .ant-image-img { width: 100%; height: 180px; object-fit: contain; }
+.merchant-license-empty { flex: 1; min-height: 180px; display: grid; place-items: center; border: 1px dashed #dcd1ca; border-radius: 9px; color: #a2968e; background: #fff; }
 @media (max-width: 640px) {
   .business-day-row { grid-template-columns: 1fr; gap: 8px; }
   .business-day-name { padding-top: 0; }

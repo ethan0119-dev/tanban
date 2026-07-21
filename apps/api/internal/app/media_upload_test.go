@@ -228,7 +228,7 @@ func TestServeMediaAssetOnlyReturnsActiveRegisteredImage(t *testing.T) {
 	if err = os.Chtimes(target, time.Unix(1_700_000_000, 0), time.Unix(1_700_000_000, 0)); err != nil {
 		t.Fatal(err)
 	}
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL LIMIT 1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status='ACTIVE' AND deleted_at IS NULL LIMIT 1`)).
 		WithArgs(int64(5), int64(9), key).
 		WillReturnRows(sqlmock.NewRows([]string{"mime_type"}).AddRow("image/png"))
 
@@ -283,11 +283,11 @@ func TestUpdateUploadedMediaAssetRenamesWithoutLosingManagedMetadata(t *testing.
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`)).
 		WithArgs(int64(44), int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "kind", "url", "storage_key", "mime_type", "width", "height", "size_bytes", "status", "created_at"}).
 			AddRow(44, "旧名称", "IMAGE", assetURL, key, "image/png", 800, 600, 12345, "ACTIVE", "2026-07-20T01:02:03Z"))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE media_assets SET name=? WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`)).
 		WithArgs("新名称", int64(44), int64(5), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
@@ -362,7 +362,7 @@ func TestDeleteMediaAssetRejectsDecorationReference(t *testing.T) {
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT url,storage_key FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`)).
 		WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
 	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"draft_json", "published_json"}).AddRow(draft, ""))

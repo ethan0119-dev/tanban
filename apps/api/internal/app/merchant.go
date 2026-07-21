@@ -260,10 +260,14 @@ func (s *Server) getMerchantSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var storeCode, storeName, logo, phone, address, announcement, businessHours, trigger string
+	var businessLicenseURL, foodBusinessLicenseURL string
 	var autoAccept, voice, printReceipt, printLabel, pickup, latePayment bool
 	var timeout int
-	err = s.DB.QueryRowContext(r.Context(), `SELECT code,name,logo_url,phone,address,notice,business_hours,auto_accept_orders,voice_reminder,default_print_trigger,auto_print_receipt,auto_print_label,pickup_mode,allow_late_payment,payment_timeout_minutes FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, identity.TenantID).
-		Scan(&storeCode, &storeName, &logo, &phone, &address, &announcement, &businessHours, &autoAccept, &voice, &trigger, &printReceipt, &printLabel, &pickup, &latePayment, &timeout)
+	err = s.DB.QueryRowContext(r.Context(), `SELECT s.code,s.name,s.logo_url,s.phone,s.address,s.notice,s.business_hours,s.auto_accept_orders,s.voice_reminder,s.default_print_trigger,s.auto_print_receipt,s.auto_print_label,s.pickup_mode,s.allow_late_payment,s.payment_timeout_minutes,
+		COALESCE((SELECT a.url FROM tenants t JOIN media_assets a ON a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL WHERE t.id=s.tenant_id AND t.deleted_at IS NULL),''),
+		COALESCE((SELECT a.url FROM tenants t JOIN media_assets a ON a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL WHERE t.id=s.tenant_id AND t.deleted_at IS NULL),'')
+		FROM stores s WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL`, storeID, identity.TenantID).
+		Scan(&storeCode, &storeName, &logo, &phone, &address, &announcement, &businessHours, &autoAccept, &voice, &trigger, &printReceipt, &printLabel, &pickup, &latePayment, &timeout, &businessLicenseURL, &foodBusinessLicenseURL)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -272,7 +276,7 @@ func (s *Server) getMerchantSettings(w http.ResponseWriter, r *http.Request) {
 	if len(hours) != 2 {
 		hours = []string{}
 	}
-	writeData(w, http.StatusOK, map[string]any{"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logo": logo, "phone": phone, "address": address, "announcement": announcement, "businessHours": hours, "autoAcceptOrder": autoAccept, "orderVoiceReminder": voice, "printTrigger": trigger, "autoPrintReceipt": printReceipt, "autoPrintLabel": printLabel, "pickupMode": pickup, "allowLatePayment": latePayment, "paymentTimeoutMinutes": timeout})
+	writeData(w, http.StatusOK, map[string]any{"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logo": logo, "phone": phone, "address": address, "announcement": announcement, "businessHours": hours, "autoAcceptOrder": autoAccept, "orderVoiceReminder": voice, "printTrigger": trigger, "autoPrintReceipt": printReceipt, "autoPrintLabel": printLabel, "pickupMode": pickup, "allowLatePayment": latePayment, "paymentTimeoutMinutes": timeout, "businessLicenseUrl": businessLicenseURL, "foodBusinessLicenseUrl": foodBusinessLicenseURL})
 }
 
 type merchantSettingsInput struct {

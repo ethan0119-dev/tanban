@@ -1,4 +1,4 @@
-import { CopyOutlined, EyeOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UserOutlined } from '@ant-design/icons';
+import { CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
   Alert,
@@ -6,7 +6,9 @@ import {
   Col,
   Descriptions,
   Drawer,
+  Empty,
   Form,
+  Image,
   Input,
   Modal,
   Popconfirm,
@@ -17,9 +19,11 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { UploadProps } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
@@ -81,6 +85,7 @@ export function TenantsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<Tenant>();
   const [saving, setSaving] = useState(false);
+  const [documentUploading, setDocumentUploading] = useState<string>();
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult>();
   const [ownerOpen, setOwnerOpen] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
@@ -152,6 +157,40 @@ export function TenantsPage() {
     }
   };
 
+  const uploadDocument = async (type: 'business-license' | 'food-business-license', file: File) => {
+    if (!selected) return;
+    if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+      const error = new Error('仅支持 JPG、PNG 或 GIF 图片');
+      messageApi.error(error.message);
+      throw error;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      const error = new Error('证照图片不能超过 8 MiB');
+      messageApi.error(error.message);
+      throw error;
+    }
+    setDocumentUploading(type);
+    try {
+      const updated = await tenantService.uploadDocument(selected.id, type, file);
+      setSelected(updated);
+      setRows((current) => current.map((item) => item.id === updated.id ? updated : item));
+      messageApi.success(type === 'business-license' ? '营业执照已保存' : '食品经营许可证已保存');
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '证照上传失败');
+      throw error;
+    } finally {
+      setDocumentUploading(undefined);
+    }
+  };
+
+  const documentRequest = (type: 'business-license' | 'food-business-license'): UploadProps['customRequest'] => ({ file, onSuccess, onError }) => {
+    if (!(file instanceof File)) {
+      onError?.(new Error('无效文件'));
+      return;
+    }
+    void uploadDocument(type, file).then(() => onSuccess?.({})).catch((error: unknown) => onError?.(error instanceof Error ? error : new Error('证照上传失败')));
+  };
+
   const columns: ColumnsType<Tenant> = [
     {
       title: '商户名称', dataIndex: 'name', key: 'name', fixed: 'left', width: 230,
@@ -162,6 +201,7 @@ export function TenantsPage() {
     { title: '老板账号', key: 'owner', width: 150, render: (_, row) => row.hasOwner ? <div>{row.ownerUsername}<small className="table-subtext">{row.ownerDisplayName || '老板'}</small></div> : <Tag color="warning">待创建</Tag> },
     { title: '累计订单', dataIndex: 'orderCount', key: 'orderCount', width: 120, align: 'right', render: (value) => Number(value || 0).toLocaleString('zh-CN') },
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
+    { title: '经营证照', key: 'documents', width: 110, render: (_, row) => <Tag color={row.businessLicenseUrl && row.foodBusinessLicenseUrl ? 'success' : 'warning'}>{Number(Boolean(row.businessLicenseUrl)) + Number(Boolean(row.foodBusinessLicenseUrl))}/2</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
     { title: '入驻时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '—' },
     {
@@ -192,7 +232,7 @@ export function TenantsPage() {
           columns={columns}
           dataSource={rows}
           loading={loading}
-          scroll={{ x: 1370 }}
+          scroll={{ x: 1480 }}
           pagination={{ current: meta.page, pageSize: meta.pageSize, total: meta.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 家商户`, onChange: (page, pageSize) => void load(page, pageSize) }}
         />
       </Card>
@@ -240,6 +280,29 @@ export function TenantsPage() {
             <Descriptions.Item label="入驻时间">{selected.createdAt ? new Date(selected.createdAt).toLocaleString('zh-CN', { hour12: false }) : '—'}</Descriptions.Item>
             <Descriptions.Item label="服务到期">{selected.expiresAt ? new Date(selected.expiresAt).toLocaleDateString('zh-CN') : '未设置'}</Descriptions.Item>
           </Descriptions>
+          <Typography.Title level={5} className="tenant-document-title"><FileImageOutlined /> 商户经营证照</Typography.Title>
+          <Typography.Paragraph type="secondary">仅平台管理员可上传或更换；商户后台只能查看，不可删除或修改。</Typography.Paragraph>
+          <Row gutter={[12, 12]}>
+            {([
+              { type: 'business-license' as const, title: '营业执照', url: selected.businessLicenseUrl },
+              { type: 'food-business-license' as const, title: '食品经营许可证', url: selected.foodBusinessLicenseUrl },
+            ]).map((document) => (
+              <Col span={12} key={document.type}>
+                <Card size="small" className="tenant-document-card" title={document.title}>
+                  <div className="tenant-document-preview">
+                    {document.url ? <Image src={document.url} alt={document.title} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未上传" />}
+                  </div>
+                  <Upload
+                    accept="image/jpeg,image/png,image/gif"
+                    showUploadList={false}
+                    customRequest={documentRequest(document.type)}
+                  >
+                    <Button block icon={<UploadOutlined />} loading={documentUploading === document.type}>{document.url ? '更换图片' : '上传图片'}</Button>
+                  </Upload>
+                </Card>
+              </Col>
+            ))}
+          </Row>
         </>}
       </Drawer>
 

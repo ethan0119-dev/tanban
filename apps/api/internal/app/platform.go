@@ -10,22 +10,24 @@ import (
 )
 
 type tenantDTO struct {
-	ID                int64  `json:"id"`
-	Code              string `json:"code"`
-	Name              string `json:"name"`
-	ContactName       string `json:"contact_name"`
-	ContactPhone      string `json:"contact_phone"`
-	Status            string `json:"status"`
-	PaymentProvider   string `json:"payment_provider"`
-	PaymentMerchantNo string `json:"payment_merchant_no"`
-	PaymentSubAppID   string `json:"payment_sub_appid"`
-	StoreCount        int    `json:"store_count"`
-	OrderCount        int    `json:"order_count"`
-	OwnerUsername     string `json:"owner_username"`
-	OwnerDisplayName  string `json:"owner_display_name"`
-	OwnerStatus       string `json:"owner_status"`
-	HasOwner          bool   `json:"has_owner"`
-	CreatedAt         string `json:"created_at"`
+	ID                     int64  `json:"id"`
+	Code                   string `json:"code"`
+	Name                   string `json:"name"`
+	ContactName            string `json:"contact_name"`
+	ContactPhone           string `json:"contact_phone"`
+	Status                 string `json:"status"`
+	PaymentProvider        string `json:"payment_provider"`
+	PaymentMerchantNo      string `json:"payment_merchant_no"`
+	PaymentSubAppID        string `json:"payment_sub_appid"`
+	BusinessLicenseURL     string `json:"business_license_url"`
+	FoodBusinessLicenseURL string `json:"food_business_license_url"`
+	StoreCount             int    `json:"store_count"`
+	OrderCount             int    `json:"order_count"`
+	OwnerUsername          string `json:"owner_username"`
+	OwnerDisplayName       string `json:"owner_display_name"`
+	OwnerStatus            string `json:"owner_status"`
+	HasOwner               bool   `json:"has_owner"`
+	CreatedAt              string `json:"created_at"`
 }
 
 type tenantInput struct {
@@ -111,6 +113,7 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.With(requireRoles(RolePlatformAdmin)).Put("/", s.updateTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deleteTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/owner", s.createTenantOwner)
+		t.With(requireRoles(RolePlatformAdmin)).Post("/documents/{documentType}", s.uploadTenantDocument)
 		t.Get("/stores", s.listPlatformStores)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/stores", s.createPlatformStore)
 		t.Route("/stores/{storeID}", func(st chi.Router) {
@@ -144,6 +147,8 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
+		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
+		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
 		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
@@ -159,7 +164,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantDTO{}
 	for rows.Next() {
 		var item tenantDTO
-		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -252,6 +257,8 @@ func (s *Server) getTenant(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64) {
 	var item tenantDTO
 	err := s.DB.QueryRowContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
+		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
+		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
 		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
@@ -259,7 +266,7 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
 		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
-		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
+		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)
 		return
