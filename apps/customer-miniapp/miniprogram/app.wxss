@@ -7,17 +7,30 @@ page {
   --muted: #747b75;
   --paper: #f6f5f0;
   --surface: #fffefa;
+  --on-primary: #ffffff;
+  --on-accent: #111111;
+  --button-radius: 18rpx;
+  --card-border: transparent;
+  --card-shadow: 0 10rpx 28rpx rgba(23, 32, 27, .1);
+  --font-caption: 22rpx;
+  --font-body: 26rpx;
+  --font-subtitle: 30rpx;
+  --font-title: 36rpx;
+  --font-display: 44rpx;
+  --page-gutter: 24rpx;
+  --section-gap: 20rpx;
   background: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
-  font-size: 28rpx;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  font-size: var(--font-body);
+  line-height: 1.5;
 }
 
 button::after { border: 0; }
 .page { min-height: 100vh; padding-bottom: 40rpx; }
-.card { margin: 22rpx 28rpx; padding: 28rpx; border-radius: var(--radius, 26rpx); background: var(--surface); box-shadow: 0 14rpx 50rpx rgba(23, 32, 27, .06); }
-.primary { background: var(--green); color: white; border-radius: 999rpx; font-weight: 700; }
+.card { margin: var(--section-gap) var(--page-gutter); padding: 28rpx; border: 1rpx solid var(--card-border); border-radius: var(--radius, 26rpx); background: var(--surface); box-shadow: var(--card-shadow); }
+.primary { background: var(--green); color: var(--on-primary); border-radius: var(--button-radius); font-weight: 700; }
 .muted { color: var(--muted); }
-.empty { padding: 120rpx 30rpx; text-align: center; color: var(--muted); }
+.empty { padding: 120rpx 30rpx; color: var(--muted); font-size: var(--font-body); line-height: 1.7; text-align: center; }
 .price { color: var(--coffee); font-weight: 800; }
-.status { display: inline-flex; padding: 7rpx 16rpx; border-radius: 999rpx; background: #edf3ee; color: var(--green); font-size: 22rpx; }
+.status { display: inline-flex; padding: 7rpx 16rpx; border-radius: 999rpx; background: var(--surface); color: var(--green); font-size: var(--font-caption); }

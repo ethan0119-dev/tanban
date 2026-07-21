@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeDecoration } from '../miniprogram/utils/decoration';
+import { decorationStyle, defaultDecoration, normalizeDecoration } from '../miniprogram/utils/decoration';
 import { hasMarketingPopupVisual } from '../miniprogram/utils/marketing';
 
 describe('miniapp hotspot decoration', () => {
@@ -49,5 +49,17 @@ describe('merchant decoration chrome', () => {
     const base = { id: 1, name: '空弹窗', placement_code: 'HOME_POPUP', image_url: '', action_type: 'OPEN_MENU', frequency: 'EVERY_VISIT', priority: 1 } as const;
     expect(hasMarketingPopupVisual(base)).toBe(false);
     expect(hasMarketingPopupVisual({ ...base, title: '今日活动' })).toBe(true);
+  });
+
+  it('normalizes coordinated typography, surface and button choices', () => {
+    const base = defaultDecoration();
+    const config = normalizeDecoration({
+      ...base,
+      theme: { ...base.theme, fontScale: 'LARGE', surfaceStyle: 'BORDERED', buttonShape: 'PILL' },
+    });
+    const style = decorationStyle(config);
+    expect(style).toContain('--font-title:40rpx');
+    expect(style).toContain('--button-radius:999rpx');
+    expect(style).toContain('--card-shadow:none');
   });
 });

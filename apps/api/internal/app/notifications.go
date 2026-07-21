@@ -379,11 +379,11 @@ func (s *Server) listMerchantNotifications(w http.ResponseWriter, r *http.Reques
 	page, size, offset := pagination(r)
 	unreadOnly := strings.EqualFold(r.URL.Query().Get("unread_only"), "true") || r.URL.Query().Get("unread_only") == "1"
 	var total int
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads reads ON reads.announcement_id=a.id AND reads.user_id=? WHERE recipient.tenant_id=? AND (?=0 OR reads.read_at IS NULL)`, identity.UserID, identity.TenantID, unreadOnly).Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=? WHERE recipient.tenant_id=? AND (?=0 OR mread.read_at IS NULL)`, identity.UserID, identity.TenantID, unreadOnly).Scan(&total); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), merchantNotificationQuery+` WHERE recipient.tenant_id=? AND (?=0 OR reads.read_at IS NULL) ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, identity.UserID, identity.TenantID, unreadOnly, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), merchantNotificationQuery+` WHERE recipient.tenant_id=? AND (?=0 OR mread.read_at IS NULL) ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, identity.UserID, identity.TenantID, unreadOnly, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -401,7 +401,7 @@ func (s *Server) listMerchantNotifications(w http.ResponseWriter, r *http.Reques
 	writeList(w, http.StatusOK, items, total, page, size)
 }
 
-const merchantNotificationQuery = `SELECT a.id,a.title,a.summary,a.content,a.category,a.severity,DATE_FORMAT(a.published_at,'%Y-%m-%dT%H:%i:%sZ'),COALESCE(DATE_FORMAT(reads.read_at,'%Y-%m-%dT%H:%i:%sZ'),'') FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads reads ON reads.announcement_id=a.id AND reads.user_id=?`
+const merchantNotificationQuery = `SELECT a.id,a.title,a.summary,a.content,a.category,a.severity,DATE_FORMAT(a.published_at,'%Y-%m-%dT%H:%i:%sZ'),COALESCE(DATE_FORMAT(mread.read_at,'%Y-%m-%dT%H:%i:%sZ'),'') FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=?`
 
 func scanMerchantNotification(scanner rowScanner) (merchantNotificationDTO, error) {
 	var item merchantNotificationDTO
@@ -413,7 +413,7 @@ func scanMerchantNotification(scanner rowScanner) (merchantNotificationDTO, erro
 func (s *Server) merchantNotificationUnreadCount(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
 	var count int
-	err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads reads ON reads.announcement_id=a.id AND reads.user_id=? WHERE recipient.tenant_id=? AND reads.read_at IS NULL`, identity.UserID, identity.TenantID).Scan(&count)
+	err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=? WHERE recipient.tenant_id=? AND mread.read_at IS NULL`, identity.UserID, identity.TenantID).Scan(&count)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -460,7 +460,7 @@ func (s *Server) markMerchantNotificationRead(w http.ResponseWriter, r *http.Req
 
 func (s *Server) markAllMerchantNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
-	result, err := s.DB.ExecContext(r.Context(), `INSERT IGNORE INTO merchant_notification_reads(announcement_id,tenant_id,user_id) SELECT a.id,recipient.tenant_id,? FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads reads ON reads.announcement_id=a.id AND reads.user_id=? WHERE recipient.tenant_id=? AND reads.read_at IS NULL`, identity.UserID, identity.UserID, identity.TenantID)
+	result, err := s.DB.ExecContext(r.Context(), `INSERT IGNORE INTO merchant_notification_reads(announcement_id,tenant_id,user_id) SELECT a.id,recipient.tenant_id,? FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=? WHERE recipient.tenant_id=? AND mread.read_at IS NULL`, identity.UserID, identity.UserID, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

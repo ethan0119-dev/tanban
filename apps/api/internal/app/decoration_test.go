@@ -303,6 +303,38 @@ func TestPublicDecorationUsesLegacyFallbackAndNeverDraft(t *testing.T) {
 	}
 }
 
+func TestPublicDecorationNormalizesOlderPublishedSnapshots(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := New(db, config.Config{}, slog.Default())
+	store := storeDTO{ID: 8, TenantID: 3}
+	published := defaultDecorationConfig(storeDTO{})
+	published.TemplateKey = "warm-bakery"
+	published.Theme.PrimaryColor = "#9A5F3D"
+	published.Theme.FontScale = ""
+	published.Theme.SurfaceStyle = ""
+	published.Theme.ButtonShape = ""
+	published.Navigation.TemplateKey = ""
+	body, _ := json.Marshal(published)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT v.version_no,v.config_json FROM store_decorations d JOIN store_decoration_versions v ON v.id=d.published_version_id AND v.tenant_id=d.tenant_id AND v.store_id=d.store_id WHERE d.tenant_id=? AND d.store_id=?`)).
+		WithArgs(int64(3), int64(8)).
+		WillReturnRows(sqlmock.NewRows([]string{"version_no", "config_json"}).AddRow(2, string(body)))
+	got, version := server.publicDecorationConfig(context.Background(), store)
+	if version != 2 || got.TemplateKey != "warm-bakery" || got.Theme.PrimaryColor != "#9A5F3D" {
+		t.Fatalf("published theme was not preserved: version=%d config=%#v", version, got)
+	}
+	if got.Navigation.TemplateKey != "classic" || got.Theme.FontScale != "STANDARD" || got.Theme.SurfaceStyle != "ELEVATED" || got.Theme.ButtonShape != "ROUNDED" {
+		t.Fatalf("published snapshot was not normalized: %#v", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublishDecorationVersionCreatesImmutableSnapshot(t *testing.T) {
 	t.Parallel()
 	db, mock, err := sqlmock.New()

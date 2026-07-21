@@ -26,6 +26,10 @@ interface PhonePreviewProps {
 
 export function PhonePreview({ config, storeName = '我的门店', page, onPageChange, showSplash = false }: PhonePreviewProps) {
   const radius = config.theme.radius === 'SM' ? 8 : config.theme.radius === 'MD' ? 14 : 20;
+  const buttonRadius = config.theme.buttonShape === 'SQUARE' ? 4 : config.theme.buttonShape === 'PILL' ? 999 : Math.max(6, radius - 3);
+  const fontScale = config.theme.fontScale === 'COMPACT' ? .9 : config.theme.fontScale === 'LARGE' ? 1.1 : 1;
+  const cardBorder = config.theme.surfaceStyle === 'BORDERED' ? `1px solid ${withAlpha(config.theme.textColor, .12)}` : '1px solid transparent';
+  const cardShadow = config.theme.surfaceStyle === 'ELEVATED' ? `0 7px 18px ${withAlpha(config.theme.textColor, .11)}` : 'none';
   const style = {
     '--decor-primary': config.theme.primaryColor,
     '--decor-accent': config.theme.accentColor,
@@ -37,7 +41,12 @@ export function PhonePreview({ config, storeName = '我的门店', page, onPageC
     '--decor-nav-text': config.theme.navTextColor,
     '--decor-nav-selected': config.theme.navSelectedColor,
     '--decor-card-radius': `${radius}px`,
-    '--decor-button-radius': `${Math.max(6, radius - 3)}px`,
+    '--decor-button-radius': `${buttonRadius}px`,
+    '--decor-on-primary': onColor(config.theme.primaryColor),
+    '--decor-on-accent': onColor(config.theme.accentColor),
+    '--decor-font-scale': fontScale,
+    '--decor-card-border': cardBorder,
+    '--decor-card-shadow': cardShadow,
   } as CSSProperties;
 
   return (
@@ -188,4 +197,18 @@ function hotspotStyle(value: { x: number; y: number; width: number; height: numb
 
 function PicturePlaceholder() {
   return <PictureOutlined aria-hidden="true" />;
+}
+
+function onColor(value: string): string {
+  const channels = [value.slice(1, 3), value.slice(3, 5), value.slice(5, 7)].map((part) => Number.parseInt(part, 16));
+  const luminance = channels.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= .03928 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+  });
+  return .2126 * luminance[0] + .7152 * luminance[1] + .0722 * luminance[2] > .42 ? '#111111' : '#FFFFFF';
+}
+
+function withAlpha(value: string, alpha: number): string {
+  const channels = [value.slice(1, 3), value.slice(3, 5), value.slice(5, 7)].map((part) => Number.parseInt(part, 16));
+  return `rgba(${channels[0]},${channels[1]},${channels[2]},${alpha})`;
 }

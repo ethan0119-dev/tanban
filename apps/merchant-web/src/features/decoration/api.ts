@@ -37,6 +37,9 @@ interface ApiDecorationConfig {
     navTextColor: string;
     navSelectedColor: string;
     radius: 'SM' | 'MD' | 'LG';
+    fontScale: 'COMPACT' | 'STANDARD' | 'LARGE';
+    surfaceStyle: 'FLAT' | 'BORDERED' | 'ELEVATED';
+    buttonShape: 'SQUARE' | 'ROUNDED' | 'PILL';
   };
   home: { modules: ApiDecorationModule[] };
   menu: {
@@ -182,6 +185,15 @@ export function normalizeConfig(payload: unknown): DecorationConfig {
       navTextColor: stringValue(rawTheme.navTextColor) || base.theme.navTextColor,
       navSelectedColor: stringValue(rawTheme.navSelectedColor) || base.theme.navSelectedColor,
       radius: (stringValue(rawTheme.radius) || base.theme.radius) as DecorationConfig['theme']['radius'],
+      fontScale: ['COMPACT', 'LARGE'].includes(stringValue(rawTheme.fontScale))
+        ? stringValue(rawTheme.fontScale) as DecorationConfig['theme']['fontScale']
+        : 'STANDARD',
+      surfaceStyle: ['FLAT', 'BORDERED'].includes(stringValue(rawTheme.surfaceStyle))
+        ? stringValue(rawTheme.surfaceStyle) as DecorationConfig['theme']['surfaceStyle']
+        : 'ELEVATED',
+      buttonShape: ['SQUARE', 'PILL'].includes(stringValue(rawTheme.buttonShape))
+        ? stringValue(rawTheme.buttonShape) as DecorationConfig['theme']['buttonShape']
+        : 'ROUNDED',
     },
     homeModules: modules.length ? modules.map(moduleView).sort((a, b) => a.sortOrder - b.sortOrder) : base.homeModules,
     ordering: {
@@ -355,13 +367,18 @@ function normalizeVersion(payload: unknown): DecorationVersion {
 function normalizeTemplate(payload: unknown, index: number): DecorationTemplate {
   const value = record(payload);
   const config = normalizeConfig(value.config);
-  const fallback = BUILTIN_TEMPLATES.find((item) => item.key === stringValue(value.key)) ?? BUILTIN_TEMPLATES[index % BUILTIN_TEMPLATES.length];
+  const fallback = BUILTIN_TEMPLATES.find((item) => item.key === stringValue(value.key));
+  const genericKey = stringValue(value.key, value.code) || `template-${index + 1}`;
   return {
-    id: (value.id as string | number | undefined) ?? (stringValue(value.key) || fallback.id),
-    key: stringValue(value.key, value.code) || fallback.key,
-    name: stringValue(value.name) || fallback.name,
-    description: stringValue(value.description) || fallback.description,
+    id: (value.id as string | number | undefined) ?? (genericKey || fallback?.id || index + 1),
+    key: genericKey,
+    name: stringValue(value.name) || fallback?.name || '整套装修模板',
+    description: stringValue(value.description) || fallback?.description || '整套视觉和首页结构预设，套用后仍可逐项调整。',
     tone: stringValue(value.tone, value.previewColor, value.preview_color) || `linear-gradient(135deg, ${config.theme.primaryColor}, ${config.theme.accentColor})`,
+    scene: stringValue(value.scene) || fallback?.scene || '通用门店',
+    highlights: Array.isArray(value.highlights)
+      ? value.highlights.filter((item): item is string => typeof item === 'string').slice(0, 4)
+      : fallback?.highlights ?? ['配色', '首页结构', '点单风格'],
     config,
   };
 }

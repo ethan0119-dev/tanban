@@ -65,7 +65,7 @@ go test ./...
 - AppID：在微信开发者工具导入 `apps/customer-miniapp` 后填写，生成的 `project.private.config.json` 不提交。
 - AppSecret：只写入服务器 root-only `.env.production` 的 `TB_WECHAT_MINIAPP_APP_SECRET`；AppID 同步写入 `TB_WECHAT_MINIAPP_APP_ID`。两项必须成对配置，严禁写入小程序前端或 Git。
 - API、默认演示门店和支付模式：`apps/customer-miniapp/miniprogram/config/env.ts`。
-- 正式发布前，把 `https://tbapi.666qwe.cn`加入微信公众平台 request 合法域名。
+- 正式发布前，在微信公众平台“开发管理 → 开发设置 → 服务器域名”中，把 `https://tbapi.666qwe.cn` 加入 `request`、`downloadFile` 和预留的 `uploadFile` 合法域名；“业务域名”仅用于 `<web-view>`，不能代替服务器域名。开发者工具必须保持 `urlCheck: true`，避免本机绕过校验掩盖线上问题。
 
 ## 服务器发布提醒
 
@@ -84,6 +84,7 @@ go test ./...
 - [营销应用、快餐码牌与门店营业 V1](docs/MARKETING_AND_STORE_OPERATIONS_V1.md)
 - [商户配置中心、支付设置与桌台状态](docs/MERCHANT_CONFIGURATION_CENTER.md)
 - [平台通知与商户收件箱](docs/PLATFORM_NOTIFICATIONS.md)
+- [顾客小程序视觉规范、装修模板与审计](docs/MINIAPP_DESIGN_SYSTEM_AND_AUDIT.md)
 - [一期技术架构、交易链路和扩容边界](docs/TECHNICAL_ARCHITECTURE.md)
 - [支付 Provider 与天阙接入](docs/PAYMENT_PROVIDER.md)
 - [服务器部署](docs/DEPLOYMENT.md)

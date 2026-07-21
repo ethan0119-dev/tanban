@@ -1,16 +1,16 @@
 .section-title { display: block; margin-bottom: 26rpx; font-size: 31rpx; font-weight: 800; }
-.checkout-closed { display: flex; flex-direction: column; gap: 10rpx; color: #fff; background: var(--green); }
+.checkout-closed { display: flex; flex-direction: column; gap: 10rpx; color: var(--on-primary); background: var(--green); }
 .checkout-closed .section-title { margin: 0; }
 .checkout-closed > text:not(.section-title) { color: rgba(255,255,255,.72); font-size: 22rpx; }
 .table-order-card { display: flex; flex-direction: column; gap: 16rpx; border: 2rpx solid var(--green); background: var(--surface); }
 .table-order-card > view { display: flex; flex-direction: column; gap: 8rpx; }
 .table-order-card .section-title { margin: 0; font-size: 40rpx; }
-.table-badge { align-self: flex-start; padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--green); color: white; font-size: 20rpx; font-weight: 800; }
+.table-badge { align-self: flex-start; padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--green); color: var(--on-primary); font-size: 20rpx; font-weight: 800; }
 .table-code { align-self: flex-start; padding: 9rpx 18rpx; border-radius: 14rpx; background: rgba(33, 77, 63, .1); color: var(--green); font-weight: 800; }
 .fast-food-order-card { display: flex; flex-direction: column; gap: 16rpx; border: 2rpx solid var(--green); background: var(--surface); }
 .fast-food-order-card > view { display: flex; flex-direction: column; gap: 8rpx; }
 .fast-food-order-card .section-title { margin: 0; font-size: 40rpx; }
-.fast-food-badge { align-self: flex-start; padding: 6rpx 14rpx; border-radius: 999rpx; color: #fff; background: var(--green); font-size: 20rpx; font-weight: 800; }
+.fast-food-badge { align-self: flex-start; padding: 6rpx 14rpx; border-radius: 999rpx; color: var(--on-primary); background: var(--green); font-size: 20rpx; font-weight: 800; }
 .fulfillment { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
 .fulfillment.pickup-only { grid-template-columns: 1fr; margin-bottom: 18rpx; }
 .fulfillment button { display: flex; flex-direction: column; align-items: flex-start; padding: 22rpx; border: 2rpx solid #e3e1d9; border-radius: 20rpx; background: white; font-weight: 800; }
@@ -25,7 +25,7 @@
 .remark input { padding: 18rpx; border-radius: 16rpx; background: #f4f2ec; font-size: 24rpx; }
 .remark .clear-cart { margin: 0; padding: 0 14rpx; background: transparent; color: #a94b45; font-size: 22rpx; line-height: 64rpx; }
 .location-hint { color: #7a716c; font-size: 24rpx; line-height: 1.6; }
-.pay-footer { position: fixed; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: space-between; padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); background: #fffefa; box-shadow: 0 -10rpx 30rpx rgba(23,32,27,.08); }
+.pay-footer { position: fixed; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: space-between; padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); background: var(--surface); box-shadow: 0 -10rpx 30rpx rgba(23,32,27,.08); }
 .pay-footer > view { display: flex; flex-direction: column; }
 .pay-footer .price { font-size: 38rpx; }
 .pay-footer button { margin: 0; padding: 5rpx 48rpx; }

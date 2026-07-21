@@ -33,6 +33,9 @@ export interface DecorationTheme {
   navTextColor: string;
   navSelectedColor: string;
   radius: "SM" | "MD" | "LG";
+  fontScale: "COMPACT" | "STANDARD" | "LARGE";
+  surfaceStyle: "FLAT" | "BORDERED" | "ELEVATED";
+  buttonShape: "SQUARE" | "ROUNDED" | "PILL";
 }
 
 export interface DecorationModuleItem {

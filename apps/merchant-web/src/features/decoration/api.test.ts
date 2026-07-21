@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloneDecoration, DEFAULT_DECORATION } from './defaults';
+import { BUILTIN_TEMPLATES, cloneDecoration, DEFAULT_DECORATION } from './defaults';
 import { normalizeConfig, toApiConfig } from './api';
 
 describe('decoration hotspot image', () => {
@@ -44,5 +44,16 @@ describe('decoration hotspot image', () => {
     });
 
     expect(config.homeModules[0].hotspots?.[0]).toMatchObject({ x: 95, y: 98, width: 5, height: 2, action: { type: 'NONE' } });
+  });
+
+  it('round-trips visual tokens and ships coordinated full-store presets', () => {
+    const config = cloneDecoration(DEFAULT_DECORATION);
+    config.theme.fontScale = 'LARGE';
+    config.theme.surfaceStyle = 'BORDERED';
+    config.theme.buttonShape = 'PILL';
+
+    expect(normalizeConfig(toApiConfig(config)).theme).toMatchObject({ fontScale: 'LARGE', surfaceStyle: 'BORDERED', buttonShape: 'PILL' });
+    expect(BUILTIN_TEMPLATES).toHaveLength(10);
+    expect(BUILTIN_TEMPLATES.every((item) => item.scene && item.highlights.length >= 3 && item.config.homeModules.length >= 4)).toBe(true);
   });
 });

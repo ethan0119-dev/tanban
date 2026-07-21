@@ -16,7 +16,13 @@ npm run build
 - `defaultStoreCode`：开发工具未通过商户小程序码启动时使用的演示门店编码。
 - `paymentMode`：初版使用 `mock`；拿到天阙生产参数后改为 `tianque`。
 
-正式发布前还需在微信公众平台配置 request 合法域名，并将 `tbapi.666qwe.cn` 配置为 HTTPS 域名。
+正式发布前还需在微信公众平台的“开发管理 → 开发设置 → 服务器域名”中配置：
+
+- `request 合法域名`：`https://tbapi.666qwe.cn`
+- `downloadFile 合法域名`：`https://tbapi.666qwe.cn`（商品图、Logo、装修图由 API 域名提供）
+- `uploadFile 合法域名`：`https://tbapi.666qwe.cn`（为后续小程序端上传能力预留）
+
+“业务域名”只约束 `<web-view>` 页面，不能替代上述服务器域名。`project.config.json` 与本地 `project.private.config.json` 的 `setting.urlCheck` 必须保持为 `true`，否则开发者工具会绕过校验，造成开发者本人可用、真实用户报 `url is not in domain list` 的假象。
 
 ## 门店码与桌码
 

@@ -69,6 +69,9 @@ export function defaultDecoration(store?: Store): DecorationConfig {
       navTextColor: "#7b807a",
       navSelectedColor: "#214d3f",
       radius: "LG",
+      fontScale: "STANDARD",
+      surfaceStyle: "ELEVATED",
+      buttonShape: "ROUNDED",
     },
     home: {
       modules: [
@@ -224,6 +227,9 @@ export function normalizeDecoration(value: unknown, store?: Store): DecorationCo
       navTextColor: color(theme.navTextColor, fallback.theme.navTextColor),
       navSelectedColor: color(theme.navSelectedColor, fallback.theme.navSelectedColor),
       radius: theme.radius === "SM" || theme.radius === "MD" ? theme.radius : "LG",
+      fontScale: theme.fontScale === "COMPACT" || theme.fontScale === "LARGE" ? theme.fontScale : "STANDARD",
+      surfaceStyle: theme.surfaceStyle === "FLAT" || theme.surfaceStyle === "BORDERED" ? theme.surfaceStyle : "ELEVATED",
+      buttonShape: theme.buttonShape === "SQUARE" || theme.buttonShape === "PILL" ? theme.buttonShape : "ROUNDED",
     },
     home: { modules },
     menu: {
@@ -261,6 +267,17 @@ export function normalizeDecoration(value: unknown, store?: Store): DecorationCo
 
 export function decorationStyle(config: DecorationConfig): string {
   const radius = config.theme.radius === "SM" ? 14 : config.theme.radius === "MD" ? 20 : 28;
+  const buttonRadius = config.theme.buttonShape === "SQUARE" ? 6 : config.theme.buttonShape === "PILL" ? 999 : 18;
+  const type = config.theme.fontScale === "COMPACT"
+    ? { caption: 20, body: 24, subtitle: 28, title: 34, display: 40 }
+    : config.theme.fontScale === "LARGE"
+      ? { caption: 24, body: 28, subtitle: 32, title: 40, display: 48 }
+      : { caption: 22, body: 26, subtitle: 30, title: 36, display: 44 };
+  const surface = config.theme.surfaceStyle === "FLAT"
+    ? { border: "transparent", shadow: "none" }
+    : config.theme.surfaceStyle === "BORDERED"
+      ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.13), shadow: "none" }
+      : { border: "transparent", shadow: `0 10rpx 28rpx ${withAlpha(config.theme.textColor, 0.10)}` };
   return [
     `--ink:${config.theme.textColor}`,
     `--green:${config.theme.primaryColor}`,
@@ -271,9 +288,49 @@ export function decorationStyle(config: DecorationConfig): string {
     `--paper:${config.theme.backgroundColor}`,
     `--surface:${config.theme.surfaceColor}`,
     `--radius:${radius}rpx`,
+    `--primary:${config.theme.primaryColor}`,
+    `--accent:${config.theme.accentColor}`,
+    `--background:${config.theme.backgroundColor}`,
+    `--text:${config.theme.textColor}`,
+    `--on-primary:${onColor(config.theme.primaryColor)}`,
+    `--on-accent:${onColor(config.theme.accentColor)}`,
+    `--button-radius:${buttonRadius}rpx`,
+    `--card-border:${surface.border}`,
+    `--card-shadow:${surface.shadow}`,
+    `--font-caption:${type.caption}rpx`,
+    `--font-body:${type.body}rpx`,
+    `--font-subtitle:${type.subtitle}rpx`,
+    `--font-title:${type.title}rpx`,
+    `--font-display:${type.display}rpx`,
+    `--page-gutter:24rpx`,
+    `--section-gap:20rpx`,
     `background:${config.theme.backgroundColor}`,
     `color:${config.theme.textColor}`,
   ].join(";");
+}
+
+function rgb(value: string): [number, number, number] {
+  return [Number.parseInt(value.slice(1, 3), 16), Number.parseInt(value.slice(3, 5), 16), Number.parseInt(value.slice(5, 7), 16)];
+}
+
+function onColor(value: string): "#FFFFFF" | "#111111" {
+  const [red, green, blue] = rgb(value).map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.42 ? "#111111" : "#FFFFFF";
+}
+
+function withAlpha(value: string, alpha: number): string {
+  const [red, green, blue] = rgb(value);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+function mixHex(foreground: string, background: string, weight: number): string {
+  const first = rgb(foreground);
+  const second = rgb(background);
+  const mixed = first.map((channel, index) => Math.round(channel * weight + second[index] * (1 - weight)));
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
 export function applyDecorationChrome(config: DecorationConfig): void {

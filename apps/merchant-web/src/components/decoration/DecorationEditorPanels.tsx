@@ -129,10 +129,37 @@ function moduleDefaults(type: HomeModuleType): Pick<DecorationConfig['homeModule
 
 export function ThemePanel({ config, onChange }: ConfigPanelProps) {
   const updateTheme = (patch: Partial<DecorationConfig['theme']>) => onChange({ ...config, theme: { ...config.theme, ...patch } });
+  const quickPalettes: Array<{ name: string; scene: string; tone: string; theme: Partial<DecorationConfig['theme']> }> = [
+    { name: '咖啡深绿', scene: '咖啡 / 夜市', tone: 'linear-gradient(135deg,#345548 0 50%,#D6F36A 50%)', theme: { primaryColor: '#345548', accentColor: '#D6F36A', backgroundColor: '#F7F0DF', surfaceColor: '#FFFEFA', textColor: '#202922', mutedColor: '#747B75', navBackgroundColor: '#FFFEFA', navTextColor: '#7B807A', navSelectedColor: '#345548' } },
+    { name: '焦糖奶油', scene: '烘焙 / 甜品', tone: 'linear-gradient(135deg,#9A5F3D 0 50%,#F3C780 50%)', theme: { primaryColor: '#9A5F3D', accentColor: '#F3C780', backgroundColor: '#FFF7EA', surfaceColor: '#FFFFFF', textColor: '#3A2A22', mutedColor: '#806F65', navBackgroundColor: '#FFFFFF', navTextColor: '#806F65', navSelectedColor: '#9A5F3D' } },
+    { name: '鲜果茶铺', scene: '茶饮 / 冰饮', tone: 'linear-gradient(135deg,#17806B 0 50%,#FFE36D 50%)', theme: { primaryColor: '#17806B', accentColor: '#FFE36D', backgroundColor: '#F0FAF3', surfaceColor: '#FFFFFF', textColor: '#173B32', mutedColor: '#66857D', navBackgroundColor: '#FFFFFF', navTextColor: '#66857D', navSelectedColor: '#17806B' } },
+    { name: '海盐蓝调', scene: '轻食 / 夏季', tone: 'linear-gradient(135deg,#286F8E 0 50%,#FFA36C 50%)', theme: { primaryColor: '#286F8E', accentColor: '#FFA36C', backgroundColor: '#F2F8FA', surfaceColor: '#FFFFFF', textColor: '#173745', mutedColor: '#66818C', navBackgroundColor: '#FFFFFF', navTextColor: '#66818C', navSelectedColor: '#286F8E' } },
+    { name: '莓果奶油', scene: '蛋糕 / 会员', tone: 'linear-gradient(135deg,#A34D68 0 50%,#F3C36B 50%)', theme: { primaryColor: '#A34D68', accentColor: '#F3C36B', backgroundColor: '#FFF6F7', surfaceColor: '#FFFFFF', textColor: '#402B32', mutedColor: '#8B737B', navBackgroundColor: '#FFFFFF', navTextColor: '#8B737B', navSelectedColor: '#A34D68' } },
+    { name: '夜市黑金', scene: '烧烤 / 夜宵', tone: 'linear-gradient(135deg,#11151D 0 50%,#F4D35E 50%)', theme: { primaryColor: '#E8A83E', accentColor: '#F4D35E', backgroundColor: '#11151D', surfaceColor: '#1D2430', textColor: '#F7F2E7', mutedColor: '#AAB2BE', navBackgroundColor: '#171D27', navTextColor: '#AAB2BE', navSelectedColor: '#F4D35E' } },
+  ];
   return (
     <div className="decoration-panel-stack">
-      <PanelIntro title="全店风格" description="统一控制品牌色、内容表面、文字和导航色，应用于首页、点单页和底部导航。" />
-      <Card size="small" className="decor-section-card" title="品牌色板">
+      <PanelIntro title="全店风格" description="优先选择搭配好的视觉组合，再按品牌需要微调。设置会统一应用到首页、点单、订单、会员、充值和优惠券页面。" />
+      <Card size="small" className="decor-section-card" title="一键色彩搭配" extra={<Typography.Text type="secondary">推荐先选这里</Typography.Text>}>
+        <div className="theme-preset-grid">
+          {quickPalettes.map((palette) => (
+            <button type="button" key={palette.name} className="theme-preset" onClick={() => updateTheme(palette.theme)}>
+              <span style={{ background: palette.tone }} />
+              <b>{palette.name}</b>
+              <small>{palette.scene}</small>
+            </button>
+          ))}
+        </div>
+      </Card>
+      <Card size="small" className="decor-section-card" title="视觉细节">
+        <Form layout="vertical">
+          <Form.Item label="全局字号"><Segmented block value={config.theme.fontScale} options={[{ label: '紧凑', value: 'COMPACT' }, { label: '标准', value: 'STANDARD' }, { label: '大字', value: 'LARGE' }]} onChange={(fontScale) => updateTheme({ fontScale: fontScale as DecorationConfig['theme']['fontScale'] })} /></Form.Item>
+          <Form.Item label="卡片质感"><Segmented block value={config.theme.surfaceStyle} options={[{ label: '平面', value: 'FLAT' }, { label: '描边', value: 'BORDERED' }, { label: '浮层', value: 'ELEVATED' }]} onChange={(surfaceStyle) => updateTheme({ surfaceStyle: surfaceStyle as DecorationConfig['theme']['surfaceStyle'] })} /></Form.Item>
+          <Form.Item label="按钮造型"><Segmented block value={config.theme.buttonShape} options={[{ label: '直角', value: 'SQUARE' }, { label: '圆角', value: 'ROUNDED' }, { label: '胶囊', value: 'PILL' }]} onChange={(buttonShape) => updateTheme({ buttonShape: buttonShape as DecorationConfig['theme']['buttonShape'] })} /></Form.Item>
+          <Form.Item label="全局圆角" style={{ marginBottom: 0 }}><Segmented block value={config.theme.radius} options={[{ label: '小', value: 'SM' }, { label: '中', value: 'MD' }, { label: '大', value: 'LG' }]} onChange={(radius) => updateTheme({ radius: radius as DecorationConfig['theme']['radius'] })} /></Form.Item>
+        </Form>
+      </Card>
+      <Card size="small" className="decor-section-card" title="高级自定义颜色" extra={<Typography.Text type="secondary">支持 #RRGGBB</Typography.Text>}>
         <Row gutter={[16, 10]}>
           <Col span={12}><ColorField label="品牌主色" value={config.theme.primaryColor} onChange={(primaryColor) => updateTheme({ primaryColor })} /></Col>
           <Col span={12}><ColorField label="强调色" value={config.theme.accentColor} onChange={(accentColor) => updateTheme({ accentColor })} /></Col>
@@ -142,15 +169,12 @@ export function ThemePanel({ config, onChange }: ConfigPanelProps) {
           <Col span={12}><ColorField label="辅助文字" value={config.theme.mutedColor} onChange={(mutedColor) => updateTheme({ mutedColor })} /></Col>
         </Row>
       </Card>
-      <Card size="small" className="decor-section-card" title="底部导航色板">
+      <Card size="small" className="decor-section-card" title="底部导航自定义颜色">
         <Row gutter={[16, 10]}>
           <Col span={12}><ColorField label="导航背景" value={config.theme.navBackgroundColor} onChange={(navBackgroundColor) => updateTheme({ navBackgroundColor })} /></Col>
           <Col span={12}><ColorField label="普通文字" value={config.theme.navTextColor} onChange={(navTextColor) => updateTheme({ navTextColor })} /></Col>
           <Col span={12}><ColorField label="选中颜色" value={config.theme.navSelectedColor} onChange={(navSelectedColor) => updateTheme({ navSelectedColor })} /></Col>
         </Row>
-      </Card>
-      <Card size="small" className="decor-section-card" title="形状">
-        <Form layout="vertical"><Form.Item label="全局圆角"><Segmented block value={config.theme.radius} options={[{ label: '小', value: 'SM' }, { label: '中', value: 'MD' }, { label: '大', value: 'LG' }]} onChange={(radius) => updateTheme({ radius: radius as DecorationConfig['theme']['radius'] })} /></Form.Item></Form>
       </Card>
     </div>
   );
@@ -190,7 +214,13 @@ export function TemplatePanel({ config, templates, loading, onApply }: { config:
         {templates.map((template) => <Col xs={24} md={12} key={template.key}>
           <Card className={`template-card ${config.templateKey === template.key ? 'selected' : ''}`} loading={loading} hoverable onClick={() => onApply(template)}>
             <div className="template-tone" style={{ background: template.tone }}><span>{template.name.slice(0, 1)}</span></div>
-            <div className="template-copy"><Space><strong>{template.name}</strong>{config.templateKey === template.key && <CheckCircleFilled />}</Space><p>{template.description}</p><Button size="small" type={config.templateKey === template.key ? 'primary' : 'default'}>{config.templateKey === template.key ? '当前模板' : '应用模板'}</Button></div>
+            <div className="template-copy">
+              <Space><strong>{template.name}</strong>{config.templateKey === template.key && <CheckCircleFilled />}</Space>
+              <Tag bordered={false}>{template.scene}</Tag>
+              <p>{template.description}</p>
+              <div className="template-highlights">{template.highlights.map((item) => <span key={item}>{item}</span>)}</div>
+              <Button size="small" type={config.templateKey === template.key ? 'primary' : 'default'}>{config.templateKey === template.key ? '当前模板' : '应用整套模板'}</Button>
+            </div>
           </Card>
         </Col>)}
       </Row>

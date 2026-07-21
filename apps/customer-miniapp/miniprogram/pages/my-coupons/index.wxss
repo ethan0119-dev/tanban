@@ -1,14 +1,14 @@
 .coupon-wallet-page { min-height: 100vh; background: var(--paper); }
 .wallet-hero { display: flex; flex-direction: column; gap: 12rpx; padding: 52rpx 34rpx 28rpx; }
-.wallet-hero text:first-child { font-size: 48rpx; font-weight: 900; }
-.wallet-hero text:last-child { color: var(--muted); font-size: 24rpx; }
+.wallet-hero text:first-child { font-size: var(--font-display); font-weight: 900; }
+.wallet-hero text:last-child { color: var(--muted); font-size: var(--font-body); }
 .coupon-tabs { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 28rpx; padding: 8rpx; border-radius: 22rpx; background: rgba(255,255,255,.72); }
 .coupon-tabs view { padding: 18rpx 6rpx; border-radius: 16rpx; color: var(--muted); text-align: center; }
-.coupon-tabs .active { color: white; background: var(--green); font-weight: 800; }
+.coupon-tabs .active { color: var(--on-primary); background: var(--green); font-weight: 800; }
 .wallet-notice { margin: 20rpx 28rpx; padding: 18rpx 22rpx; border-radius: 18rpx; color: var(--green); background: var(--surface); font-size: 21rpx; line-height: 1.6; }
 .coupon-list { display: flex; flex-direction: column; gap: 20rpx; padding: 0 28rpx 44rpx; }
-.coupon-card { display: grid; grid-template-columns: 164rpx minmax(0,1fr) 104rpx; align-items: center; min-height: 176rpx; overflow: hidden; border-radius: var(--radius); background: var(--surface); box-shadow: 0 14rpx 38rpx rgba(70,47,31,.08); }
-.coupon-value { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8rpx; color: white; background: var(--green); }
+.coupon-card { display: grid; grid-template-columns: 164rpx minmax(0,1fr) 104rpx; align-items: center; min-height: 176rpx; overflow: hidden; border: 1rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
+.coupon-value { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8rpx; color: var(--on-primary); background: var(--green); }
 .coupon-value view { display: flex; align-items: baseline; }
 .coupon-value view text:first-child { font-size: 24rpx; }
 .coupon-value view text:last-child { font-size: 49rpx; font-weight: 900; }
@@ -16,6 +16,6 @@
 .coupon-content { min-width: 0; display: flex; flex-direction: column; gap: 8rpx; padding: 22rpx 16rpx; }
 .coupon-content text { overflow: hidden; color: #8a817a; font-size: 20rpx; text-overflow: ellipsis; white-space: nowrap; }
 .coupon-content .coupon-name { color: var(--ink); font-size: 28rpx; font-weight: 800; }
-.coupon-card button { width: 84rpx; min-width: 0; margin: 0 18rpx 0 0; padding: 0; border-radius: 999rpx; background: var(--green); color: white; font-size: 21rpx; line-height: 56rpx; }
+.coupon-card button { width: 84rpx; min-width: 0; margin: 0 18rpx 0 0; padding: 0; border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); font-size: var(--font-caption); line-height: 56rpx; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 24rpx; }
 .empty button { width: 280rpx; }

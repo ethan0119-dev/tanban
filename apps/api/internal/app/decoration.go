@@ -51,6 +51,9 @@ type DecorationTheme struct {
 	NavTextColor       string `json:"navTextColor"`
 	NavSelectedColor   string `json:"navSelectedColor"`
 	Radius             string `json:"radius"`
+	FontScale          string `json:"fontScale"`
+	SurfaceStyle       string `json:"surfaceStyle"`
+	ButtonShape        string `json:"buttonShape"`
 }
 
 type DecorationHome struct {
@@ -238,6 +241,7 @@ func defaultDecorationConfig(store storeDTO) DecorationConfig {
 		TextColor: "#17201b", MutedColor: "#747b75",
 		NavBackgroundColor: "#fffefa", NavTextColor: "#7b807a",
 		NavSelectedColor: "#214d3f", Radius: "LG",
+		FontScale: "STANDARD", SurfaceStyle: "ELEVATED", ButtonShape: "ROUNDED",
 	}
 	hero := decorationHeroConfig{}
 	if validDecorationURL(store.BannerURL) {
@@ -320,6 +324,9 @@ func normalizeDecorationConfig(config *DecorationConfig) {
 	fill(&config.Theme.NavTextColor, defaults.Theme.NavTextColor)
 	fill(&config.Theme.NavSelectedColor, defaults.Theme.NavSelectedColor)
 	fill(&config.Theme.Radius, defaults.Theme.Radius)
+	fill(&config.Theme.FontScale, defaults.Theme.FontScale)
+	fill(&config.Theme.SurfaceStyle, defaults.Theme.SurfaceStyle)
+	fill(&config.Theme.ButtonShape, defaults.Theme.ButtonShape)
 	fill(&config.Menu.CategoryLayout, defaults.Menu.CategoryLayout)
 	fill(&config.Menu.ProductLayout, defaults.Menu.ProductLayout)
 	fill(&config.Menu.LoadMode, defaults.Menu.LoadMode)
@@ -363,6 +370,15 @@ func validateDecorationConfig(config DecorationConfig) error {
 	}
 	if !oneOf(config.Theme.Radius, "SM", "MD", "LG") {
 		return errors.New("theme.radius must be SM, MD or LG")
+	}
+	if !oneOf(config.Theme.FontScale, "COMPACT", "STANDARD", "LARGE") {
+		return errors.New("theme.fontScale must be COMPACT, STANDARD or LARGE")
+	}
+	if !oneOf(config.Theme.SurfaceStyle, "FLAT", "BORDERED", "ELEVATED") {
+		return errors.New("theme.surfaceStyle must be FLAT, BORDERED or ELEVATED")
+	}
+	if !oneOf(config.Theme.ButtonShape, "SQUARE", "ROUNDED", "PILL") {
+		return errors.New("theme.buttonShape must be SQUARE, ROUNDED or PILL")
 	}
 	if len(config.Home.Modules) > decorationMaxModules {
 		return fmt.Errorf("home modules cannot exceed %d", decorationMaxModules)
@@ -1035,6 +1051,7 @@ func (s *Server) getDecorationTemplates(w http.ResponseWriter, _ *http.Request) 
 		PrimaryColor: "#1f4036", AccentColor: "#f4c95d", BackgroundColor: "#131b18",
 		SurfaceColor: "#1f2925", TextColor: "#f8f4e8", MutedColor: "#aab5ad",
 		NavBackgroundColor: "#17201d", NavTextColor: "#aab5ad", NavSelectedColor: "#f4c95d", Radius: "MD",
+		FontScale: "STANDARD", SurfaceStyle: "ELEVATED", ButtonShape: "ROUNDED",
 	}
 	night.Navigation.BackgroundColor = night.Theme.NavBackgroundColor
 	night.Navigation.TextColor = night.Theme.NavTextColor
@@ -1045,14 +1062,15 @@ func (s *Server) getDecorationTemplates(w http.ResponseWriter, _ *http.Request) 
 		PrimaryColor: "#2563eb", AccentColor: "#dbeafe", BackgroundColor: "#f8fafc",
 		SurfaceColor: "#ffffff", TextColor: "#0f172a", MutedColor: "#64748b",
 		NavBackgroundColor: "#ffffff", NavTextColor: "#64748b", NavSelectedColor: "#2563eb", Radius: "SM",
+		FontScale: "STANDARD", SurfaceStyle: "BORDERED", ButtonShape: "ROUNDED",
 	}
 	clean.Navigation.BackgroundColor = clean.Theme.NavBackgroundColor
 	clean.Navigation.TextColor = clean.Theme.NavTextColor
 	clean.Navigation.SelectedColor = clean.Theme.NavSelectedColor
 	writeData(w, http.StatusOK, []map[string]any{
-		{"key": "coffee-light", "name": "咖啡暖调", "config": coffee},
-		{"key": "night-market", "name": "夜市深色", "config": night},
-		{"key": "clean", "name": "简洁明亮", "config": clean},
+		{"key": "coffee-light", "name": "咖啡暖调", "description": "自然深绿与浅奶油色，适合日常咖啡和移动摊位。", "scene": "咖啡 · 摊位", "highlights": []string{"标准首页", "舒适点单", "品牌主色"}, "tone": "linear-gradient(135deg,#214d3f,#dff06d)", "config": coffee},
+		{"key": "night-market", "name": "夜市深色", "description": "深色表面与金色强调，适合夜间营业、烧烤和夜宵。", "scene": "夜市 · 夜宵", "highlights": []string{"深色沉浸", "高对比导航", "浮层卡片"}, "tone": "linear-gradient(135deg,#131b18,#f4c95d)", "config": night},
+		{"key": "clean", "name": "简洁明亮", "description": "蓝白高对比和轻描边，适合快餐、轻食及通用新店。", "scene": "快餐 · 通用", "highlights": []string{"清晰层级", "描边卡片", "紧凑结构"}, "tone": "linear-gradient(135deg,#2563eb,#dbeafe)", "config": clean},
 	})
 }
 
@@ -1125,6 +1143,10 @@ func (s *Server) publicDecorationConfig(ctx context.Context, store storeDTO) (De
 		s.Logger.Error("decode public decoration", "error", err, "tenant_id", store.TenantID, "store_id", store.ID, "version", version)
 		return defaultDecorationConfig(store), 0
 	}
+	// Published snapshots are immutable, but the public view remains backward
+	// compatible as constrained theme fields are added. Normalize only missing
+	// fields in memory before validation; never expose a draft or rewrite history.
+	normalizeDecorationConfig(&config)
 	if validationErr := validateDecorationConfig(config); validationErr != nil {
 		s.Logger.Error("validate public decoration", "error", validationErr, "tenant_id", store.TenantID, "store_id", store.ID, "version", version)
 		return defaultDecorationConfig(store), 0

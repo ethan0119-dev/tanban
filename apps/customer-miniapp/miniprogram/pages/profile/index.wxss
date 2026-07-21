@@ -2,20 +2,20 @@
 .profile-hero { padding: 58rpx 38rpx 30rpx; }
 .welcome { display: flex; align-items: center; justify-content: space-between; }
 .welcome > view { display: flex; flex-direction: column; gap: 24rpx; }
-.welcome > view > text:first-child { font-size: 31rpx; font-weight: 800; }
-.welcome .name { max-width: 530rpx; overflow: hidden; font-size: 43rpx; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.welcome > view > text:first-child { font-size: var(--font-subtitle); font-weight: 800; }
+.welcome .name { max-width: 530rpx; overflow: hidden; font-size: var(--font-display); font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
 .welcome image { width: 104rpx; height: 104rpx; padding: 22rpx; box-sizing: border-box; border-radius: 50%; background: rgba(255,255,255,.75); opacity: .5; }
 .asset-summary { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 48rpx; }
 .asset-summary view { display: flex; flex-direction: column; align-items: center; gap: 10rpx; border-right: 1rpx solid rgba(23,32,27,.08); }
 .asset-summary view:last-child { border-right: 0; }
 .asset-summary text:first-child { font-size: 34rpx; font-weight: 900; }
 .asset-summary text:last-child { font-size: 23rpx; }
-.member-card { display: flex; justify-content: space-between; min-height: 182rpx; margin-top: 42rpx; padding: 34rpx; box-sizing: border-box; border-radius: var(--radius); color: white; background: var(--green); box-shadow: 0 20rpx 48rpx rgba(45,52,49,.15); }
+.member-card { display: flex; justify-content: space-between; min-height: 182rpx; margin-top: 42rpx; padding: 34rpx; box-sizing: border-box; border: 1rpx solid var(--card-border); border-radius: var(--radius); color: var(--on-primary); background: var(--green); box-shadow: var(--card-shadow); }
 .member-card > view { display: flex; flex-direction: column; gap: 18rpx; }
 .member-card > view:first-child text:first-child { font-size: 34rpx; font-weight: 900; }
 .member-card > view:first-child text:last-child { color: rgba(255,255,255,.62); font-size: 22rpx; }
 .member-card > view:last-child { align-items: flex-end; font-size: 22rpx; }
-.service-card { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 40rpx; margin: 12rpx 24rpx 0; padding: 42rpx 22rpx; border-radius: var(--radius); background: var(--surface); box-shadow: 0 14rpx 42rpx rgba(23,32,27,.05); }
-.service-item { display: flex; flex-direction: column; align-items: center; gap: 15rpx; font-size: 23rpx; }
+.service-card { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 40rpx; margin: 12rpx 24rpx 0; padding: 42rpx 22rpx; border: 1rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
+.service-item { display: flex; flex-direction: column; align-items: center; gap: 15rpx; font-size: var(--font-body); }
 .service-item image { width: 48rpx; height: 48rpx; }
 .version { margin-top: 46rpx; color: #a2a6a1; font-size: 20rpx; text-align: center; }

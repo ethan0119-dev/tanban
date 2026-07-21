@@ -52,6 +52,9 @@ export interface ThemeConfig {
   navTextColor: string;
   navSelectedColor: string;
   radius: 'SM' | 'MD' | 'LG';
+  fontScale: 'COMPACT' | 'STANDARD' | 'LARGE';
+  surfaceStyle: 'FLAT' | 'BORDERED' | 'ELEVATED';
+  buttonShape: 'SQUARE' | 'ROUNDED' | 'PILL';
 }
 
 export interface OrderingConfig {
@@ -132,6 +135,8 @@ export interface DecorationTemplate {
   name: string;
   description: string;
   tone: string;
+  scene: string;
+  highlights: string[];
   config: DecorationConfig;
 }
 
