@@ -5,6 +5,7 @@ import { errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { notificationApi } from '../features/notifications/api';
 import type { MerchantNotification } from '../features/notifications/types';
+import { dateTime } from '../utils/format';
 
 const categoryText: Record<string, string> = {
   SYSTEM_UPDATE: '系统迭代', BUG_FIX: '问题修复', NEW_FEATURE: '新功能', NOTICE: '注意事项', ACTION_REQUIRED: '待办提醒',
@@ -16,7 +17,7 @@ const severityText: Record<string, string> = { INFO: '普通', IMPORTANT: '重�
 const severityColor: Record<string, string> = { INFO: 'blue', IMPORTANT: 'orange', URGENT: 'red' };
 
 function displayTime(value: string) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
+  return value ? dateTime(value) : '—';
 }
 
 export function NotificationsPage() {

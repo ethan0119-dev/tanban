@@ -38,6 +38,9 @@ func TestCreateTenantProvisionsFirstStoreAndOwner(t *testing.T) {
 	mock.ExpectExec("INSERT INTO stores").
 		WithArgs(int64(31), "wangdapeng", "王大鹏主门店").
 		WillReturnResult(sqlmock.NewResult(41, 1))
+	mock.ExpectExec("INSERT IGNORE INTO store_business_periods").
+		WithArgs(int64(31), int64(41), 0, 0).
+		WillReturnResult(sqlmock.NewResult(0, 7))
 	mock.ExpectExec("INSERT INTO users").
 		WithArgs(int64(31), "13800138000", bcryptHashOf("Safe-pass-2026!"), "王大鹏", RoleMerchantOwner).
 		WillReturnResult(sqlmock.NewResult(51, 1))

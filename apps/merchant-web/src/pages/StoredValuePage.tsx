@@ -22,7 +22,6 @@ import {
   message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -32,7 +31,7 @@ import { PageHeading } from '../components/PageHeading';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import type { Customer, MemberSummary, StoredValueRecord, StoredValueRule, StoredValueSettings } from '../member/types';
 import '../member/member.css';
-import { dateTime, yuan } from '../utils/format';
+import { beijingPickerValue, dateTime, toBeijingRFC3339, yuan } from '../utils/format';
 
 interface RuleForm {
   name: string;
@@ -118,7 +117,7 @@ export function StoredValuePage() {
       gift: rule.gift_cents / 100,
       gift_growth: rule.gift_growth,
       per_customer_limit: rule.per_customer_limit,
-      active_range: rule.starts_at && rule.ends_at ? [dayjs(rule.starts_at), dayjs(rule.ends_at)] : undefined,
+      active_range: rule.starts_at && rule.ends_at ? [beijingPickerValue(rule.starts_at)!, beijingPickerValue(rule.ends_at)!] : undefined,
       description: String(rule.benefits?.description || ''),
       enabled: rule.status === 'ACTIVE',
     } : { recharge: 100, gift: 0, gift_growth: 0, per_customer_limit: 0, enabled: true });
@@ -133,8 +132,8 @@ export function StoredValuePage() {
       gift_cents: Math.round(values.gift * 100),
       gift_growth: values.gift_growth,
       per_customer_limit: values.per_customer_limit,
-      starts_at: values.active_range?.[0]?.toISOString(),
-      ends_at: values.active_range?.[1]?.toISOString(),
+      starts_at: toBeijingRFC3339(values.active_range?.[0]),
+      ends_at: toBeijingRFC3339(values.active_range?.[1]),
       benefits: { description: values.description || '' },
       status: values.enabled ? 'ACTIVE' : 'DISABLED',
     };
@@ -249,7 +248,7 @@ export function StoredValuePage() {
         ]} />
       </Card>
 
-      <Modal title={editingRule ? '编辑储值规则' : '新增储值规则'} width={680} open={ruleOpen} onCancel={() => setRuleOpen(false)} onOk={() => void saveRule()} confirmLoading={saving}><Form form={ruleForm} layout="vertical"><Form.Item label="规则名称" name="name" rules={[{ required: true }]}><Input placeholder="例如：充 100 送 10" /></Form.Item><Row gutter={12}><Col span={8}><Form.Item label="储值本金" name="recharge" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="赠送金额" name="gift" rules={[{ required: true }]}><InputNumber min={0} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="赠成长值（暂未开放）" name="gift_growth" extra="会员自动成长开通后可用"><InputNumber disabled min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row><Row gutter={12}><Col span={12}><Form.Item label="每位顾客限次（0 不限）" name="per_customer_limit"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={12}><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Col></Row><Form.Item label="生效区间" name="active_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item><Form.Item label="权益说明" name="description"><Input.TextArea /></Form.Item></Form></Modal>
+      <Modal title={editingRule ? '编辑储值规则' : '新增储值规则'} width={680} open={ruleOpen} onCancel={() => setRuleOpen(false)} onOk={() => void saveRule()} confirmLoading={saving}><Form form={ruleForm} layout="vertical"><Form.Item label="规则名称" name="name" rules={[{ required: true }]}><Input placeholder="例如：充 100 送 10" /></Form.Item><Row gutter={12}><Col span={8}><Form.Item label="储值本金" name="recharge" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="赠送金额" name="gift" rules={[{ required: true }]}><InputNumber min={0} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="赠成长值（暂未开放）" name="gift_growth" extra="会员自动成长开通后可用"><InputNumber disabled min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row><Row gutter={12}><Col span={12}><Form.Item label="每位顾客限次（0 不限）" name="per_customer_limit"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={12}><Form.Item label="启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Col></Row><Form.Item label="生效区间（北京时间）" name="active_range"><DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} /></Form.Item><Form.Item label="权益说明" name="description"><Input.TextArea /></Form.Item></Form></Modal>
       <Modal title="录入手工储值" open={recordOpen} maskClosable={!saving} keyboard={!saving} cancelButtonProps={{ disabled: saving }} onCancel={() => { if (saving) return; recordKey.current = ''; recordForm.resetFields(); setRecordOpen(false); }} onOk={() => void createRecord()} confirmLoading={saving} okButtonProps={{ danger: true }}><Alert type="warning" showIcon message="提交前请确认线下款项已经收到" description="本操作不会发起支付，但会立即增加顾客余额并生成不可删除的资金流水。" style={{ marginBottom: 16 }} /><Form form={recordForm} layout="vertical"><Form.Item label="顾客" name="customer_id" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={customers.map((item) => ({ value: item.id, label: `${item.name} · 当前余额 ${yuan(item.balance_cents / 100)}` }))} /></Form.Item><Form.Item label="储值规则" name="rule_id"><Select allowClear placeholder="不选择时可自定义金额" options={rules.filter((item) => item.status === 'ACTIVE').map((item) => ({ value: item.id, label: `${item.name}（${yuan(item.recharge_cents / 100)} + 赠 ${yuan(item.gift_cents / 100)}）` }))} /></Form.Item><Form.Item noStyle shouldUpdate={(previous, current) => previous.rule_id !== current.rule_id}>{({ getFieldValue }) => !getFieldValue('rule_id') ? <Row gutter={12}><Col span={12}><Form.Item label="本金金额" name="principal" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={12}><Form.Item label="赠送金额" name="gift"><InputNumber min={0} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col></Row> : null}</Form.Item><Form.Item label="线下收款方式" name="payment_method"><Select options={[{ value: 'CASH', label: '现金' }, { value: 'TRANSFER', label: '转账' }, { value: 'MANUAL', label: '其他人工确认' }]} /></Form.Item><Form.Item label="凭证/原因说明" name="remark" rules={[{ required: true }]}><Input.TextArea rows={3} maxLength={255} showCount /></Form.Item></Form></Modal>
     </div>
   );

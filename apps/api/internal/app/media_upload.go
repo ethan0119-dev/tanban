@@ -310,7 +310,7 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	removeStoredFile = false
-	createdAt := time.Now().UTC().Format(time.RFC3339)
+	createdAt := formatBeijingDateTime(time.Now())
 	s.audit(r.Context(), identity, "media_asset.upload", "media_asset", int64String(id), map[string]any{"name": name, "storage_key": storageKey, "mime_type": imageFile.MimeType, "size_bytes": len(imageFile.Data)}, r)
 	view := mediaAssetView{ID: id, Name: name, Kind: "IMAGE", URL: publicURL, StorageKey: storageKey, MimeType: imageFile.MimeType, Width: imageFile.Width, Height: imageFile.Height, SizeBytes: int64(len(imageFile.Data)), Status: "ACTIVE", CreatedAt: createdAt}
 	if groupID > 0 {

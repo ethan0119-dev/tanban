@@ -336,7 +336,7 @@ func (s *Server) listPrintTemplates(w http.ResponseWriter, r *http.Request) {
 		where += " AND copy_role=?"
 		args = append(args, copyRole)
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,business_type,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,business_type,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM print_templates`+where+" ORDER BY FIELD(business_type,'DINE_IN','TAKEOUT','DELIVERY'),FIELD(template_type,'RECEIPT','LABEL'),FIELD(copy_role,'MERCHANT','CUSTOMER','KITCHEN','ITEM'),id", args...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -414,7 +414,7 @@ func (s *Server) getPrintTemplate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getPrintTemplateByID(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
 	var item printTemplateDTO
-	err := scanPrintTemplate(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,business_type,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%sZ')
+	err := scanPrintTemplate(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,business_type,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),name,content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status,DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM print_templates WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, tenantID), &item)
 	if err != nil {
 		handleSQLError(w, err)

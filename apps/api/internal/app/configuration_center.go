@@ -277,7 +277,7 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.area_id,a.name,t.name,t.table_code,t.capacity,
 		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
-		COALESCE(DATE_FORMAT(o.created_at,'%Y-%m-%dT%H:%i:%sZ'),'')
+		COALESCE(DATE_FORMAT(o.created_at,'%Y-%m-%d %H:%i:%s'),'')
 		FROM table_codes t JOIN table_areas a ON a.id=t.area_id AND a.tenant_id=t.tenant_id AND a.store_id=t.store_id
 		LEFT JOIN orders o ON o.id=(SELECT o2.id FROM orders o2 WHERE o2.tenant_id=t.tenant_id AND o2.store_id=t.store_id
 			AND o2.table_id=t.id AND o2.order_type='DINE_IN' AND o2.status IN ('PENDING_PAYMENT','PAID','ACCEPTED','PREPARING','READY')

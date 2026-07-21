@@ -37,7 +37,7 @@
 </view>
 <view class="empty" wx:elif="{{routeError}}"><text>{{routeError}}</text><text>请重新扫描有效二维码</text></view>
 <view class="empty" wx:else>正在准备菜单…</view>
-<view class="sku-mask" wx:if="{{selectingProduct}}" bindtap="closeSkuPicker">
+<view class="sku-mask" style="{{appearanceStyle}}" wx:if="{{selectingProduct}}" bindtap="closeSkuPicker">
   <view class="sku-picker" catchtap="noop">
     <view class="sku-picker-title"><view><text>选择规格与口味</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>
     <scroll-view class="configuration-scroll" scroll-y enhanced>
@@ -49,19 +49,25 @@
       <view class="configuration-group" wx:if="{{selectableSkus.length > 1}}">
         <view class="configuration-heading"><text>规格</text><text>请选择 1 项</text></view>
         <view class="configuration-options">
-          <button class="configuration-option {{selectedSkuId === item.id ? 'selected' : ''}}" wx:for="{{selectableSkus}}" wx:key="id" data-sku-id="{{item.id}}" bindtap="chooseSku"><text>{{item.name}}</text><text>¥{{item.price / 100}}</text></button>
+          <view class="configuration-option-cell" wx:for="{{selectableSkus}}" wx:key="id">
+            <button class="configuration-option {{selectedSkuId === item.id ? 'selected' : ''}}" data-sku-id="{{item.id}}" bindtap="chooseSku"><text>{{item.name}}</text><text>¥{{item.price / 100}}</text></button>
+          </view>
         </view>
       </view>
       <view class="configuration-group" wx:for="{{pickerOptionGroups}}" wx:for-item="group" wx:key="id">
         <view class="configuration-heading"><text>{{group.name}}</text><text>{{group.minSelect > 0 ? '必选' : '可选'}} · {{group.selectionMode === 'SINGLE' ? '单选' : '多选'}} {{group.minSelect}}–{{group.maxSelect}} 项</text></view>
         <view class="configuration-options">
-          <button class="configuration-option {{value.selected ? 'selected' : ''}}" wx:for="{{group.values}}" wx:for-item="value" wx:key="id" data-group-id="{{group.id}}" data-value-id="{{value.id}}" bindtap="toggleOption"><text>{{value.name}}</text><text wx:if="{{value.priceDeltaCents}}">+¥{{value.priceDeltaCents / 100}}</text></button>
+          <view class="configuration-option-cell" wx:for="{{group.values}}" wx:for-item="value" wx:key="id">
+            <button class="configuration-option {{value.selected ? 'selected' : ''}}" data-group-id="{{group.id}}" data-value-id="{{value.id}}" bindtap="toggleOption"><text>{{value.name}}</text><text wx:if="{{value.priceDeltaCents}}">+¥{{value.priceDeltaCents / 100}}</text></button>
+          </view>
         </view>
       </view>
       <view class="configuration-group" wx:for="{{pickerModifierGroups}}" wx:for-item="group" wx:key="id">
         <view class="configuration-heading"><text>{{group.name}}</text><text>{{group.minSelect > 0 ? '必选' : '可选'}} · 最多{{group.maxSelect}}项</text></view>
         <view class="configuration-options">
-          <button class="configuration-option {{modifier.selected ? 'selected' : ''}}" wx:for="{{group.items}}" wx:for-item="modifier" wx:key="id" data-group-id="{{group.id}}" data-item-id="{{modifier.id}}" bindtap="toggleModifier"><text>{{modifier.name}}</text><text wx:if="{{modifier.priceCents}}">+¥{{modifier.priceCents / 100}}</text></button>
+          <view class="configuration-option-cell" wx:for="{{group.items}}" wx:for-item="modifier" wx:key="id">
+            <button class="configuration-option {{modifier.selected ? 'selected' : ''}}" data-group-id="{{group.id}}" data-item-id="{{modifier.id}}" bindtap="toggleModifier"><text>{{modifier.name}}</text><text wx:if="{{modifier.priceCents}}">+¥{{modifier.priceCents / 100}}</text></button>
+          </view>
         </view>
       </view>
     </scroll-view>

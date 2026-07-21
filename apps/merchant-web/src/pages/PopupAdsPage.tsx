@@ -31,7 +31,6 @@ import {
   message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
@@ -48,6 +47,7 @@ import type {
   MarketingPlacementFrequency,
   MarketingPlacementPayload,
 } from '../features/marketing/types';
+import { beijingPickerValue, toBeijingRFC3339 } from '../utils/format';
 import './marketing.css';
 
 interface PlacementFormValues {
@@ -145,7 +145,7 @@ export function PopupAdsPage() {
       action_target_id: item.actionTargetId,
       priority: item.priority,
       channel_scope: item.channelScope,
-      active_range: item.startsAt && item.endsAt ? [dayjs(item.startsAt), dayjs(item.endsAt)] : undefined,
+      active_range: item.startsAt && item.endsAt ? [beijingPickerValue(item.startsAt)!, beijingPickerValue(item.endsAt)!] : undefined,
     } : {
       placement_code: 'HOME_POPUP',
       frequency: 'ONCE_PER_CAMPAIGN',
@@ -174,8 +174,8 @@ export function PopupAdsPage() {
       action_target_id: needsTarget ? values.action_target_id : undefined,
       priority: Number(values.priority),
       channel_scope: values.channel_scope,
-      active_from: values.active_range?.[0].toISOString(),
-      active_to: values.active_range?.[1].toISOString(),
+      active_from: toBeijingRFC3339(values.active_range?.[0]),
+      active_to: toBeijingRFC3339(values.active_range?.[1]),
     };
     setSaving(true);
     try {
@@ -276,7 +276,7 @@ export function PopupAdsPage() {
             </div>
           </Form.Item>
           <Row gutter={16}><Col span={9}><Form.Item label="点击动作" name="action_type" rules={[{ required: true }]}><Select onChange={() => form.setFieldValue('action_target_id', undefined)} options={Object.entries(actionNames).map(([value, label]) => ({ value, label }))} /></Form.Item></Col><Col span={9}><Form.Item noStyle shouldUpdate={(previous, current) => previous.action_type !== current.action_type}>{({ getFieldValue }) => getFieldValue('action_type') === 'CLAIM_COUPON' ? <Form.Item label="关联优惠券" name="action_target_id" rules={[{ required: true }]}><Select options={actionTargetOptions.coupons} placeholder="选择优惠券" /></Form.Item> : getFieldValue('action_type') === 'OPEN_LOTTERY' ? <Form.Item label="关联抽奖" name="action_target_id" rules={[{ required: true }]}><Select options={actionTargetOptions.lotteries} placeholder="选择抽奖活动" /></Form.Item> : <Form.Item label="关联活动"><Input disabled placeholder="此动作无需关联 ID" /></Form.Item>}</Form.Item></Col><Col span={6}><Form.Item label="优先级" name="priority" extra="数值越大越优先"><InputNumber min={-10000} max={10000} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row>
-          <Row gutter={16}><Col span={10}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col><Col span={14}><Form.Item label="投放时间" name="active_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={10}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col><Col span={14}><Form.Item label="投放时间（北京时间）" name="active_range"><DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} /></Form.Item></Col></Row>
         </Form>
       </Modal>
       <MediaLibraryModal open={imageLibraryOpen} title="选择弹窗广告图片" onCancel={() => setImageLibraryOpen(false)} onConfirm={(selected) => { if (selected[0]) form.setFieldValue('image_url', selected[0].url); setImageLibraryOpen(false); }} />

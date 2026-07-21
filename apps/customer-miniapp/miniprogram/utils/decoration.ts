@@ -10,6 +10,7 @@ import type {
 import type { TanbanAppOption } from "../app";
 import { clearFastFoodContext } from "./fast-food-context";
 import { clearTableOrderingContext, tableContextForStore } from "./table-context";
+import { beijingDateKey, beijingEpoch } from "./datetime";
 import { showUnavailableFeature } from "./availability";
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -367,17 +368,17 @@ function splashStorageKey(storeCode: string): string {
 export function shouldDisplaySplash(config: DecorationConfig, storeCode: string, version: number, now = Date.now()): boolean {
   const splash = config.splash;
   if (!splash.enabled || !splash.imageUrl.startsWith("https://")) return false;
-  const from = splash.activeFrom ? Date.parse(splash.activeFrom) : Number.NaN;
-  const to = splash.activeTo ? Date.parse(splash.activeTo) : Number.NaN;
+  const from = beijingEpoch(splash.activeFrom);
+  const to = beijingEpoch(splash.activeTo);
   if (!Number.isNaN(from) && now < from || !Number.isNaN(to) && now > to) return false;
   if (splash.frequency === "EVERY_VISIT") return true;
   const record = wx.getStorageSync<{ version?: number; date?: string }>(splashStorageKey(storeCode)) || {};
-  if (splash.frequency === "DAILY") return record.date !== new Date(now).toISOString().slice(0, 10);
+  if (splash.frequency === "DAILY") return record.date !== beijingDateKey(now);
   return record.version !== version;
 }
 
 export function rememberSplash(storeCode: string, version: number, now = Date.now()): void {
-  wx.setStorageSync(splashStorageKey(storeCode), { version, date: new Date(now).toISOString().slice(0, 10) });
+  wx.setStorageSync(splashStorageKey(storeCode), { version, date: beijingDateKey(now) });
 }
 
 export function runDecorationAction(action: DecorationAction): void {

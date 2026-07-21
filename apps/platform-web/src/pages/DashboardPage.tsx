@@ -17,6 +17,7 @@ import { StatusTag } from '../components/StatusTag';
 import { TrendChart } from '../components/TrendChart';
 import { dashboardService } from '../lib/services';
 import type { DashboardData, Tenant, TrendPoint } from '../types';
+import { formatBeijingDateTime } from '../utils/datetime';
 
 const defaultTrend: TrendPoint[] = Array.from({ length: 7 }, (_, index) => ({
   date: `--${String(index + 1).padStart(2, '0')}`,
@@ -50,7 +51,7 @@ export function DashboardPage() {
     { title: '联系人', dataIndex: 'contactName', key: 'contactName', render: (value, row) => <div>{value || '—'}<small className="table-subtext">{row.contactPhone || ''}</small></div> },
     { title: '门店', dataIndex: 'storeCount', key: 'storeCount', align: 'right', render: (value) => `${value || 0} 家` },
     { title: '状态', dataIndex: 'status', key: 'status', render: (value) => <StatusTag status={value} /> },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', render: (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '—' },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', render: formatBeijingDateTime },
   ];
 
   return (

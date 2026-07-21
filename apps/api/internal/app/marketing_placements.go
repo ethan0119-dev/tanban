@@ -75,7 +75,7 @@ func marketingPlacementView(row marketingPlacementRow) map[string]any {
 		"action_type": row.ActionType, "action_target_id": target, "frequency": row.Frequency, "priority": row.Priority, "channel_scope": row.ChannelScope,
 		"active_from": marketingTime(row.ActiveFrom), "active_to": marketingTime(row.ActiveTo), "status": row.Status, "version": row.Version,
 		"impression_count": row.Impressions, "click_count": row.Clicks, "close_count": row.Closes,
-		"created_at": row.CreatedAt.UTC().Format(time.RFC3339), "updated_at": row.UpdatedAt.UTC().Format(time.RFC3339),
+		"created_at": formatBeijingDateTime(row.CreatedAt), "updated_at": formatBeijingDateTime(row.UpdatedAt),
 	}
 }
 

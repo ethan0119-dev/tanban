@@ -45,7 +45,7 @@ func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
-		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
+		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.deleted_at IS NULL ORDER BY t.id DESC LIMIT 5`)
 	if err != nil {
 		handleSQLError(w, err)
@@ -71,7 +71,7 @@ func (s *Server) listAllStores(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT s.id,s.tenant_id,t.name,s.code,s.name,s.phone,s.address,s.business_hours,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM stores s JOIN tenants t ON t.id=s.tenant_id WHERE s.deleted_at IS NULL ORDER BY s.id DESC LIMIT ? OFFSET ?`, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT s.id,s.tenant_id,t.name,s.code,s.name,s.phone,s.address,s.business_hours,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%d %H:%i:%s') FROM stores s JOIN tenants t ON t.id=s.tenant_id WHERE s.deleted_at IS NULL ORDER BY s.id DESC LIMIT ? OFFSET ?`, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return

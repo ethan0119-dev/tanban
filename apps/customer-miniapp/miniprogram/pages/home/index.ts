@@ -16,6 +16,7 @@ import { tableContextForStore } from "../../utils/table-context";
 import { fastFoodContextForStore } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
+import { formatBeijingDateTime } from "../../utils/datetime";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,7 +59,8 @@ Page({
   async loadStore(storeCode: string) {
     this.setData({ loading: true, error: "" });
     try {
-      const store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+      const response = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+      const store = { ...response, nextOpenAt: response.nextOpenAt ? formatBeijingDateTime(response.nextOpenAt) : "" };
       const decoration = normalizeDecoration(store.decoration, store);
       rememberPageAppearance(store);
       const modules = decoration.home.modules.filter((module) => module.enabled);

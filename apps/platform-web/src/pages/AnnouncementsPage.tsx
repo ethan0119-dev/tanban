@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { canManagePlatformUsers } from '../lib/permissions';
 import { announcementService, tenantService } from '../lib/services';
 import type { AnnouncementValues, PageMeta, PlatformAnnouncement, Tenant } from '../types';
+import { formatBeijingDateTime } from '../utils/datetime';
 
 const categoryOptions = [
   { value: 'SYSTEM_UPDATE', label: '系统迭代' },
@@ -23,7 +24,7 @@ const statusText: Record<string, string> = { DRAFT: '草稿', PUBLISHED: '已发
 const statusColor: Record<string, string> = { DRAFT: 'default', PUBLISHED: 'success', WITHDRAWN: 'warning' };
 
 function displayTime(value?: string) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
+  return formatBeijingDateTime(value);
 }
 
 export function AnnouncementsPage() {

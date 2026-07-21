@@ -358,12 +358,11 @@ func (s *Server) getProductStatistics(w http.ResponseWriter, r *http.Request) {
 		if raw == "" {
 			continue
 		}
-		parsed, err := time.Parse(time.RFC3339, raw)
+		parsed, err := parseBeijingDateTime(raw)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", key+" must be an RFC3339 timestamp")
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", key+" must use Beijing time")
 			return
 		}
-		parsed = parsed.UTC()
 		*target = &parsed
 	}
 	if from != nil && to != nil && !from.Before(*to) {
@@ -395,10 +394,10 @@ func (s *Server) getProductStatistics(w http.ResponseWriter, r *http.Request) {
 	}
 	fromText, toText := "", ""
 	if from != nil {
-		fromText = from.Format(time.RFC3339)
+		fromText = formatBeijingDateTime(*from)
 	}
 	if to != nil {
-		toText = to.Format(time.RFC3339)
+		toText = formatBeijingDateTime(*to)
 	}
 	writeData(w, http.StatusOK, map[string]any{
 		"product_id": productID, "paid_order_count": paidOrders, "sales_count": salesCount,

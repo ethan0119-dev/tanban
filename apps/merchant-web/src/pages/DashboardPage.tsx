@@ -17,7 +17,7 @@ import { canViewMerchantFinancials, isMerchantStaff } from '../auth/permissions'
 import { OrderStatusTag } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
 import type { DashboardData, Order } from '../types';
-import { dateTime, percentChange, yuan } from '../utils/format';
+import { beijingNowDateTime, dateTime, percentChange, yuan } from '../utils/format';
 
 function normalizeDashboard(raw: unknown): DashboardData {
   const value = (raw ?? {}) as Record<string, unknown>;
@@ -60,7 +60,7 @@ export function DashboardPage() {
   const maxTrend = Math.max(...(data?.revenueTrend?.map((item) => item.value) ?? [1]), 1);
   const maxPopular = Math.max(...(data?.popularProducts?.map((item) => item.count) ?? [1]), 1);
   const greeting = useMemo(() => {
-    const hour = new Date().getHours();
+    const hour = Number(beijingNowDateTime().slice(11, 13));
     if (hour < 11) return '早上好，准备开始今天的营业吧';
     if (hour < 18) return '下午好，门店正在稳定运转';
     return '晚上好，夜市的高峰要来啦';
@@ -83,7 +83,7 @@ export function DashboardPage() {
       {contextHolder}
       <PageHeading
         title={greeting}
-        description={`今日数据实时更新 · 最近刷新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`}
+        description={`今日数据实时更新 · 最近刷新 ${beijingNowDateTime()}`}
         extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新数据</Button>}
       />
       <Row gutter={[16, 16]}>

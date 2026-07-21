@@ -207,7 +207,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		popularProducts = append(popularProducts, map[string]any{"name": name, "count": count})
 	}
 	popularRows.Close()
-	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,order_type,pickup_code,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_no,total_cents,status,order_type,pickup_code,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
 		FROM orders WHERE tenant_id=? AND store_id=? ORDER BY id DESC LIMIT 5`, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -581,7 +581,7 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listStaff(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM users WHERE tenant_id=? AND deleted_at IS NULL ORDER BY id DESC`, identity.TenantID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM users WHERE tenant_id=? AND deleted_at IS NULL ORDER BY id DESC`, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

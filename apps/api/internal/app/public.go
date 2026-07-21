@@ -50,7 +50,7 @@ func (s *Server) publicStoredValue(w http.ResponseWriter, r *http.Request) {
 	available := settings.Enabled && settings.ShowInMiniapp
 	rules := []map[string]any{}
 	if available {
-		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%dT%H:%i:%sZ')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%dT%H:%i:%sZ')) FROM stored_value_rules WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) ORDER BY recharge_cents,id`, store.TenantID)
+		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%d %H:%i:%s')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%d %H:%i:%s')) FROM stored_value_rules WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) ORDER BY recharge_cents,id`, store.TenantID)
 		if queryErr != nil {
 			handleSQLError(w, queryErr)
 			return
@@ -221,7 +221,7 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 
 func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, error) {
 	var store storeDTO
-	err := scanStore(s.DB.QueryRowContext(ctx, `SELECT s.id,s.tenant_id,s.code,s.name,s.logo_url,s.banner_url,s.address,s.phone,s.business_hours,s.notice,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%dT%H:%i:%sZ')
+	err := scanStore(s.DB.QueryRowContext(ctx, `SELECT s.id,s.tenant_id,s.code,s.name,s.logo_url,s.banner_url,s.address,s.phone,s.business_hours,s.notice,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM stores s JOIN tenants t ON t.id=s.tenant_id LEFT JOIN store_profiles p ON p.store_id=s.id AND p.tenant_id=s.tenant_id
 		WHERE s.code=? AND s.status='ACTIVE' AND COALESCE(p.visible_in_miniapp,1)=1 AND s.deleted_at IS NULL AND t.status='ACTIVE' AND t.deleted_at IS NULL`, code), &store)
 	return store, err

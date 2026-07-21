@@ -13,7 +13,7 @@ func (s *Server) listPayments(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT p.id,p.order_id,o.order_no,p.provider,p.provider_order_no,p.amount_cents,p.status,IF(p.paid_at IS NULL,NULL,DATE_FORMAT(p.paid_at,'%Y-%m-%dT%H:%i:%sZ')),o.refunded_cents,DATE_FORMAT(p.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM payment_transactions p JOIN orders o ON o.id=p.order_id WHERE p.tenant_id=? ORDER BY p.id DESC LIMIT ? OFFSET ?`, identity.TenantID, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT p.id,p.order_id,o.order_no,p.provider,p.provider_order_no,p.amount_cents,p.status,IF(p.paid_at IS NULL,NULL,DATE_FORMAT(p.paid_at,'%Y-%m-%d %H:%i:%s')),o.refunded_cents,DATE_FORMAT(p.created_at,'%Y-%m-%d %H:%i:%s') FROM payment_transactions p JOIN orders o ON o.id=p.order_id WHERE p.tenant_id=? ORDER BY p.id DESC LIMIT ? OFFSET ?`, identity.TenantID, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return

@@ -58,10 +58,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 			NotifyURL: cfg.TianQue.NotifyURL,
 		}}
 	}
-	var printer provider.PrinterProvider = provider.MockPrinter{Logger: logger}
-	if cfg.PrinterProvider == "xprinter" {
-		printer = provider.XPrinter{}
-	}
+	printer := provider.NewPrinterRouter(cfg.PrinterProvider, logger, provider.NewXPrinter(provider.XPrinterConfig{
+		BaseURL: cfg.XPYun.BaseURL,
+		User:    cfg.XPYun.User,
+		UserKey: cfg.XPYun.UserKey,
+	}))
 	return &Server{
 		DB: db, Config: cfg, Logger: logger, Cache: cache.NewMemory(),
 		Payment: payment, MockPayment: mockPayment, Printer: printer,

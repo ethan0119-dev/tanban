@@ -120,13 +120,13 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		if raw == "" {
 			continue
 		}
-		parsed, parseErr := time.Parse(time.RFC3339, raw)
+		parsed, parseErr := parseBeijingDateTime(raw)
 		if parseErr != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", filter.camel+" must be an RFC3339 timestamp")
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", filter.camel+" must use Beijing time")
 			return
 		}
 		where += " AND created_at " + filter.operator + " ?"
-		args = append(args, parsed.UTC())
+		args = append(args, formatBeijingDateTime(parsed))
 	}
 	var total int
 	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM orders"+where, args...).Scan(&total); err != nil {
@@ -135,7 +135,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, size, offset)
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
-		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
+		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -192,7 +192,7 @@ type sqlQueryer interface {
 
 func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID, id int64, orderNo string) (orderDTO, error) {
 	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
-		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM orders WHERE tenant_id=?`
+		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders WHERE tenant_id=?`
 	args := []any{tenantID}
 	if id > 0 {
 		query += " AND id=?"
@@ -1056,7 +1056,7 @@ func (s *Server) finalizeRefund(ctx context.Context, refundID int64, providerRef
 func (s *Server) writeRefund(w http.ResponseWriter, r *http.Request, statusCode int, tenantID, refundID int64) {
 	var id, orderID, amount, createdBy int64
 	var refundNo, providerNo, reason, status, lastError, created string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT id,order_id,refund_no,provider_refund_no,amount_cents,reason,status,last_error,created_by,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM refunds WHERE id=? AND tenant_id=?`, refundID, tenantID).
+	err := s.DB.QueryRowContext(r.Context(), `SELECT id,order_id,refund_no,provider_refund_no,amount_cents,reason,status,last_error,created_by,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM refunds WHERE id=? AND tenant_id=?`, refundID, tenantID).
 		Scan(&id, &orderID, &refundNo, &providerNo, &amount, &reason, &status, &lastError, &createdBy, &created)
 	if err != nil {
 		handleSQLError(w, err)
@@ -1073,7 +1073,7 @@ func (s *Server) listRefunds(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_id,refund_no,provider_refund_no,amount_cents,reason,status,last_error,created_by,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM refunds WHERE tenant_id=? ORDER BY id DESC LIMIT ? OFFSET ?`, identity.TenantID, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,order_id,refund_no,provider_refund_no,amount_cents,reason,status,last_error,created_by,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM refunds WHERE tenant_id=? ORDER BY id DESC LIMIT ? OFFSET ?`, identity.TenantID, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return

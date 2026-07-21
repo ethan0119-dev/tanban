@@ -1,6 +1,7 @@
 import { EyeOutlined, HistoryOutlined, RollbackOutlined } from '@ant-design/icons';
 import { Button, Drawer, Empty, List, Space, Tag, Typography } from 'antd';
 import type { DecorationVersion } from '../../features/decoration/model';
+import { dateTime } from '../../utils/format';
 
 interface VersionDrawerProps {
   open: boolean;
@@ -45,6 +46,5 @@ export function VersionDrawer({ open, versions, currentVersionNo, loading, actio
 
 function formatTime(value?: string) {
   if (!value) return '发布时间未知';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+  return dateTime(value);
 }

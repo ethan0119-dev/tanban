@@ -27,7 +27,6 @@ import {
   message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
@@ -41,7 +40,7 @@ import type {
   CouponValidityMode,
   MarketingCampaignStatus,
 } from '../features/marketing/types';
-import { dateTime, yuan } from '../utils/format';
+import { beijingPickerValue, dateTime, toBeijingRFC3339, yuan } from '../utils/format';
 import './marketing.css';
 
 interface CouponFormValues {
@@ -114,9 +113,9 @@ export function CouponsPage() {
       distribution_mode: item.distributionChannel,
       total_stock: item.totalStock,
       per_subject_limit: item.perSubjectLimit,
-      claim_range: item.claimStartAt && item.claimEndAt ? [dayjs(item.claimStartAt), dayjs(item.claimEndAt)] : undefined,
+      claim_range: item.claimStartAt && item.claimEndAt ? [beijingPickerValue(item.claimStartAt)!, beijingPickerValue(item.claimEndAt)!] : undefined,
       validity_mode: item.validityMode,
-      validity_range: item.validFrom && item.validTo ? [dayjs(item.validFrom), dayjs(item.validTo)] : undefined,
+      validity_range: item.validFrom && item.validTo ? [beijingPickerValue(item.validFrom)!, beijingPickerValue(item.validTo)!] : undefined,
       valid_days: item.validDays,
       order_types: item.orderTypes,
     } : {
@@ -150,11 +149,11 @@ export function CouponsPage() {
       discount_cents: discountCents,
       total_stock: Number(values.total_stock),
       per_subject_limit: Number(values.per_subject_limit),
-      claim_start_at: values.claim_range?.[0].toISOString(),
-      claim_end_at: values.claim_range?.[1].toISOString(),
+      claim_start_at: toBeijingRFC3339(values.claim_range?.[0]),
+      claim_end_at: toBeijingRFC3339(values.claim_range?.[1]),
       validity_mode: values.validity_mode,
-      valid_from: values.validity_mode === 'FIXED_RANGE' ? values.validity_range?.[0].toISOString() : undefined,
-      valid_to: values.validity_mode === 'FIXED_RANGE' ? values.validity_range?.[1].toISOString() : undefined,
+      valid_from: values.validity_mode === 'FIXED_RANGE' ? toBeijingRFC3339(values.validity_range?.[0]) : undefined,
+      valid_to: values.validity_mode === 'FIXED_RANGE' ? toBeijingRFC3339(values.validity_range?.[1]) : undefined,
       valid_days: values.validity_mode === 'RELATIVE_DAYS' ? Number(values.valid_days) : 0,
       order_types: values.order_types,
     };
@@ -217,8 +216,8 @@ export function CouponsPage() {
           <Form.Item label="活动说明" name="description" rules={[{ max: 500 }]}><Input.TextArea rows={2} placeholder="面向商户和顾客的简短说明" /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.type !== current.type}>{({ getFieldValue }) => <Row gutter={16}>{getFieldValue('type') === 'FULL_REDUCTION' ? <Col span={8}><Form.Item label="使用门槛" name="threshold" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col> : null}<Col span={8}><Form.Item label="优惠金额" name="discount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="总库存" name="total_stock" rules={[{ required: true }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row>}</Form.Item>
           <Row gutter={16}><Col span={8}><Form.Item label="发放方式" name="distribution_mode" rules={[{ required: true }]}><Select options={[{ value: 'PUBLIC_CLAIM', label: '顾客公开领取' }, { value: 'MANUAL_ONLY', label: '仅商户人工发放' }, { value: 'LOTTERY_ONLY', label: '仅作为抽奖奖品' }]} /></Form.Item></Col><Col span={8}><Form.Item label="每位顾客限领" name="per_subject_limit"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="适用订单" name="order_types" rules={[{ required: true }]}><Select mode="multiple" options={[{ value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col></Row>
-          <Form.Item label="领取时间" name="claim_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item>
-          <Row gutter={16}><Col span={10}><Form.Item label="有效期方式" name="validity_mode"><Select options={[{ value: 'RELATIVE_DAYS', label: '领取后若干天' }, { value: 'FIXED_RANGE', label: '固定日期区间' }]} /></Form.Item></Col><Col span={14}><Form.Item noStyle shouldUpdate={(previous, current) => previous.validity_mode !== current.validity_mode}>{({ getFieldValue }) => getFieldValue('validity_mode') === 'FIXED_RANGE' ? <Form.Item label="固定有效期" name="validity_range" rules={[{ required: true, message: '请选择固定有效期' }]}><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item> : <Form.Item label="领取后有效天数" name="valid_days" rules={[{ required: true }]}><InputNumber min={1} max={3650} precision={0} addonAfter="天" style={{ width: '100%' }} /></Form.Item>}</Form.Item></Col></Row>
+          <Form.Item label="领取时间（北京时间）" name="claim_range"><DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} /></Form.Item>
+          <Row gutter={16}><Col span={10}><Form.Item label="有效期方式" name="validity_mode"><Select options={[{ value: 'RELATIVE_DAYS', label: '领取后若干天' }, { value: 'FIXED_RANGE', label: '固定日期区间' }]} /></Form.Item></Col><Col span={14}><Form.Item noStyle shouldUpdate={(previous, current) => previous.validity_mode !== current.validity_mode}>{({ getFieldValue }) => getFieldValue('validity_mode') === 'FIXED_RANGE' ? <Form.Item label="固定有效期（北京时间）" name="validity_range" rules={[{ required: true, message: '请选择固定有效期' }]}><DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} /></Form.Item> : <Form.Item label="领取后有效天数" name="valid_days" rules={[{ required: true }]}><InputNumber min={1} max={3650} precision={0} addonAfter="天" style={{ width: '100%' }} /></Form.Item>}</Form.Item></Col></Row>
         </Form>
       </Modal>
     </div>

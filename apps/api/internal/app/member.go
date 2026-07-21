@@ -162,7 +162,7 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 		COALESCE(ba.principal_cents,0),COALESCE(ba.bonus_cents,0),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=c.tenant_id AND o.customer_id=c.id),
 		(SELECT COALESCE(SUM(o.paid_cents-o.refunded_cents),0) FROM orders o WHERE o.tenant_id=c.tenant_id AND o.customer_id=c.id),
-		DATE_FORMAT(c.registered_at,'%Y-%m-%dT%H:%i:%sZ'),IF(c.last_seen_at IS NULL,NULL,DATE_FORMAT(c.last_seen_at,'%Y-%m-%dT%H:%i:%sZ'))`+
+		DATE_FORMAT(c.registered_at,'%Y-%m-%d %H:%i:%s'),IF(c.last_seen_at IS NULL,NULL,DATE_FORMAT(c.last_seen_at,'%Y-%m-%d %H:%i:%s'))`+
 		base+` LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id`+where+" ORDER BY c.id DESC LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -271,8 +271,8 @@ func (s *Server) getCustomerByID(w http.ResponseWriter, r *http.Request, tenantI
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=c.tenant_id AND o.customer_id=c.id),
 		(SELECT COALESCE(SUM(o.paid_cents-o.refunded_cents),0) FROM orders o WHERE o.tenant_id=c.tenant_id AND o.customer_id=c.id),
 		(SELECT COALESCE(SUM(o.refunded_cents),0) FROM orders o WHERE o.tenant_id=c.tenant_id AND o.customer_id=c.id),
-		DATE_FORMAT(c.registered_at,'%Y-%m-%dT%H:%i:%sZ'),IF(c.last_seen_at IS NULL,NULL,DATE_FORMAT(c.last_seen_at,'%Y-%m-%dT%H:%i:%sZ')),
-		IF(m.joined_at IS NULL,NULL,DATE_FORMAT(m.joined_at,'%Y-%m-%dT%H:%i:%sZ')),IF(m.expires_at IS NULL,NULL,DATE_FORMAT(m.expires_at,'%Y-%m-%dT%H:%i:%sZ'))
+		DATE_FORMAT(c.registered_at,'%Y-%m-%d %H:%i:%s'),IF(c.last_seen_at IS NULL,NULL,DATE_FORMAT(c.last_seen_at,'%Y-%m-%d %H:%i:%s')),
+		IF(m.joined_at IS NULL,NULL,DATE_FORMAT(m.joined_at,'%Y-%m-%d %H:%i:%s')),IF(m.expires_at IS NULL,NULL,DATE_FORMAT(m.expires_at,'%Y-%m-%d %H:%i:%s'))
 		FROM customers c LEFT JOIN stores st ON st.id=c.source_store_id AND st.tenant_id=c.tenant_id
 		LEFT JOIN members m ON m.customer_id=c.id AND m.tenant_id=c.tenant_id LEFT JOIN member_levels ml ON ml.id=m.current_level_id AND ml.tenant_id=m.tenant_id
 		LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id
@@ -438,7 +438,7 @@ type customerTagInput struct {
 
 func (s *Server) listCustomerTags(w http.ResponseWriter, r *http.Request) {
 	actor := currentIdentity(r.Context())
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.name,t.color,t.description,t.status,COUNT(a.customer_id),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM customer_tags t LEFT JOIN customer_tag_assignments a ON a.tenant_id=t.tenant_id AND a.tag_id=t.id WHERE t.tenant_id=? AND t.deleted_at IS NULL GROUP BY t.id ORDER BY t.id DESC`, actor.TenantID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.name,t.color,t.description,t.status,COUNT(a.customer_id),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s') FROM customer_tags t LEFT JOIN customer_tag_assignments a ON a.tenant_id=t.tenant_id AND a.tag_id=t.id WHERE t.tenant_id=? AND t.deleted_at IS NULL GROUP BY t.id ORDER BY t.id DESC`, actor.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -629,7 +629,7 @@ type memberLevelInput struct {
 
 func (s *Server) listMemberLevels(w http.ResponseWriter, r *http.Request) {
 	actor := currentIdentity(r.Context())
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT l.id,l.name,l.rank_no,l.acquire_type,l.growth_threshold,l.price_cents,l.valid_days,l.benefits_json,l.upgrade_gift_json,l.is_default,l.status,COUNT(m.id),DATE_FORMAT(l.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM member_levels l LEFT JOIN members m ON m.tenant_id=l.tenant_id AND m.current_level_id=l.id WHERE l.tenant_id=? AND l.deleted_at IS NULL GROUP BY l.id ORDER BY l.rank_no,l.id`, actor.TenantID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT l.id,l.name,l.rank_no,l.acquire_type,l.growth_threshold,l.price_cents,l.valid_days,l.benefits_json,l.upgrade_gift_json,l.is_default,l.status,COUNT(m.id),DATE_FORMAT(l.created_at,'%Y-%m-%d %H:%i:%s') FROM member_levels l LEFT JOIN members m ON m.tenant_id=l.tenant_id AND m.current_level_id=l.id WHERE l.tenant_id=? AND l.deleted_at IS NULL GROUP BY l.id ORDER BY l.rank_no,l.id`, actor.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -947,7 +947,7 @@ func (s *Server) listMemberCardIssuances(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	queryArgs := append(append([]any{}, args...), size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT i.id,i.issue_no,i.customer_id,c.name,m.member_no,COALESCE(l.name,''),i.issue_source,i.status,DATE_FORMAT(i.valid_from,'%Y-%m-%dT%H:%i:%sZ'),IF(i.valid_to IS NULL,NULL,DATE_FORMAT(i.valid_to,'%Y-%m-%dT%H:%i:%sZ')),DATE_FORMAT(i.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM member_card_issuances i JOIN customers c ON c.id=i.customer_id AND c.tenant_id=i.tenant_id JOIN members m ON m.id=i.member_id AND m.tenant_id=i.tenant_id LEFT JOIN member_levels l ON l.id=i.level_id AND l.tenant_id=i.tenant_id`+where+" ORDER BY i.id DESC LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT i.id,i.issue_no,i.customer_id,c.name,m.member_no,COALESCE(l.name,''),i.issue_source,i.status,DATE_FORMAT(i.valid_from,'%Y-%m-%d %H:%i:%s'),IF(i.valid_to IS NULL,NULL,DATE_FORMAT(i.valid_to,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(i.created_at,'%Y-%m-%d %H:%i:%s') FROM member_card_issuances i JOIN customers c ON c.id=i.customer_id AND c.tenant_id=i.tenant_id JOIN members m ON m.id=i.member_id AND m.tenant_id=i.tenant_id LEFT JOIN member_levels l ON l.id=i.level_id AND l.tenant_id=i.tenant_id`+where+" ORDER BY i.id DESC LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1081,7 +1081,7 @@ func (s *Server) listMemberLevelOrders(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT o.id,o.order_no,o.customer_id,c.name,l.name,o.amount_cents,o.payment_method,o.payment_status,o.status,o.remark,DATE_FORMAT(o.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM member_level_orders o JOIN customers c ON c.id=o.customer_id AND c.tenant_id=o.tenant_id JOIN member_levels l ON l.id=o.level_id AND l.tenant_id=o.tenant_id WHERE o.tenant_id=? ORDER BY o.id DESC LIMIT ? OFFSET ?`, actor.TenantID, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT o.id,o.order_no,o.customer_id,c.name,l.name,o.amount_cents,o.payment_method,o.payment_status,o.status,o.remark,DATE_FORMAT(o.created_at,'%Y-%m-%d %H:%i:%s') FROM member_level_orders o JOIN customers c ON c.id=o.customer_id AND c.tenant_id=o.tenant_id JOIN member_levels l ON l.id=o.level_id AND l.tenant_id=o.tenant_id WHERE o.tenant_id=? ORDER BY o.id DESC LIMIT ? OFFSET ?`, actor.TenantID, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1199,7 +1199,7 @@ func (s *Server) listBalanceLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queryArgs := append(append([]any{}, args...), size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT l.id,l.customer_id,c.name,l.account_bucket,l.delta_cents,l.balance_before_cents,l.balance_after_cents,l.entry_type,l.business_type,l.business_no,l.remark,l.operator_user_id,DATE_FORMAT(l.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM balance_ledger l JOIN customers c ON c.id=l.customer_id AND c.tenant_id=l.tenant_id`+where+" ORDER BY l.id DESC LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT l.id,l.customer_id,c.name,l.account_bucket,l.delta_cents,l.balance_before_cents,l.balance_after_cents,l.entry_type,l.business_type,l.business_no,l.remark,l.operator_user_id,DATE_FORMAT(l.created_at,'%Y-%m-%d %H:%i:%s') FROM balance_ledger l JOIN customers c ON c.id=l.customer_id AND c.tenant_id=l.tenant_id`+where+" ORDER BY l.id DESC LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1328,7 +1328,7 @@ type storedValueRuleInput struct {
 
 func (s *Server) listStoredValueRules(w http.ResponseWriter, r *http.Request) {
 	actor := currentIdentity(r.Context())
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,benefits_json,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%dT%H:%i:%sZ')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%dT%H:%i:%sZ')),status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM stored_value_rules WHERE tenant_id=? AND deleted_at IS NULL ORDER BY recharge_cents,id`, actor.TenantID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,benefits_json,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%d %H:%i:%s')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%d %H:%i:%s')),status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM stored_value_rules WHERE tenant_id=? AND deleted_at IS NULL ORDER BY recharge_cents,id`, actor.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1698,7 +1698,7 @@ func (s *Server) listStoredValueRecords(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	queryArgs := append(append([]any{}, args...), size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT v.id,v.record_no,v.customer_id,c.name,COALESCE(r.name,''),v.principal_cents,v.gift_cents,v.payment_method,v.status,v.remark,DATE_FORMAT(v.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM stored_value_records v JOIN customers c ON c.id=v.customer_id AND c.tenant_id=v.tenant_id LEFT JOIN stored_value_rules r ON r.id=v.rule_id AND r.tenant_id=v.tenant_id`+where+" ORDER BY v.id DESC LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT v.id,v.record_no,v.customer_id,c.name,COALESCE(r.name,''),v.principal_cents,v.gift_cents,v.payment_method,v.status,v.remark,DATE_FORMAT(v.created_at,'%Y-%m-%d %H:%i:%s') FROM stored_value_records v JOIN customers c ON c.id=v.customer_id AND c.tenant_id=v.tenant_id LEFT JOIN stored_value_rules r ON r.id=v.rule_id AND r.tenant_id=v.tenant_id`+where+" ORDER BY v.id DESC LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1739,9 +1739,9 @@ func optionalTime(value *string) (*time.Time, error) {
 	if value == nil || strings.TrimSpace(*value) == "" {
 		return nil, nil
 	}
-	parsed, err := time.Parse(time.RFC3339, *value)
+	parsed, err := parseBeijingDateTime(*value)
 	if err != nil {
-		return nil, fmt.Errorf("time must be RFC3339")
+		return nil, fmt.Errorf("time must use Beijing time such as 2026-07-21 14:00:00")
 	}
 	return &parsed, nil
 }

@@ -15,19 +15,23 @@ import (
 )
 
 type printerDTO struct {
-	ID              int64    `json:"id"`
-	StoreID         int64    `json:"store_id"`
-	Name            string   `json:"name"`
-	Provider        string   `json:"provider"`
-	Model           string   `json:"model"`
-	SN              string   `json:"sn"`
-	PaperWidth      int      `json:"paper_width"`
-	PrintTrigger    string   `json:"print_trigger"`
-	OutputType      string   `json:"output_type"`
-	CopyRoles       []string `json:"copyRoles"`
-	LegacyCopyRoles []string `json:"copy_roles"`
-	TemplateText    string   `json:"template_text"`
-	Status          string   `json:"status"`
+	ID                int64      `json:"id"`
+	StoreID           int64      `json:"store_id"`
+	Name              string     `json:"name"`
+	Provider          string     `json:"provider"`
+	Model             string     `json:"model"`
+	SN                string     `json:"sn"`
+	PaperWidth        int        `json:"paper_width"`
+	PrintTrigger      string     `json:"print_trigger"`
+	OutputType        string     `json:"output_type"`
+	CopyRoles         []string   `json:"copyRoles"`
+	LegacyCopyRoles   []string   `json:"copy_roles"`
+	TemplateText      string     `json:"template_text"`
+	Status            string     `json:"status"`
+	ConnectionStatus  string     `json:"connection_status"`
+	ConnectionMessage string     `json:"connection_message,omitempty"`
+	StatusCheckedAt   *time.Time `json:"status_checked_at,omitempty"`
+	LastSeenAt        *time.Time `json:"last_seen_at,omitempty"`
 }
 
 type printerInput struct {
@@ -67,6 +71,7 @@ func (s *Server) listPrinters(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, err)
 			return
 		}
+		s.resolvePrinterConnection(r.Context(), &item)
 		items = append(items, item)
 	}
 	writeData(w, http.StatusOK, items)
@@ -208,6 +213,7 @@ func (s *Server) getPrinterByID(w http.ResponseWriter, r *http.Request, tenantID
 		handleSQLError(w, err)
 		return
 	}
+	s.resolvePrinterConnection(r.Context(), &item)
 	writeData(w, http.StatusOK, item)
 }
 
@@ -281,7 +287,7 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	result, err := s.Printer.Print(r.Context(), provider.PrintRequest{DeviceSN: device.SN, DeviceType: device.Model, Content: "摊伴打印机测试\n设备：" + device.Name})
+	result, err := s.Printer.Print(r.Context(), provider.PrintRequest{Provider: device.Provider, DeviceSN: device.SN, DeviceType: device.Model, OutputType: device.OutputType, Content: "摊伴打印机测试\n设备：" + device.Name})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "PRINTER_PROVIDER_ERROR", err.Error())
 		return
@@ -306,6 +312,25 @@ func scanPrinter(row scanner, item *printerDTO) error {
 	item.CopyRoles = normalized
 	item.LegacyCopyRoles = append([]string(nil), normalized...)
 	return nil
+}
+
+func (s *Server) resolvePrinterConnection(ctx context.Context, item *printerDTO) {
+	checkedAt := time.Now()
+	if item.Status == "DISABLED" {
+		item.ConnectionStatus = "DISABLED"
+		item.ConnectionMessage = "设备已在系统中停用"
+		item.StatusCheckedAt = &checkedAt
+		return
+	}
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result := s.Printer.Status(statusCtx, provider.PrinterStatusRequest{Provider: item.Provider, DeviceSN: item.SN})
+	item.ConnectionStatus = result.Status
+	item.ConnectionMessage = result.Message
+	item.StatusCheckedAt = &result.CheckedAt
+	if result.Status == "ONLINE" || result.Status == "PAPER_OUT" {
+		item.LastSeenAt = &result.CheckedAt
+	}
 }
 
 func (s *Server) enqueueOrderPrints(ctx context.Context, tenantID, storeID, orderID int64, event string, reprint bool, actorID int64, extra string) error {
@@ -508,15 +533,15 @@ func (s *Server) dispatchPrintJob(ctx context.Context, id int64) error {
 	if count, _ := claimed.RowsAffected(); count != 1 {
 		return nil
 	}
-	var sn, model, content string
+	var providerName, sn, model, outputType, content string
 	var reprint bool
-	if err = s.DB.QueryRowContext(ctx, `SELECT d.sn,d.model,j.content_text,j.is_reprint FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id WHERE j.id=?`, id).Scan(&sn, &model, &content, &reprint); err != nil {
+	if err = s.DB.QueryRowContext(ctx, `SELECT d.provider,d.sn,d.model,d.output_type,j.content_text,j.is_reprint FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id WHERE j.id=?`, id).Scan(&providerName, &sn, &model, &outputType, &content, &reprint); err != nil {
 		_, _ = s.DB.ExecContext(ctx, "UPDATE print_jobs SET status='FAILED',error_message=? WHERE id=?", err.Error(), id)
 		return err
 	}
 	printCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	result, printErr := s.Printer.Print(printCtx, provider.PrintRequest{JobID: id, DeviceSN: sn, DeviceType: model, Content: content, Reprint: reprint})
+	result, printErr := s.Printer.Print(printCtx, provider.PrintRequest{JobID: id, Provider: providerName, DeviceSN: sn, DeviceType: model, OutputType: outputType, Content: content, Reprint: reprint})
 	if printErr != nil {
 		status := "FAILED"
 		if errors.Is(printErr, context.DeadlineExceeded) || errors.Is(printCtx.Err(), context.DeadlineExceeded) {
@@ -1103,7 +1128,7 @@ func (s *Server) listPrintJobs(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT j.id,j.order_id,o.order_no,j.printer_id,j.template_id,j.copy_role,j.paper_width,d.name,d.output_type,j.provider_job_no,j.status,j.attempts,j.is_reprint,j.reprint_of,j.error_message,DATE_FORMAT(j.created_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT j.id,j.order_id,o.order_no,j.printer_id,j.template_id,j.copy_role,j.paper_width,d.name,d.output_type,j.provider_job_no,j.status,j.attempts,j.is_reprint,j.reprint_of,j.error_message,DATE_FORMAT(j.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM print_jobs j JOIN orders o ON o.id=j.order_id AND o.tenant_id=j.tenant_id AND o.store_id=j.store_id
 		JOIN printer_devices d ON d.id=j.printer_id AND d.tenant_id=j.tenant_id AND d.store_id=j.store_id
 		WHERE j.tenant_id=? AND j.store_id=? ORDER BY j.id DESC LIMIT ? OFFSET ?`, identity.TenantID, storeID, size, offset)

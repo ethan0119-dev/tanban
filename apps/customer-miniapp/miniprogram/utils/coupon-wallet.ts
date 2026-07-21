@@ -1,4 +1,5 @@
 import type { MarketingCoupon } from "../types/domain";
+import { beijingNowDateTime } from "./datetime";
 
 const WALLET_KEY = "tanban_coupon_wallet_v1";
 
@@ -18,7 +19,7 @@ export function rememberClaimedCoupon(storeCode: string, coupon: MarketingCoupon
   const wallet = readWallet();
   const current = wallet[storeCode] || [];
   wallet[storeCode] = [
-    { ...coupon, claimedAt: new Date().toISOString(), assetStatus: "PROVISIONAL" as const },
+    { ...coupon, claimedAt: beijingNowDateTime(), assetStatus: "PROVISIONAL" as const },
     ...current.filter((item) => item.id !== coupon.id),
   ].slice(0, 100);
   wx.setStorageSync(WALLET_KEY, wallet);

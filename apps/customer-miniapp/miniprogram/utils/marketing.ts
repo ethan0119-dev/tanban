@@ -1,11 +1,10 @@
 import type { MarketingPlacement } from "../types/domain";
+import { beijingDateKey } from "./datetime";
 
 const PREFIX = "tanban_marketing_popup_v1";
 
 function localDay(now = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+  return beijingDateKey(now);
 }
 
 function storageKey(storeCode: string, placement: MarketingPlacement): string {

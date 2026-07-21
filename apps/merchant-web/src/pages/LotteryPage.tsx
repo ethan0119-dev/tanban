@@ -31,14 +31,13 @@ import {
   message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import { marketingApi } from '../features/marketing/api';
 import type { CouponCampaign, LotteryCampaign, LotteryCampaignPayload, LotteryPrize, LotteryPrizeType } from '../features/marketing/types';
-import { dateTime } from '../utils/format';
+import { beijingPickerValue, dateTime, toBeijingRFC3339 } from '../utils/format';
 import './marketing.css';
 
 interface PrizeFormValue {
@@ -111,7 +110,7 @@ export function LotteryPage() {
       name: item.name,
       description: item.description,
       channel_scope: item.channelScope,
-      active_range: item.activeFrom && item.activeTo ? [dayjs(item.activeFrom), dayjs(item.activeTo)] : undefined,
+      active_range: item.activeFrom && item.activeTo ? [beijingPickerValue(item.activeFrom)!, beijingPickerValue(item.activeTo)!] : undefined,
       daily_limit: item.dailyLimit,
       total_limit: item.totalLimit,
       terms: item.terms,
@@ -161,8 +160,8 @@ export function LotteryPage() {
       name: values.name.trim(),
       description: values.description?.trim() || '',
       channel_scope: values.channel_scope,
-      active_from: values.active_range![0].toISOString(),
-      active_to: values.active_range![1].toISOString(),
+      active_from: toBeijingRFC3339(values.active_range![0])!,
+      active_to: toBeijingRFC3339(values.active_range![1])!,
       daily_limit: Number(values.daily_limit),
       total_limit: Number(values.total_limit),
       terms: values.terms.trim(),
@@ -241,7 +240,7 @@ export function LotteryPage() {
 
       <Modal title={editing ? '编辑抽奖活动与奖项' : '新建抽奖活动'} width={980} open={editorOpen} onCancel={() => setEditorOpen(false)} onOk={() => void save()} confirmLoading={saving} destroyOnHidden>
         <Form form={form} layout="vertical">
-          <Row gutter={16}><Col span={12}><Form.Item label="活动名称" name="name" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input placeholder="例如：夏日咖啡幸运转盘" /></Form.Item></Col><Col span={12}><Form.Item label="活动周期" name="active_range" rules={[{ required: true, message: '请选择活动周期' }]}><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={12}><Form.Item label="活动名称" name="name" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input placeholder="例如：夏日咖啡幸运转盘" /></Form.Item></Col><Col span={12}><Form.Item label="活动周期（北京时间）" name="active_range" rules={[{ required: true, message: '请选择活动周期' }]}><DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} /></Form.Item></Col></Row>
           <Form.Item label="活动简介" name="description" rules={[{ max: 500 }]}><Input placeholder="展示在活动列表中的一句话简介" /></Form.Item>
           <Row gutter={16}><Col span={8}><Form.Item label="每人每日次数" name="daily_limit" rules={[{ required: true }]}><InputNumber min={1} max={100} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="每人活动期总次数" name="total_limit" rules={[{ required: true }]}><InputNumber min={1} max={10000} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col></Row>
           <Form.Item label="活动说明与规则" name="terms" rules={[{ required: true, whitespace: true }, { max: 5000 }]}><Input.TextArea rows={3} maxLength={5000} showCount /></Form.Item>

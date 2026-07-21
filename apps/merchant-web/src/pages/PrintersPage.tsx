@@ -34,13 +34,15 @@ import { api, errorMessage } from '../api/client';
 import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
 import { PageHeading } from '../components/PageHeading';
 import type { PrintCopyRole, PrintJob, Printer } from '../types';
-import { dateTime } from '../utils/format';
+import { beijingNowDateTime, beijingTodayKey, dateTime } from '../utils/format';
 import { canRetryPrintJob, printJobStatusView } from '../utils/print-job';
 
 const printerStatus = {
   ONLINE: { text: '在线', status: 'success' as const },
   OFFLINE: { text: '离线', status: 'default' as const },
   PAPER_OUT: { text: '缺纸', status: 'error' as const },
+  UNREACHABLE: { text: '无法连接', status: 'error' as const },
+  SIMULATED: { text: '模拟设备', status: 'processing' as const },
   DISABLED: { text: '已停用', status: 'warning' as const },
 };
 
@@ -74,15 +76,20 @@ function normalizedPrinterCopyRoles(rawValue: unknown, outputType: NonNullable<P
 function normalizePrinter(value: Printer): Printer {
   const raw = value as unknown as Record<string, unknown>;
   const provider = String(raw.provider ?? value.vendor ?? 'mock');
-  const rawStatus = String(raw.status ?? value.status ?? 'ACTIVE');
+  const configuredStatus = String(raw.status ?? 'ACTIVE');
+  const connectionStatus = String(raw.connection_status ?? value.connectionStatus ?? (provider === 'mock' ? 'SIMULATED' : 'UNREACHABLE'));
   const outputType = value.outputType ?? (raw.output_type as Printer['outputType']) ?? (value.type === 'LABEL' ? 'LABEL' : 'RECEIPT');
   return {
     ...value,
     vendor: value.vendor ?? provider,
     provider,
     type: value.type ?? (provider === 'mock' ? 'VIRTUAL' : String(raw.model ?? '').toLowerCase().includes('label') ? 'LABEL' : 'RECEIPT'),
-    enabled: value.enabled ?? rawStatus === 'ACTIVE',
-    status: rawStatus === 'ACTIVE' ? 'ONLINE' : rawStatus === 'PAPER_OUT' ? 'PAPER_OUT' : rawStatus === 'DISABLED' ? 'DISABLED' : 'OFFLINE',
+    enabled: value.enabled ?? configuredStatus === 'ACTIVE',
+    status: configuredStatus === 'DISABLED' ? 'DISABLED' : connectionStatus as Printer['status'],
+    connectionStatus: connectionStatus as Printer['connectionStatus'],
+    connectionMessage: String(raw.connection_message ?? value.connectionMessage ?? ''),
+    statusCheckedAt: String(raw.status_checked_at ?? value.statusCheckedAt ?? ''),
+    lastSeenAt: String(raw.last_seen_at ?? value.lastSeenAt ?? ''),
     paperWidth: Number(value.paperWidth ?? raw.paper_width ?? 58) === 80 ? 80 : 58,
     printTrigger: value.printTrigger ?? (raw.print_trigger as Printer['printTrigger']) ?? 'PAYMENT_SUCCESS',
     outputType,
@@ -164,6 +171,16 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    if (jobsOnly) return;
+    const timer = window.setInterval(() => {
+      void api.getList<Printer>('/merchant/printers')
+        .then((result) => setPrinters(result.items.map(normalizePrinter)))
+        .catch(() => undefined);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [jobsOnly]);
+
+  useEffect(() => {
     if (!binding || !formOutputType) return;
     const current = form.getFieldValue('copyRoles') ?? [];
     if (formOutputType === 'LABEL') {
@@ -229,7 +246,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
 
   const testPrint = async (printer: Printer) => {
     try {
-      await api.post(`/merchant/printers/${printer.id}/test`, { content: '摊伴打印测试页', requestedAt: new Date().toISOString() });
+      await api.post(`/merchant/printers/${printer.id}/test`, { content: '摊伴打印测试页', requestedAt: beijingNowDateTime() });
       messageApi.success(`测试页已直接发送至 ${printer.name}；测试页不计入订单打印任务`);
     } catch (error) {
       messageApi.error(errorMessage(error));
@@ -258,7 +275,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
   const stats = useMemo(() => ({
     online: printers.filter((item) => item.enabled && item.status === 'ONLINE').length,
     failed: jobs.filter((item) => item.status === 'FAILED' || item.status === 'UNKNOWN').length,
-    today: jobs.filter((item) => new Date(item.createdAt).toDateString() === new Date().toDateString()).length,
+    today: jobs.filter((item) => dateTime(item.createdAt).slice(0, 10) === beijingTodayKey()).length,
   }), [jobs, printers]);
 
   const printJobsTable = (
@@ -335,7 +352,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
                             <div><Typography.Title level={5}>{printer.name}</Typography.Title><Badge status={state.status} text={state.text} /></div>
                             <Switch checked={printer.enabled} onChange={(checked) => void togglePrinter(printer, checked)} />
                           </div>
-                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? '模拟设备（测试）' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>纸张宽度</span><strong>{printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
+                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? '模拟设备（测试）' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>纸张宽度</span><strong>{printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>状态说明</span><strong>{printer.connectionMessage || '--'}</strong><span>状态检查</span><strong>{dateTime(printer.statusCheckedAt)}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
                           <Row gutter={8}>
                             <Col span={10}><Button block icon={<EditOutlined />} onClick={() => openEdit(printer)}>编辑配置</Button></Col>
                             <Col span={14}><Button block icon={<PrinterOutlined />} disabled={!printer.enabled} onClick={() => void testPrint(printer)}>测试打印</Button></Col>

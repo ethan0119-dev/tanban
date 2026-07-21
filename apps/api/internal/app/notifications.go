@@ -150,8 +150,8 @@ func (s *Server) listPlatformAnnouncements(w http.ResponseWriter, r *http.Reques
 }
 
 const platformAnnouncementListQuery = `SELECT a.id,a.title,a.summary,a.content,a.category,a.severity,a.audience_type,a.status,a.created_by,
-	DATE_FORMAT(a.created_at,'%Y-%m-%dT%H:%i:%sZ'),DATE_FORMAT(a.updated_at,'%Y-%m-%dT%H:%i:%sZ'),
-	COALESCE(DATE_FORMAT(a.published_at,'%Y-%m-%dT%H:%i:%sZ'),''),COALESCE(DATE_FORMAT(a.withdrawn_at,'%Y-%m-%dT%H:%i:%sZ'),''),
+	DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s'),DATE_FORMAT(a.updated_at,'%Y-%m-%d %H:%i:%s'),
+	COALESCE(DATE_FORMAT(a.published_at,'%Y-%m-%d %H:%i:%s'),''),COALESCE(DATE_FORMAT(a.withdrawn_at,'%Y-%m-%d %H:%i:%s'),''),
 	CASE WHEN a.status='DRAFT' AND a.audience_type='ALL' THEN (SELECT COUNT(*) FROM tenants t WHERE t.deleted_at IS NULL)
 		 WHEN a.status='DRAFT' THEN (SELECT COUNT(*) FROM platform_announcement_targets pat WHERE pat.announcement_id=a.id)
 		 ELSE (SELECT COUNT(*) FROM merchant_notification_recipients mnr WHERE mnr.announcement_id=a.id) END,
@@ -409,7 +409,7 @@ func (s *Server) listMerchantNotifications(w http.ResponseWriter, r *http.Reques
 	writeList(w, http.StatusOK, items, total, page, size)
 }
 
-const merchantNotificationQuery = `SELECT a.id,a.title,a.summary,a.content,a.category,a.severity,DATE_FORMAT(a.published_at,'%Y-%m-%dT%H:%i:%sZ'),COALESCE(DATE_FORMAT(mread.read_at,'%Y-%m-%dT%H:%i:%sZ'),'') FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=?`
+const merchantNotificationQuery = `SELECT a.id,a.title,a.summary,a.content,a.category,a.severity,DATE_FORMAT(a.published_at,'%Y-%m-%d %H:%i:%s'),COALESCE(DATE_FORMAT(mread.read_at,'%Y-%m-%d %H:%i:%s'),'') FROM merchant_notification_recipients recipient JOIN platform_announcements a ON a.id=recipient.announcement_id AND a.status='PUBLISHED' LEFT JOIN merchant_notification_reads mread ON mread.announcement_id=a.id AND mread.user_id=?`
 
 func scanMerchantNotification(scanner rowScanner) (merchantNotificationDTO, error) {
 	var item merchantNotificationDTO

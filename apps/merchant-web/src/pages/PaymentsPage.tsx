@@ -29,7 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import type { PaymentRecord, RefundRecord } from '../types';
-import { dateTime, yuan } from '../utils/format';
+import { dateTime, toBeijingRFC3339, yuan } from '../utils/format';
 
 const { RangePicker } = DatePicker;
 const paymentStatus: Record<string, { text: string; color: string }> = {
@@ -92,8 +92,8 @@ export function PaymentsPage() {
     setLoading(true);
     const params = {
       keyword: keyword || undefined,
-      startAt: dates?.[0]?.startOf('day').toISOString(),
-      endAt: dates?.[1]?.endOf('day').toISOString(),
+      startAt: toBeijingRFC3339(dates?.[0]?.startOf('day')),
+      endAt: toBeijingRFC3339(dates?.[1]?.endOf('day')),
       page_size: 100,
     };
     try {
@@ -179,7 +179,7 @@ export function PaymentsPage() {
       <Card bordered={false} className="content-card payment-record-card">
         <div className="record-filter">
           <Input allowClear prefix={<SearchOutlined />} value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => void load()} placeholder="搜索订单号或支付单号" />
-          <RangePicker value={dates} onChange={(value) => setDates(value)} />
+          <RangePicker format="YYYY-MM-DD" value={dates} onChange={(value) => setDates(value)} />
           <Button type="primary" onClick={() => void load()}>查询</Button>
         </div>
         <Tabs

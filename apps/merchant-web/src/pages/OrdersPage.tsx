@@ -44,7 +44,7 @@ import { ordersForBusinessType } from '../features/orders/model';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import { normalizeOrder } from '../features/storefront/model';
 import type { ListResult, Order, OrderBusinessType, OrderStatus, OrderType, TableBoardResponse, TableBoardTable } from '../types';
-import { dateTime, yuan } from '../utils/format';
+import { dateTime, toBeijingRFC3339, yuan } from '../utils/format';
 
 const { RangePicker } = DatePicker;
 const statusTabs: Array<{ key: 'ALL' | OrderStatus; label: string }> = [
@@ -150,8 +150,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
       const normalized = await api.getList<Order>('/merchant/orders', {
         status: status === 'ALL' ? undefined : status,
         keyword: keyword || undefined,
-        startAt: dates?.[0]?.startOf('day').toISOString(),
-        endAt: dates?.[1]?.endOf('day').toISOString(),
+        startAt: toBeijingRFC3339(dates?.[0]?.startOf('day')),
+        endAt: toBeijingRFC3339(dates?.[1]?.endOf('day')),
         order_type: isDelivery ? 'DELIVERY' : serviceMode,
         page,
         page_size: pageSize,
@@ -335,7 +335,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
               placeholder={isDelivery ? '搜索订单号、收货人或手机号' : '搜索订单号、桌号、取餐号或顾客手机号'}
             />
           </Col>
-          <Col xs={24} sm={16} lg={9}><RangePicker disabled={unavailable} value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
+          <Col xs={24} sm={16} lg={9}><RangePicker format="YYYY-MM-DD" disabled={unavailable} value={dates} onChange={(value) => setDates(value)} style={{ width: '100%' }} /></Col>
           <Col xs={24} sm={8} lg={6}><Button type="primary" block disabled={unavailable} icon={<SearchOutlined />} onClick={() => void load(1)}>查询订单</Button></Col>
         </Row>
       </Card>}

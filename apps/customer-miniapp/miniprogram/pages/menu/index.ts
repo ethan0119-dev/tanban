@@ -9,6 +9,7 @@ import { clearTableOrderingContext } from "../../utils/table-context";
 import { clearFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
+import { formatBeijingDateTime } from "../../utils/datetime";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -77,6 +78,7 @@ Page({
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     try {
       const catalog = await request<Catalog>({ url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`, method: "GET" });
+      if (catalog.store?.nextOpenAt) catalog.store.nextOpenAt = formatBeijingDateTime(catalog.store.nextOpenAt);
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
       if (catalog.store) rememberPageAppearance(catalog.store);
       const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);

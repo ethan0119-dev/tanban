@@ -16,6 +16,10 @@ import (
 )
 
 func Open(dsn string) (*sql.DB, error) {
+	dsn, err := beijingDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
@@ -30,6 +34,26 @@ func Open(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// beijingDSN makes both sides of every MySQL connection agree on the time
+// contract. Loc controls DATETIME parsing in the Go driver, while time_zone is
+// applied by the driver whenever the pool opens a new MySQL session.
+func beijingDSN(dsn string) (string, error) {
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse database DSN: %w", err)
+	}
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return "", fmt.Errorf("load Beijing timezone: %w", err)
+	}
+	config.Loc = location
+	if config.Params == nil {
+		config.Params = make(map[string]string)
+	}
+	config.Params["time_zone"] = "'+08:00'"
+	return config.FormatDSN(), nil
 }
 
 func Migrate(ctx context.Context, db *sql.DB, dir string) error {

@@ -248,7 +248,10 @@ export interface Printer {
   model?: string;
   sn: string;
   type: 'VIRTUAL' | 'RECEIPT' | 'LABEL';
-  status: 'ONLINE' | 'OFFLINE' | 'PAPER_OUT' | 'DISABLED';
+  status: 'ONLINE' | 'OFFLINE' | 'PAPER_OUT' | 'UNREACHABLE' | 'SIMULATED' | 'DISABLED';
+  connectionStatus?: 'ONLINE' | 'OFFLINE' | 'PAPER_OUT' | 'UNREACHABLE' | 'SIMULATED' | 'DISABLED';
+  connectionMessage?: string;
+  statusCheckedAt?: string;
   enabled: boolean;
   lastSeenAt?: string;
   paperWidth?: number;

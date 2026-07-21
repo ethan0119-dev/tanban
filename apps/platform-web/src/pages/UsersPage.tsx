@@ -21,6 +21,7 @@ import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
 import { userService } from '../lib/services';
 import type { PageMeta, PlatformUser } from '../types';
+import { formatBeijingDateTime } from '../utils/datetime';
 
 interface UserFormValues {
   name: string;
@@ -139,7 +140,7 @@ export function UsersPage() {
     },
     { title: '角色', dataIndex: 'role', key: 'role', width: 140, render: (value) => <Tag color={value === 'PLATFORM_ADMIN' ? 'volcano' : 'blue'}>{roleNames[value] || value}</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: (value) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' },
+    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatBeijingDateTime },
     {
       title: '操作', key: 'actions', fixed: 'right', width: 260,
       render: (_, record) => (

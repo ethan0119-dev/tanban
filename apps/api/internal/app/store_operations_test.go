@@ -29,6 +29,24 @@ func TestClockMinuteSupportsEndOfDay(t *testing.T) {
 	}
 }
 
+func TestSeedStoreBusinessPeriodsUsesLegacyBeijingHours(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectExec("INSERT IGNORE INTO store_business_periods").
+		WithArgs(int64(1), int64(4), 18*60, 1440).
+		WillReturnResult(sqlmock.NewResult(0, 7))
+	if err = seedStoreBusinessPeriods(context.Background(), db, 1, 4, "18:00-24:00"); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEqualBusinessPeriodEndpointsMeanFullDay(t *testing.T) {
 	t.Parallel()
 	location := mustLocation(t)
@@ -45,6 +63,16 @@ func TestOvernightBusinessPeriodUsesOpeningBusinessDate(t *testing.T) {
 	now := time.Date(2026, time.July, 21, 1, 15, 0, 0, location) // Tuesday, inside Monday 18:00-02:00
 	state, err := evaluateStoreBusinessState(now, defaultStoreTimezone, []weeklyBusinessPeriod{{Weekday: 1, StartMinute: 18 * 60, EndMinute: 2 * 60}}, nil)
 	if err != nil || !state.Open || state.BusinessDate != "2026-07-20" {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+}
+
+func TestBusinessStateIgnoresLegacyStoreTimezoneAndUsesBeijing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.July, 21, 6, 30, 0, 0, time.UTC) // 北京时间 14:30
+	periods := []weeklyBusinessPeriod{{Weekday: 2, StartMinute: 14 * 60, EndMinute: 15 * 60}}
+	state, err := evaluateStoreBusinessState(now, "America/Los_Angeles", periods, nil)
+	if err != nil || !state.Open || state.Timezone != defaultStoreTimezone || state.BusinessDate != "2026-07-21" {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
 }

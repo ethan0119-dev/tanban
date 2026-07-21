@@ -3,6 +3,7 @@ import type { Order } from "../../types/domain";
 import { localOrderNumbers } from "../../utils/orders";
 import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { formatBeijingDateTime } from "../../utils/datetime";
 import { showUnavailableFeature } from "../../utils/availability";
 
 type PrimaryTab = "CURRENT" | "HISTORY";
@@ -33,7 +34,7 @@ function decorate(order: Order): OrderView {
     scene,
     sceneText: scene === "DINE_IN" ? "堂食订单" : "门店自取",
     statusText: statusText[String(order.status).toUpperCase()] || "状态更新中",
-    dateText: String(order.createdAt || "").replace("T", " ").slice(0, 16),
+    dateText: formatBeijingDateTime(order.createdAt),
     summaryText: summary || `取餐号 ${order.pickupCode || "--"}`,
     current: currentStatuses.has(String(order.status).toUpperCase()),
     amountText: (Number(order.amount || 0) / 100).toFixed(2),

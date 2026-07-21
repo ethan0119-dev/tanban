@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { auditService } from '../lib/services';
 import type { AuditLog, PageMeta } from '../types';
+import { formatBeijingDateTime } from '../utils/datetime';
 
 const moduleOptions = [
   { value: 'auth', label: '登录认证' },
@@ -40,7 +41,7 @@ export function AuditLogsPage() {
   useEffect(() => { void load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns: ColumnsType<AuditLog> = [
-    { title: '时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, fixed: 'left', render: (value) => new Date(value).toLocaleString('zh-CN', { hour12: false }) },
+    { title: '时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, fixed: 'left', render: formatBeijingDateTime },
     { title: '操作人', dataIndex: 'operatorName', key: 'operatorName', width: 130, render: (value) => value || '系统任务' },
     { title: '模块', dataIndex: 'module', key: 'module', width: 110, render: (value) => <Tag>{moduleOptions.find((item) => item.value === value)?.label || value || '其他'}</Tag> },
     { title: '操作', dataIndex: 'action', key: 'action', width: 180 },
@@ -70,7 +71,7 @@ export function AuditLogsPage() {
       </Card>
       <Drawer title="审计详情" width={520} open={Boolean(selected)} onClose={() => setSelected(undefined)}>
         {selected && <Descriptions bordered column={1} size="small">
-          <Descriptions.Item label="发生时间">{new Date(selected.createdAt).toLocaleString('zh-CN', { hour12: false })}</Descriptions.Item>
+          <Descriptions.Item label="发生时间">{formatBeijingDateTime(selected.createdAt)}</Descriptions.Item>
           <Descriptions.Item label="操作人">{selected.operatorName || '系统任务'} {selected.operatorId ? `（${selected.operatorId}）` : ''}</Descriptions.Item>
           <Descriptions.Item label="业务模块">{moduleOptions.find((item) => item.value === selected.module)?.label || selected.module || '其他'}</Descriptions.Item>
           <Descriptions.Item label="操作名称">{selected.action}</Descriptions.Item>

@@ -752,12 +752,15 @@ func parseDecorationTime(value string) (time.Time, error) {
 	if strings.TrimSpace(value) == "" {
 		return time.Time{}, nil
 	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02"} {
-		if parsed, err := time.Parse(layout, value); err == nil {
+	if parsed, err := parseBeijingDateTime(value); err == nil {
+		return parsed, nil
+	}
+	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, value, beijingLocation); err == nil {
 			return parsed, nil
 		}
 	}
-	return time.Time{}, errors.New("must be an RFC3339 timestamp or YYYY-MM-DD")
+	return time.Time{}, errors.New("must be a Beijing date-time such as 2026-07-21 14:00:00")
 }
 
 func (s *Server) getDecoration(w http.ResponseWriter, r *http.Request) {
@@ -941,7 +944,7 @@ func (s *Server) publishDecorationVersion(ctx context.Context, actor identity, s
 	if err = tx.Commit(); err != nil {
 		return decorationPublishedView{}, err
 	}
-	return decorationPublishedView{ID: versionID, VersionNo: versionNo, Config: config, Note: note, PublishedAt: time.Now().UTC().Format(time.RFC3339)}, nil
+	return decorationPublishedView{ID: versionID, VersionNo: versionNo, Config: config, Note: note, PublishedAt: formatBeijingDateTime(time.Now())}, nil
 }
 
 func (s *Server) listDecorationVersions(w http.ResponseWriter, r *http.Request) {
@@ -957,7 +960,7 @@ func (s *Server) listDecorationVersions(w http.ResponseWriter, r *http.Request) 
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,version_no,config_json,publish_note,DATE_FORMAT(published_at,'%Y-%m-%dT%H:%i:%sZ') FROM store_decoration_versions WHERE tenant_id=? AND store_id=? ORDER BY version_no DESC LIMIT ? OFFSET ?`, identity.TenantID, store.ID, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,version_no,config_json,publish_note,DATE_FORMAT(published_at,'%Y-%m-%d %H:%i:%s') FROM store_decoration_versions WHERE tenant_id=? AND store_id=? ORDER BY version_no DESC LIMIT ? OFFSET ?`, identity.TenantID, store.ID, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -990,7 +993,7 @@ func (s *Server) getDecorationVersion(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := scanDecorationVersion(s.DB.QueryRowContext(r.Context(), `SELECT id,version_no,config_json,publish_note,DATE_FORMAT(published_at,'%Y-%m-%dT%H:%i:%sZ') FROM store_decoration_versions WHERE id=? AND tenant_id=? AND store_id=?`, versionID, identity.TenantID, store.ID))
+	item, err := scanDecorationVersion(s.DB.QueryRowContext(r.Context(), `SELECT id,version_no,config_json,publish_note,DATE_FORMAT(published_at,'%Y-%m-%d %H:%i:%s') FROM store_decoration_versions WHERE id=? AND tenant_id=? AND store_id=?`, versionID, identity.TenantID, store.ID))
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1092,7 +1095,7 @@ func (s *Server) loadDecorationView(ctx context.Context, store storeDTO) (decora
 	var publishedID sql.NullInt64
 	var publishedVersion sql.NullInt64
 	var publishedJSON, publishedNote, publishedAt sql.NullString
-	err := s.DB.QueryRowContext(ctx, `SELECT d.draft_revision,d.draft_json,DATE_FORMAT(d.updated_at,'%Y-%m-%dT%H:%i:%sZ'),v.id,v.version_no,v.config_json,v.publish_note,DATE_FORMAT(v.published_at,'%Y-%m-%dT%H:%i:%sZ') FROM store_decorations d LEFT JOIN store_decoration_versions v ON v.id=d.published_version_id AND v.tenant_id=d.tenant_id AND v.store_id=d.store_id WHERE d.tenant_id=? AND d.store_id=?`, store.TenantID, store.ID).
+	err := s.DB.QueryRowContext(ctx, `SELECT d.draft_revision,d.draft_json,DATE_FORMAT(d.updated_at,'%Y-%m-%d %H:%i:%s'),v.id,v.version_no,v.config_json,v.publish_note,DATE_FORMAT(v.published_at,'%Y-%m-%d %H:%i:%s') FROM store_decorations d LEFT JOIN store_decoration_versions v ON v.id=d.published_version_id AND v.tenant_id=d.tenant_id AND v.store_id=d.store_id WHERE d.tenant_id=? AND d.store_id=?`, store.TenantID, store.ID).
 		Scan(&revision, &draftJSON, &updatedAt, &publishedID, &publishedVersion, &publishedJSON, &publishedNote, &publishedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return decorationView{StoreName: store.Name, Draft: decorationDraftView{Revision: 0, Config: defaultDecorationConfig(store)}}, nil
@@ -1121,7 +1124,7 @@ func (s *Server) decorationStore(ctx context.Context, r *http.Request, tenantID 
 		return storeDTO{}, err
 	}
 	var store storeDTO
-	err = scanStore(s.DB.QueryRowContext(ctx, `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, tenantID), &store)
+	err = scanStore(s.DB.QueryRowContext(ctx, `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, tenantID), &store)
 	return store, err
 }
 
@@ -1191,7 +1194,7 @@ func (s *Server) listMediaAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queryArgs := append(append([]any{}, args...), size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT a.id,a.name,a.kind,a.url,a.storage_key,a.mime_type,a.width,a.height,a.size_bytes,a.status,DATE_FORMAT(a.created_at,'%Y-%m-%dT%H:%i:%sZ'),a.group_id,COALESCE(g.name,'')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT a.id,a.name,a.kind,a.url,a.storage_key,a.mime_type,a.width,a.height,a.size_bytes,a.status,DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s'),a.group_id,COALESCE(g.name,'')
 		FROM media_assets a LEFT JOIN media_asset_groups g ON g.id=a.group_id AND g.tenant_id=a.tenant_id AND g.store_id=a.store_id AND g.deleted_at IS NULL`+where+` ORDER BY a.id DESC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -1314,7 +1317,7 @@ func (s *Server) updateMediaAsset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var existing mediaAssetView
-	err = tx.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).
+	err = tx.QueryRowContext(r.Context(), `SELECT id,name,kind,url,storage_key,mime_type,width,height,size_bytes,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM media_assets WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL FOR UPDATE`, id, identity.TenantID, storeID).
 		Scan(&existing.ID, &existing.Name, &existing.Kind, &existing.URL, &existing.StorageKey, &existing.MimeType, &existing.Width, &existing.Height, &existing.SizeBytes, &existing.Status, &existing.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)

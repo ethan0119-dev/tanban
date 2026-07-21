@@ -31,6 +31,7 @@ import { StatusTag } from '../components/StatusTag';
 import { generateInitialPassword, generatedOwnerUsername, type OwnerUsernameMode } from '../features/tenants/credentials';
 import { tenantService } from '../lib/services';
 import type { PageMeta, Tenant } from '../types';
+import { formatBeijingDate, formatBeijingDateTime } from '../utils/datetime';
 
 interface TenantFormValues {
   code: string;
@@ -242,7 +243,7 @@ export function TenantsPage() {
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
     { title: '经营证照', key: 'documents', width: 110, render: (_, row) => <Tag color={row.businessLicenseUrl && row.foodBusinessLicenseUrl ? 'success' : 'warning'}>{Number(Boolean(row.businessLicenseUrl)) + Number(Boolean(row.foodBusinessLicenseUrl))}/2</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
-    { title: '入驻时间', dataIndex: 'createdAt', key: 'createdAt', width: 120, render: (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '—' },
+    { title: '入驻时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatBeijingDateTime },
     {
       title: '操作', key: 'actions', fixed: 'right', width: 190,
       render: (_, record) => <Space>
@@ -319,8 +320,8 @@ export function TenantsPage() {
             <Descriptions.Item label="累计订单">{selected.orderCount || 0} 单</Descriptions.Item>
             <Descriptions.Item label="支付状态"><Tag color={paymentStatusColor[selected.paymentStatus || 'unbound']}>{paymentStatusText[selected.paymentStatus || 'unbound']}</Tag></Descriptions.Item>
             <Descriptions.Item label="随行付商户号">{selected.paymentMerchantNo ? `${selected.paymentMerchantNo.slice(0, 4)}****${selected.paymentMerchantNo.slice(-4)}` : '未绑定'}</Descriptions.Item>
-            <Descriptions.Item label="入驻时间">{selected.createdAt ? new Date(selected.createdAt).toLocaleString('zh-CN', { hour12: false }) : '—'}</Descriptions.Item>
-            <Descriptions.Item label="服务到期">{selected.expiresAt ? new Date(selected.expiresAt).toLocaleDateString('zh-CN') : '未设置'}</Descriptions.Item>
+            <Descriptions.Item label="入驻时间">{formatBeijingDateTime(selected.createdAt)}</Descriptions.Item>
+            <Descriptions.Item label="服务到期">{selected.expiresAt ? formatBeijingDate(selected.expiresAt) : '未设置'}</Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} className="tenant-document-title"><FileImageOutlined /> 商户经营证照</Typography.Title>
           <Typography.Paragraph type="secondary">仅平台管理员可上传或更换；商户后台只能查看，不可删除或修改。</Typography.Paragraph>

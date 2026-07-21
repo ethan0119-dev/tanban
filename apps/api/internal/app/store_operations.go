@@ -129,13 +129,10 @@ func scheduledBusinessState(now time.Time, timezone string, periods []weeklyBusi
 }
 
 func evaluateStoreBusinessState(now time.Time, timezone string, periods []weeklyBusinessPeriod, override *businessOverride) (storeBusinessState, error) {
-	if strings.TrimSpace(timezone) == "" {
-		timezone = defaultStoreTimezone
-	}
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
-		return storeBusinessState{}, fmt.Errorf("invalid store timezone: %w", err)
-	}
+	// Tanban is currently a mainland-China product: every store schedule uses
+	// Beijing wall-clock time, regardless of the server or visitor device zone.
+	timezone = defaultStoreTimezone
+	location := beijingLocation
 	localNow := now.In(location)
 	state := scheduledBusinessState(localNow, timezone, periods)
 	if override == nil || now.Before(override.StartsAt) || !now.Before(override.EndsAt) {
@@ -188,11 +185,32 @@ func loadBusinessPeriods(ctx context.Context, queryer sqlQueryer, tenantID, stor
 	return periods, rows.Err()
 }
 
+// seedStoreBusinessPeriods prevents a newly-created store from becoming
+// permanently closed before the merchant opens its settings page. A legacy
+// HH:mm-HH:mm value is honored; otherwise the initial schedule is all day.
+func seedStoreBusinessPeriods(ctx context.Context, executor sqlExecer, tenantID, storeID int64, legacyHours string) error {
+	startMinute, endMinute := 0, 0
+	parts := strings.Split(strings.TrimSpace(legacyHours), "-")
+	if len(parts) == 2 {
+		parsedStart, startErr := clockMinute(strings.TrimSpace(parts[0]), false)
+		parsedEnd, endErr := clockMinute(strings.TrimSpace(parts[1]), true)
+		if startErr == nil && endErr == nil {
+			startMinute, endMinute = parsedStart, parsedEnd
+		}
+	}
+	_, err := executor.ExecContext(ctx, `INSERT IGNORE INTO store_business_periods(tenant_id,store_id,weekday,start_minute,end_minute,sort_order,status)
+		SELECT ?,?,days.weekday,?,?,0,'ACTIVE' FROM (
+			SELECT 1 weekday UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+			UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+		) days`, tenantID, storeID, startMinute, endMinute)
+	return err
+}
+
 func loadCurrentBusinessOverride(ctx context.Context, queryer sqlQueryer, tenantID, storeID int64, now time.Time) (*businessOverride, error) {
 	var item businessOverride
 	var startsAt, endsAt string
-	nowValue := now.UTC().Format("2006-01-02 15:04:05.000")
-	err := queryer.QueryRowContext(ctx, `SELECT id,override_type,DATE_FORMAT(starts_at,'%Y-%m-%dT%H:%i:%sZ'),DATE_FORMAT(ends_at,'%Y-%m-%dT%H:%i:%sZ'),reason FROM store_business_overrides
+	nowValue := formatBeijingDateTime(now)
+	err := queryer.QueryRowContext(ctx, `SELECT id,override_type,DATE_FORMAT(starts_at,'%Y-%m-%d %H:%i:%s'),DATE_FORMAT(ends_at,'%Y-%m-%d %H:%i:%s'),reason FROM store_business_overrides
 		WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND starts_at<=? AND ends_at>?
 		ORDER BY id DESC LIMIT 1`, tenantID, storeID, nowValue, nowValue).
 		Scan(&item.ID, &item.Kind, &startsAt, &endsAt, &item.Reason)
@@ -202,11 +220,11 @@ func loadCurrentBusinessOverride(ctx context.Context, queryer sqlQueryer, tenant
 	if err != nil {
 		return nil, err
 	}
-	item.StartsAt, err = time.Parse(time.RFC3339, startsAt)
+	item.StartsAt, err = parseBeijingDateTime(startsAt)
 	if err != nil {
 		return nil, err
 	}
-	item.EndsAt, err = time.Parse(time.RFC3339, endsAt)
+	item.EndsAt, err = parseBeijingDateTime(endsAt)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +293,7 @@ func allocatePickupCode(ctx context.Context, tx *sql.Tx, tenantID, storeID int64
 func businessStateView(state storeBusinessState) map[string]any {
 	nextOpenAt := ""
 	if state.NextOpenAt != nil {
-		nextOpenAt = state.NextOpenAt.Format(time.RFC3339)
+		nextOpenAt = formatBeijingDateTime(*state.NextOpenAt)
 	}
 	return map[string]any{
 		"businessStatus":        map[bool]string{true: "OPEN", false: "CLOSED"}[state.Open],
@@ -321,7 +339,7 @@ func (s *Server) getStoreBusinessHours(w http.ResponseWriter, r *http.Request) {
 	view["storeId"] = storeID
 	view["weeklySchedule"] = days
 	if state.Override != nil {
-		view["temporaryOverride"] = map[string]any{"id": state.Override.ID, "status": state.Override.Kind, "startsAt": state.Override.StartsAt.Format(time.RFC3339), "endsAt": state.Override.EndsAt.Format(time.RFC3339), "reason": state.Override.Reason}
+		view["temporaryOverride"] = map[string]any{"id": state.Override.ID, "status": state.Override.Kind, "startsAt": formatBeijingDateTime(state.Override.StartsAt), "endsAt": formatBeijingDateTime(state.Override.EndsAt), "reason": state.Override.Reason}
 	}
 	writeData(w, http.StatusOK, view)
 }
@@ -332,16 +350,7 @@ type businessHoursInput struct {
 }
 
 func normalizeBusinessSchedule(input businessHoursInput) (string, []weeklyBusinessPeriod, error) {
-	timezone := strings.TrimSpace(input.Timezone)
-	if timezone == "" {
-		timezone = defaultStoreTimezone
-	}
-	if len(timezone) > 64 {
-		return "", nil, errors.New("timezone must not exceed 64 characters")
-	}
-	if _, err := time.LoadLocation(timezone); err != nil {
-		return "", nil, errors.New("timezone must be a valid IANA timezone")
-	}
+	timezone := defaultStoreTimezone
 	seenDays := map[int]bool{}
 	occupied := make([]bool, 7*1440)
 	periods := []weeklyBusinessPeriod{}
@@ -462,21 +471,21 @@ func (s *Server) updateStoreBusinessOverride(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "reason must not exceed 255 characters")
 		return
 	}
-	now := time.Now().UTC()
+	now := time.Now().In(beijingLocation)
 	startsAt := now
 	var err error
 	if strings.TrimSpace(input.StartsAt) != "" {
-		startsAt, err = time.Parse(time.RFC3339, input.StartsAt)
+		startsAt, err = parseBeijingDateTime(input.StartsAt)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "startsAt must be RFC3339")
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "startsAt must be a Beijing date-time")
 			return
 		}
 	}
 	var endsAt time.Time
 	if input.Status != "NONE" {
-		endsAt, err = time.Parse(time.RFC3339, input.EndsAt)
+		endsAt, err = parseBeijingDateTime(input.EndsAt)
 		if err != nil || !endsAt.After(startsAt) || endsAt.Sub(startsAt) > 31*24*time.Hour {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "endsAt must be after startsAt and within 31 days")
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "endsAt must be Beijing time after startsAt and within 31 days")
 			return
 		}
 	}
@@ -501,7 +510,7 @@ func (s *Server) updateStoreBusinessOverride(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if input.Status != "NONE" {
-		if _, err = tx.ExecContext(r.Context(), `INSERT INTO store_business_overrides(tenant_id,store_id,override_type,starts_at,ends_at,reason,status,created_by) VALUES(?,?,?,?,?,?,'ACTIVE',?)`, actor.TenantID, storeID, input.Status, startsAt.UTC().Format("2006-01-02 15:04:05.000"), endsAt.UTC().Format("2006-01-02 15:04:05.000"), input.Reason, actor.UserID); err != nil {
+		if _, err = tx.ExecContext(r.Context(), `INSERT INTO store_business_overrides(tenant_id,store_id,override_type,starts_at,ends_at,reason,status,created_by) VALUES(?,?,?,?,?,?,'ACTIVE',?)`, actor.TenantID, storeID, input.Status, formatBeijingDateTime(startsAt), formatBeijingDateTime(endsAt), input.Reason, actor.UserID); err != nil {
 			handleSQLError(w, err)
 			return
 		}

@@ -96,7 +96,7 @@ func marketingTime(value sql.NullTime) *string {
 	if !value.Valid {
 		return nil
 	}
-	formatted := value.Time.UTC().Format(time.RFC3339)
+	formatted := formatBeijingDateTime(value.Time)
 	return &formatted
 }
 
@@ -104,7 +104,7 @@ func marketingTimeArg(value *time.Time) any {
 	if value == nil {
 		return nil
 	}
-	return value.UTC()
+	return formatBeijingDateTime(*value)
 }
 
 func marketingWindowValid(from, to *time.Time) bool {
@@ -191,11 +191,7 @@ func marketingOrderTypesContain(values []string, wanted string) bool {
 }
 
 func marketingBusinessDate(now time.Time, timezone string) string {
-	location, err := time.LoadLocation(strings.TrimSpace(timezone))
-	if err != nil {
-		location, _ = time.LoadLocation(defaultStoreTimezone)
-	}
-	return now.In(location).Format("2006-01-02")
+	return now.In(beijingLocation).Format("2006-01-02")
 }
 
 func marketingSubjectMask(subjectHash string) string {

@@ -83,7 +83,7 @@ func marketingCouponView(row marketingCouponRow) map[string]any {
 		"validity_mode": row.ValidityMode, "valid_from": marketingTime(row.ValidFrom), "valid_to": marketingTime(row.ValidTo),
 		"valid_days": row.ValidDays, "order_types": decodeMarketingOrderTypes(row.OrderTypesJSON), "status": row.Status,
 		"version": row.Version, "claim_count": row.ClaimCount, "use_count": row.UseCount,
-		"created_at": row.CreatedAt.UTC().Format(time.RFC3339), "updated_at": row.UpdatedAt.UTC().Format(time.RFC3339),
+		"created_at": formatBeijingDateTime(row.CreatedAt), "updated_at": formatBeijingDateTime(row.UpdatedAt),
 	}
 }
 
@@ -452,7 +452,7 @@ func (s *Server) listMarketingCouponRecords(w http.ResponseWriter, r *http.Reque
 			handleSQLError(w, err)
 			return
 		}
-		items = append(items, map[string]any{"id": id, "coupon_no": no, "campaign_id": campaignID, "campaign_name": campaignName, "source": source, "status": status, "subject_key_mask": marketingSubjectMask(subject), "valid_from": validFrom.UTC().Format(time.RFC3339), "valid_to": validTo.UTC().Format(time.RFC3339), "claimed_at": claimed.UTC().Format(time.RFC3339)})
+		items = append(items, map[string]any{"id": id, "coupon_no": no, "campaign_id": campaignID, "campaign_name": campaignName, "source": source, "status": status, "subject_key_mask": marketingSubjectMask(subject), "valid_from": formatBeijingDateTime(validFrom), "valid_to": formatBeijingDateTime(validTo), "claimed_at": formatBeijingDateTime(claimed)})
 	}
 	if err = rows.Err(); err != nil {
 		handleSQLError(w, err)
@@ -648,8 +648,8 @@ func provisionalCouponView(id int64, couponNo string, campaignID int64, campaign
 	view["campaign_name"] = campaignName
 	view["source"] = source
 	view["status"] = "PROVISIONAL"
-	view["valid_from"] = validFrom.UTC().Format(time.RFC3339)
-	view["valid_to"] = validTo.UTC().Format(time.RFC3339)
+	view["valid_from"] = formatBeijingDateTime(validFrom)
+	view["valid_to"] = formatBeijingDateTime(validTo)
 	return view
 }
 

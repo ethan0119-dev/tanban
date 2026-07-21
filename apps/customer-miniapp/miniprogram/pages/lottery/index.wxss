@@ -15,3 +15,5 @@
 .draw-limit { display: block; color: rgba(255,255,255,.72); font-size: 20rpx; text-align: center; }
 .lottery-terms { display: flex; flex-direction: column; gap: 14rpx; margin: 26rpx 0 0; color: #6f5548; line-height: 1.7; }
 .lottery-terms text:first-child { color: #412d24; font-weight: 800; }
+.lottery-page .empty { color: rgba(255,255,255,.82); }
+.activity-action { display: flex; align-items: center; justify-content: center; width: 240rpx; height: 72rpx; min-height: 72rpx; margin: 26rpx auto 0; padding: 0 24rpx; border-radius: var(--button-radius); background: var(--lime); color: var(--on-accent); box-sizing: border-box; font-size: var(--font-body); font-weight: 800; line-height: 1; }

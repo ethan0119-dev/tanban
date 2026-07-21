@@ -51,6 +51,7 @@ import { merchantFeatureCopy } from '../features/availability/copy';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import type { MerchantSettings, MerchantStoreProfile, StoreBusinessDay, StoreBusinessHours } from '../types';
+import { beijingNowDateTime, beijingPickerValue, toBeijingRFC3339 } from '../utils/format';
 
 type ServiceChannel = MerchantStoreProfile['serviceChannels'][number];
 type GalleryTarget = 'environment' | 'foodSafety' | null;
@@ -128,7 +129,6 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const [businessHours, setBusinessHours] = useState<StoreBusinessHours | null>(null);
-  const [timezone, setTimezone] = useState('Asia/Shanghai');
   const [weeklySchedule, setWeeklySchedule] = useState<StoreBusinessDay[]>(emptyWeek);
   const [scheduleMode, setScheduleMode] = useState<'FULL_DAY' | 'CUSTOM'>('CUSTOM');
   const [overrideStatus, setOverrideStatus] = useState<'NONE' | 'OPEN' | 'CLOSED'>('NONE');
@@ -170,12 +170,11 @@ export function SettingsPage() {
       setEnvironmentImages(profile.environmentImageUrls || []);
       setFoodSafetyImages(profile.foodSafetyImageUrls || []);
       setBusinessHours(hours);
-      setTimezone(hours.timezone || 'Asia/Shanghai');
       const schedule = hours.weeklySchedule?.length ? hours.weeklySchedule : emptyWeek();
       setWeeklySchedule(schedule);
       setScheduleMode(isFullDayWeek(schedule) ? 'FULL_DAY' : 'CUSTOM');
       setOverrideStatus(hours.temporaryOverride?.status || 'NONE');
-      setOverrideUntil(hours.temporaryOverride?.endsAt ? dayjs(hours.temporaryOverride.endsAt) : null);
+      setOverrideUntil(beijingPickerValue(hours.temporaryOverride?.endsAt));
       setOverrideReason(hours.temporaryOverride?.reason || '');
     } catch (error) {
       messageApi.error(errorMessage(error));
@@ -194,7 +193,7 @@ export function SettingsPage() {
       messageApi.warning('请先补全必填信息');
       return;
     }
-    if (overrideStatus !== 'NONE' && (!overrideUntil || !overrideUntil.isAfter(dayjs()))) {
+    if (overrideStatus !== 'NONE' && (!overrideUntil || !overrideUntil.isAfter(dayjs(beijingNowDateTime())))) {
       setActiveTab('operation');
       messageApi.error('临时营业状态的截止时间必须晚于当前时间');
       return;
@@ -221,10 +220,10 @@ export function SettingsPage() {
           storeLatitude: values.storeLatitude,
           storeLongitude: values.storeLongitude,
         }),
-        api.put('/merchant/business-hours', { timezone, weeklySchedule }),
+        api.put('/merchant/business-hours', { timezone: 'Asia/Shanghai', weeklySchedule }),
         api.put('/merchant/business-status', {
           status: overrideStatus,
-          endsAt: overrideStatus === 'NONE' ? undefined : overrideUntil?.toISOString(),
+          endsAt: overrideStatus === 'NONE' ? undefined : toBeijingRFC3339(overrideUntil),
           reason: overrideReason,
         }),
       ]);
@@ -321,7 +320,7 @@ export function SettingsPage() {
             <Radio.Button value="CUSTOM">自定义时段</Radio.Button>
           </Radio.Group>
         </div>
-        <Form.Item label="门店时区" className="store-timezone-field"><Input value={timezone} disabled addonBefore="当前时区" /></Form.Item>
+        <Form.Item label="营业时区" className="store-timezone-field"><Input value="北京时间（UTC+8）" disabled addonBefore="统一时区" /></Form.Item>
         {scheduleMode === 'CUSTOM' && <div className="business-week-editor">
           {weeklySchedule.map((day) => (
             <div className="business-day-row" key={day.weekday}>
@@ -351,7 +350,7 @@ export function SettingsPage() {
           <Radio.Button value="CLOSED">临时闭店</Radio.Button>
         </Radio.Group>
         {overrideStatus !== 'NONE' && <Row gutter={12} style={{ marginTop: 16 }}>
-          <Col xs={24} md={10}><DatePicker showTime value={overrideUntil} onChange={setOverrideUntil} placeholder="选择覆盖截止时间" style={{ width: '100%' }} /></Col>
+          <Col xs={24} md={10}><DatePicker showTime format="YYYY-MM-DD HH:mm:ss" value={overrideUntil} onChange={setOverrideUntil} placeholder="选择北京时间截止时间" style={{ width: '100%' }} /></Col>
           <Col xs={24} md={14}><Input value={overrideReason} maxLength={255} onChange={(event) => setOverrideReason(event.target.value)} placeholder={overrideStatus === 'CLOSED' ? '例如：设备维护，今晚暂停营业' : '例如：节日临时加开'} /></Col>
         </Row>}
       </Card>

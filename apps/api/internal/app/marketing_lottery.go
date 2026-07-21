@@ -103,10 +103,10 @@ func marketingLotteryView(row marketingLotteryRow) map[string]any {
 	}
 	return map[string]any{
 		"id": row.ID, "name": row.Name, "description": row.Description, "channel_scope": row.ChannelScope,
-		"active_from": row.ActiveFrom.UTC().Format(time.RFC3339), "active_to": row.ActiveTo.UTC().Format(time.RFC3339),
+		"active_from": formatBeijingDateTime(row.ActiveFrom), "active_to": formatBeijingDateTime(row.ActiveTo),
 		"daily_limit": row.DailyLimit, "total_limit": row.TotalLimit, "limit_scope": "PER_ANONYMOUS_SUBJECT", "draw_count": row.DrawCount,
 		"terms": row.Terms, "status": row.Status, "version": row.Version, "win_count": row.WinCount, "total_weight": totalWeight, "prizes": prizes,
-		"created_at": row.CreatedAt.UTC().Format(time.RFC3339), "updated_at": row.UpdatedAt.UTC().Format(time.RFC3339),
+		"created_at": formatBeijingDateTime(row.CreatedAt), "updated_at": formatBeijingDateTime(row.UpdatedAt),
 	}
 }
 
@@ -119,7 +119,7 @@ func publicMarketingLotteryView(row marketingLotteryRow) map[string]any {
 	}
 	return map[string]any{
 		"id": row.ID, "name": row.Name, "description": row.Description, "channel_scope": row.ChannelScope,
-		"active_from": row.ActiveFrom.UTC().Format(time.RFC3339), "active_to": row.ActiveTo.UTC().Format(time.RFC3339),
+		"active_from": formatBeijingDateTime(row.ActiveFrom), "active_to": formatBeijingDateTime(row.ActiveTo),
 		"daily_limit": row.DailyLimit, "total_limit": row.TotalLimit, "limit_scope": "PER_ANONYMOUS_SUBJECT",
 		"draw_count": row.DrawCount, "terms": row.Terms, "status": row.Status, "prizes": prizes,
 	}
@@ -312,7 +312,7 @@ func (s *Server) createMarketingLottery(w http.ResponseWriter, r *http.Request) 
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO lottery_campaigns(tenant_id,store_id,name,description,channel_scope,active_from,active_to,daily_limit,total_limit,terms,status,created_by,updated_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.Description, input.ChannelScope, input.ActiveFrom.UTC(), input.ActiveTo.UTC(), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, actor.UserID)
+		VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom), formatBeijingDateTime(input.ActiveTo), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -380,7 +380,7 @@ func (s *Server) updateMarketingLottery(w http.ResponseWriter, r *http.Request) 
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(r.Context(), `UPDATE lottery_campaigns SET name=?,description=?,channel_scope=?,active_from=?,active_to=?,daily_limit=?,total_limit=?,terms=?,version=version+1,updated_by=?
-		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE' AND draw_count=0`, input.Name, input.Description, input.ChannelScope, input.ActiveFrom.UTC(), input.ActiveTo.UTC(), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, id, actor.TenantID, storeID)
+		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE' AND draw_count=0`, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom), formatBeijingDateTime(input.ActiveTo), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, id, actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -935,7 +935,7 @@ func marketingDrawView(id int64, drawNo string, campaignID int64, campaignName s
 	}
 	view["prize"] = marketingLotteryPrizeView(prize)
 	view["coupon"] = coupon
-	view["created_at"] = createdAt.UTC().Format(time.RFC3339)
+	view["created_at"] = formatBeijingDateTime(createdAt)
 	return view
 }
 
@@ -1046,7 +1046,7 @@ func (s *Server) listMarketingLotteryDraws(w http.ResponseWriter, r *http.Reques
 		var prize any
 		_ = json.Unmarshal([]byte(prizeSnapshot), &prize)
 		items = append(items, map[string]any{"id": id, "draw_no": drawNo, "campaign_id": campaignID, "campaign_name": campaignName, "result_type": resultType, "result_reason": reason,
-			"subject_key_mask": marketingSubjectMask(subject), "business_date": businessDate.Format("2006-01-02"), "prize": prize, "created_at": createdAt.UTC().Format(time.RFC3339)})
+			"subject_key_mask": marketingSubjectMask(subject), "business_date": businessDate.Format("2006-01-02"), "prize": prize, "created_at": formatBeijingDateTime(createdAt)})
 	}
 	if err = rows.Err(); err != nil {
 		handleSQLError(w, err)

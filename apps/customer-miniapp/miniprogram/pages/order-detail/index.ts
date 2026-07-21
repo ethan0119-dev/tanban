@@ -3,6 +3,7 @@ import type { Order } from "../../types/domain";
 import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
+import { formatBeijingDateTime } from "../../utils/datetime";
 
 interface OrderView extends Order {
   isDineIn: boolean;
@@ -26,6 +27,7 @@ function decorateOrder(order: Order): OrderView {
     && order.status === "PENDING_PAYMENT";
   return {
     ...order,
+    createdAt: formatBeijingDateTime(order.createdAt),
     isDineIn: order.orderScene === "DINE_IN" || order.order_scene === "DINE_IN" || Boolean(order.tablePublicId || order.table?.publicId),
     paymentSucceeded,
     paymentPending,

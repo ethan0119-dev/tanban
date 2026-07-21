@@ -21,6 +21,24 @@ func TestAlreadyAppliedDDL(t *testing.T) {
 	}
 }
 
+func TestBeijingDSNForcesDriverAndMySQLSessionTimezone(t *testing.T) {
+	t.Parallel()
+	dsn, err := beijingDSN("tanban:test@tcp(127.0.0.1:3306)/tanban?parseTime=true&loc=Local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := config.Loc.String(); got != "Asia/Shanghai" {
+		t.Fatalf("driver location=%q", got)
+	}
+	if got := config.Params["time_zone"]; got != "'+08:00'" {
+		t.Fatalf("MySQL session timezone=%q", got)
+	}
+}
+
 func TestCustomerOpaqueIdentifiersUseBinaryCollation(t *testing.T) {
 	t.Parallel()
 	body, err := os.ReadFile("../../migrations/006_member_crm.up.sql")

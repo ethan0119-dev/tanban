@@ -10,6 +10,7 @@ import { revalidateTableOrderingContext, sameTableContext, tableContextForStore,
 import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
+import { formatBeijingDateTime } from "../../utils/datetime";
 
 interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
@@ -40,6 +41,7 @@ Page({
     let store: Store | null = null;
     try {
       store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+      if (store.nextOpenAt) store.nextOpenAt = formatBeijingDateTime(store.nextOpenAt);
       this.setData({ appearanceStyle: rememberPageAppearance(store).appearanceStyle });
     } catch {
       // 创建订单时服务端仍会做最终营业状态校验。

@@ -32,7 +32,7 @@ func (s *Server) listMediaGroups(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT g.id,g.name,g.sort_order,COUNT(a.id),DATE_FORMAT(g.created_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT g.id,g.name,g.sort_order,COUNT(a.id),DATE_FORMAT(g.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM media_asset_groups g
 		LEFT JOIN media_assets a ON a.group_id=g.id AND a.tenant_id=g.tenant_id AND a.store_id=g.store_id AND a.deleted_at IS NULL
 		WHERE g.tenant_id=? AND g.store_id=? AND g.deleted_at IS NULL

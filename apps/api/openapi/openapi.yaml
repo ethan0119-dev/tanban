@@ -2,6 +2,7 @@ openapi: 3.0.3
 info:
   title: Tanban Restaurant SaaS API
   version: 0.1.0
+  description: 所有业务时间均按北京时间（Asia/Shanghai，UTC+8）输入、计算和展示；响应中的本地日期时间统一为 `YYYY-MM-DD HH:mm:ss`。需表达绝对时刻的请求可使用带 `+08:00` 的 RFC3339。
 servers:
   - url: https://tbapi.666qwe.cn/api/v1
 paths:
@@ -434,7 +435,7 @@ paths:
       responses:
         '200': {description: 'Weekly schedule, timezone, override and current business state'}
     put:
-      summary: 更新门店时区与七天多时段营业计划
+      summary: 更新按北京时间执行的七天多时段营业计划
       security: [{bearerAuth: []}]
       requestBody:
         required: true
@@ -444,7 +445,7 @@ paths:
               type: object
               required: [timezone, weeklySchedule]
               properties:
-                timezone: {type: string, example: Asia/Shanghai}
+                timezone: {type: string, enum: [Asia/Shanghai], example: Asia/Shanghai, description: 固定为北京时间。}
                 weeklySchedule:
                   type: array
                   items:

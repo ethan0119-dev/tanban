@@ -43,14 +43,14 @@ func TestNormalizeMarketingCouponInputKeepsReservedDeliveryScopeButDoesNotActiva
 	}
 }
 
-func TestMarketingBusinessDateUsesStoreTimezone(t *testing.T) {
+func TestMarketingBusinessDateAlwaysUsesBeijingTimezone(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 20, 16, 30, 0, 0, time.UTC)
 	if got := marketingBusinessDate(now, "Asia/Shanghai"); got != "2026-07-21" {
 		t.Fatalf("Shanghai business date = %s, want 2026-07-21", got)
 	}
-	if got := marketingBusinessDate(now, "America/Los_Angeles"); got != "2026-07-20" {
-		t.Fatalf("Los Angeles business date = %s, want 2026-07-20", got)
+	if got := marketingBusinessDate(now, "America/Los_Angeles"); got != "2026-07-21" {
+		t.Fatalf("business date = %s, want Beijing date 2026-07-21", got)
 	}
 }
 

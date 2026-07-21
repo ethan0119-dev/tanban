@@ -32,6 +32,7 @@ import type {
   MediaAsset,
   PreviewPage,
 } from '../features/decoration/model';
+import { beijingNowDateTime, dateTime } from '../utils/format';
 import '../decoration.css';
 
 type DecorationTab = 'pages' | 'theme' | 'ordering' | 'templates' | 'navigation' | 'splash' | 'assets';
@@ -133,7 +134,7 @@ export function DecorationPage() {
   const persistDraft = useCallback(async (): Promise<DecorationDraft> => {
     const response = await decorationApi.saveDraft(revision, config);
     response.config.storeName = config.storeName;
-    const draft = { ...response, updatedAt: response.updatedAt || new Date().toISOString() };
+    const draft = { ...response, updatedAt: response.updatedAt || beijingNowDateTime() };
     setWorkspace((current) => ({ draft, published: current?.published ?? null }));
     setConfig(cloneDecoration(draft.config));
     setDirty(false);
@@ -412,8 +413,7 @@ export function DecorationPage() {
 
 function formatTime(value?: string) {
   if (!value) return '尚未保存';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+  return dateTime(value);
 }
 
 function withRevisionHint(error: unknown) {

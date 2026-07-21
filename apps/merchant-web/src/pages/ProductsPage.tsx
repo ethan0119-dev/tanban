@@ -48,7 +48,7 @@ import { PageHeading } from '../components/PageHeading';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import type { MediaAsset } from '../features/media/model';
 import type { Category, Product, ProductImage, Sku } from '../types';
-import { yuan } from '../utils/format';
+import { dateTime, yuan } from '../utils/format';
 import './products.css';
 
 interface ProductFormValues {
@@ -919,6 +919,5 @@ function mediaAssetToProductImage(asset: MediaAsset): ProductImage {
 
 function formatDateTime(value?: string) {
   if (!value) return '不限';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+  return dateTime(value);
 }

@@ -160,7 +160,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
 		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
 		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
+		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.deleted_at IS NULL AND (t.name LIKE ? OR t.code LIKE ?) AND (?='' OR t.status=?) ORDER BY t.id DESC LIMIT ? OFFSET ?`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, search, search, status, status, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
@@ -229,7 +229,13 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := result.LastInsertId()
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,status) VALUES(?,?,?,'ACTIVE')`, id, input.InitialStoreCode, input.InitialStoreName); err != nil {
+	storeResult, err := tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,status) VALUES(?,?,?,'ACTIVE')`, id, input.InitialStoreCode, input.InitialStoreName)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	storeID, _ := storeResult.LastInsertId()
+	if err = seedStoreBusinessPeriods(r.Context(), tx, id, storeID, ""); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -270,7 +276,7 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
 		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
 		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
+		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
 		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
 	if err != nil {
@@ -403,7 +409,7 @@ func (s *Server) listPlatformStores(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
 		FROM stores WHERE tenant_id=? AND deleted_at IS NULL ORDER BY id DESC`, tenantID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -438,13 +444,27 @@ func (s *Server) createPlatformStore(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "" {
 		input.Status = "ACTIVE"
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status)
 		VALUES(?,?,?,?,?,?,?,?,?,?)`, tenantID, input.Code, input.Name, input.LogoURL, input.BannerURL, input.Address, input.Phone, input.BusinessHours, input.Notice, strings.ToUpper(input.Status))
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	id, _ := result.LastInsertId()
+	if err = seedStoreBusinessPeriods(r.Context(), tx, tenantID, id, input.BusinessHours); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	s.audit(r.Context(), currentIdentity(r.Context()), "store.create", "store", int64String(id), input, r)
 	s.getStoreByScope(w, r, tenantID, id)
 }
@@ -459,7 +479,7 @@ func (s *Server) getPlatformStore(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getStoreByScope(w http.ResponseWriter, r *http.Request, tenantID, storeID int64) {
 	var item storeDTO
-	err := scanStoreRow(s.DB.QueryRowContext(r.Context(), `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, tenantID), &item)
+	err := scanStoreRow(s.DB.QueryRowContext(r.Context(), `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, tenantID), &item)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -527,7 +547,7 @@ func (s *Server) listPlatformUsers(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
 		FROM users WHERE tenant_id=0 AND deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
@@ -594,7 +614,7 @@ func (s *Server) getPlatformUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getUserByScope(w http.ResponseWriter, r *http.Request, tenantID, id int64, platform bool) {
-	query := `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ') FROM users WHERE id=? AND deleted_at IS NULL`
+	query := `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM users WHERE id=? AND deleted_at IS NULL`
 	args := []any{id}
 	if platform {
 		query += " AND tenant_id=0"
@@ -756,7 +776,7 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,actor_user_id,action,resource_type,resource_id,request_id,ip,details_text,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%sZ')
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,actor_user_id,action,resource_type,resource_id,request_id,ip,details_text,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
 		FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?`, size, offset)
 	if err != nil {
 		handleSQLError(w, err)

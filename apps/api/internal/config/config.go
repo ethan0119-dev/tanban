@@ -26,6 +26,12 @@ type WeChatOfficialAccount struct {
 	AppSecret string
 }
 
+type XPYun struct {
+	BaseURL string
+	User    string
+	UserKey string
+}
+
 type Config struct {
 	HTTPAddr              string
 	DatabaseDSN           string
@@ -48,6 +54,7 @@ type Config struct {
 	TianQue               TianQue
 	WeChatMiniApp         WeChatMiniApp
 	WeChatOfficialAccount WeChatOfficialAccount
+	XPYun                 XPYun
 }
 
 func Load() (Config, error) {
@@ -83,6 +90,11 @@ func Load() (Config, error) {
 		WeChatOfficialAccount: WeChatOfficialAccount{
 			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_ID")),
 			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_SECRET")),
+		},
+		XPYun: XPYun{
+			BaseURL: strings.TrimRight(env("TB_XPYUN_BASE_URL", "https://open.xpyun.net/api/openapi/xprinter"), "/"),
+			User:    strings.TrimSpace(os.Getenv("TB_XPYUN_USER")),
+			UserKey: strings.TrimSpace(os.Getenv("TB_XPYUN_USER_KEY")),
 		},
 	}
 	if cfg.DatabaseDSN == "" {
