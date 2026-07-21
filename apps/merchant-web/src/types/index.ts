@@ -316,6 +316,20 @@ export interface MerchantSettings {
   paymentTimeoutMinutes?: number;
 }
 
+export interface MerchantStoreProfile {
+  storeId: Id;
+  visibleInMiniapp: boolean;
+  contactName?: string;
+  region?: string;
+  mainProducts?: string;
+  averageSpendCents: number;
+  serviceChannels: Array<'DINE_IN' | 'TAKEOUT' | 'DELIVERY'>;
+  environmentImageUrls: string[];
+  foodSafetyImageUrls: string[];
+  storeLatitude?: number;
+  storeLongitude?: number;
+}
+
 export interface MerchantOperationSettings {
   storeId: Id;
   settlementMode: 'PAY_BEFORE';

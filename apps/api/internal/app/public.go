@@ -222,7 +222,8 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, error) {
 	var store storeDTO
 	err := scanStore(s.DB.QueryRowContext(ctx, `SELECT s.id,s.tenant_id,s.code,s.name,s.logo_url,s.banner_url,s.address,s.phone,s.business_hours,s.notice,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%dT%H:%i:%sZ')
-		FROM stores s JOIN tenants t ON t.id=s.tenant_id WHERE s.code=? AND s.status='ACTIVE' AND s.deleted_at IS NULL AND t.status='ACTIVE' AND t.deleted_at IS NULL`, code), &store)
+		FROM stores s JOIN tenants t ON t.id=s.tenant_id LEFT JOIN store_profiles p ON p.store_id=s.id AND p.tenant_id=s.tenant_id
+		WHERE s.code=? AND s.status='ACTIVE' AND COALESCE(p.visible_in_miniapp,1)=1 AND s.deleted_at IS NULL AND t.status='ACTIVE' AND t.deleted_at IS NULL`, code), &store)
 	return store, err
 }
 

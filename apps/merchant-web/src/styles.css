@@ -430,6 +430,50 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .role-card .ant-typography { margin-bottom: 0; min-height: 44px; }
 
 .settings-card { margin-bottom: 16px; }
+.store-settings-tabs > .ant-card-body > .ant-tabs > .ant-tabs-nav { margin: 0; padding: 0 22px; }
+.store-settings-tabs > .ant-card-body > .ant-tabs > .ant-tabs-content-holder { padding: 20px; background: #f7f5f3; }
+.store-settings-tabs .ant-tabs-tab { padding-block: 17px; }
+.store-settings-stack { max-width: 1180px; }
+.store-status-card .ant-card-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 20px; }
+.store-status-summary { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-right: 1px solid #eee7e2; }
+.store-status-summary:last-child { border-right: 0; }
+.store-status-summary > div:nth-child(2) { min-width: 0; }
+.store-status-summary .ant-typography, .store-status-summary strong { display: block; }
+.store-status-summary strong { overflow: hidden; margin-top: 2px; color: #40352f; text-overflow: ellipsis; white-space: nowrap; }
+.store-status-icon { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 11px; color: #776c65; background: #f1edeb; font-size: 17px; }
+.store-status-icon.active { color: #3f7f58; background: #e8f4ec; }
+.store-status-icon.warning { color: #b66c28; background: #fff0de; }
+.store-code-summary .ant-btn { margin-left: auto; }
+.store-field-help { display: block; margin-top: -16px; margin-bottom: 18px; font-size: 12px; }
+.store-location-box { margin-bottom: 20px; padding: 16px 18px 4px; border: 1px solid #e9e1dc; border-radius: 12px; background: #faf8f6; }
+.store-location-copy { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 14px; }
+.store-location-copy > .anticon { margin-top: 3px; color: #9a6340; font-size: 18px; }
+.store-location-copy strong, .store-location-copy .ant-typography { display: block; }
+.store-location-copy .ant-typography { margin-top: 3px; font-size: 12px; }
+.store-map-action { display: flex; align-items: center; padding-top: 29px; }
+.store-schedule-mode { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 20px 0 16px; padding: 16px 18px; border: 1px solid #ece4df; border-radius: 12px; background: #fbf9f8; }
+.store-schedule-mode strong, .store-schedule-mode .ant-typography { display: block; }
+.store-schedule-mode .ant-typography { margin-top: 3px; font-size: 12px; }
+.store-timezone-field { max-width: 420px; }
+.store-override-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
+.store-override-heading .ant-typography { margin: 0; }
+.store-override-heading > div > .ant-typography:last-child { display: block; margin-top: 4px; font-size: 12px; }
+.store-gallery-field { padding: 2px 0; }
+.store-gallery-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.store-gallery-heading strong, .store-gallery-heading .ant-typography { display: block; }
+.store-gallery-heading .ant-typography { margin-top: 4px; font-size: 12px; }
+.store-gallery-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.store-gallery-image, .store-gallery-add { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #e2d8d1; border-radius: 10px; background: #faf8f6; }
+.store-gallery-image .ant-image, .store-gallery-image .ant-image-img { width: 100%; height: 100%; }
+.store-gallery-image .ant-image-img { object-fit: cover; }
+.store-gallery-image > .ant-btn { position: absolute; top: 5px; right: 5px; color: #fff; background: rgba(55,42,34,.72); }
+.store-gallery-add { display: grid; place-items: center; align-content: center; gap: 7px; color: #8a7467; border-style: dashed; cursor: pointer; font: inherit; }
+.store-gallery-add:hover { color: #925c3a; border-color: #b98460; background: #fffaf6; }
+.store-gallery-add .anticon { font-size: 20px; }
+.store-gallery-add span { font-size: 12px; }
+.merchant-license-title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.merchant-license-title .anticon { color: #4f8a63; }
+.store-code-preview { display: flex; justify-content: center; }
 .setting-switch-row { min-height: 72px; display: flex; justify-content: space-between; align-items: center; gap: 20px; border-bottom: 1px solid #f0ebe8; }
 .setting-switch-row:last-of-type { border-bottom: 0; }
 .setting-switch-row strong { display: block; color: #463a33; }
@@ -511,6 +555,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .printer-stats .anticon { display: none; }
   .trigger-choice .ant-radio-group { flex-direction: column; }
   .trigger-choice .ant-radio-button-wrapper { border-inline-start-width: 1px !important; border-radius: 8px !important; margin-bottom: 8px; }
+  .store-settings-tabs > .ant-card-body > .ant-tabs > .ant-tabs-nav { padding-inline: 14px; }
+  .store-settings-tabs > .ant-card-body > .ant-tabs > .ant-tabs-content-holder { padding: 12px; }
+  .store-status-card .ant-card-body { grid-template-columns: 1fr; }
+  .store-status-summary { border-right: 0; border-bottom: 1px solid #eee7e2; }
+  .store-status-summary:last-child { border-bottom: 0; }
+  .store-schedule-mode { align-items: stretch; flex-direction: column; }
+  .store-schedule-mode .ant-radio-group { display: flex; }
+  .store-schedule-mode .ant-radio-button-wrapper { flex: 1; text-align: center; }
+  .store-gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .store-map-action { padding-top: 0; padding-bottom: 20px; }
   .login-page { display: block; background: linear-gradient(160deg, #f6eee7, #fff 45%); }
   .login-atmosphere { display: none; }
   .login-panel { min-height: 100vh; padding: 34px 25px 20px; }
@@ -526,4 +580,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .category-card { min-height: auto; }
   .role-card .ant-card-body { padding: 15px; }
   .role-card .ant-typography { display: none; }
+  .store-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-day-row { align-items: flex-start; flex-direction: column; }
 }

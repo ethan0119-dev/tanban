@@ -34,6 +34,8 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
 		managers.Get("/settings", s.getMerchantSettings)
 		managers.Put("/settings", s.updateMerchantSettings)
+		managers.Get("/store-profile", s.getMerchantStoreProfile)
+		managers.Put("/store-profile", s.updateMerchantStoreProfile)
 		managers.Get("/business-hours", s.getStoreBusinessHours)
 		managers.Put("/business-hours", s.updateStoreBusinessHours)
 		managers.Put("/business-status", s.updateStoreBusinessOverride)
