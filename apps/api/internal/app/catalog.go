@@ -322,15 +322,14 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,recommended=?,in_store_enabled=?,delivery_enabled=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, inStoreEnabled, deliveryEnabled, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
+	_, err = tx.ExecContext(r.Context(), `UPDATE products SET category_id=?,name=?,description=?,image_url=?,recommended=?,in_store_enabled=?,delivery_enabled=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.CategoryID, input.Name, input.Description, mainImageURL, recommended, inStoreEnabled, deliveryEnabled, input.SortOrder, strings.ToUpper(input.Status), id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "product not found")
-		return
-	}
+	// The product row was already selected and locked above. MySQL returns the
+	// number of changed rows rather than matched rows, so zero is valid when the
+	// merchant only changes a SKU, inventory, images, or ordering configuration.
 	if len(input.SKUs) == 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_SKU", "at least one sku is required")
 		return

@@ -782,9 +782,14 @@ func (s *Server) getProductConfiguration(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	identity := currentIdentity(r.Context())
-	storeID, err := s.tenantStoreID(r, identity.TenantID)
+	var storeID int64
+	err := s.DB.QueryRowContext(r.Context(), "SELECT store_id FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL", productID, identity.TenantID).Scan(&storeID)
 	if err != nil {
-		handleSQLError(w, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "product not found")
+		} else {
+			handleSQLError(w, err)
+		}
 		return
 	}
 	config, err := s.loadProductConfiguration(r.Context(), identity.TenantID, storeID, productID, false)
@@ -809,24 +814,19 @@ func (s *Server) updateProductConfiguration(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	storeID, err := s.tenantStoreID(r, identity.TenantID)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
 	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	defer tx.Rollback()
-	var exists int
-	if err = tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM products WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL FOR UPDATE", productID, identity.TenantID, storeID).Scan(&exists); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if exists == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "product not found")
+	var storeID int64
+	if err = tx.QueryRowContext(r.Context(), "SELECT store_id FROM products WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", productID, identity.TenantID).Scan(&storeID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "product not found")
+		} else {
+			handleSQLError(w, err)
+		}
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), `DELETE v FROM product_option_values v JOIN product_option_groups g ON g.id=v.group_id WHERE g.product_id=? AND g.tenant_id=? AND g.store_id=?`, productID, identity.TenantID, storeID); err != nil {

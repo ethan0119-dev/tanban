@@ -1,14 +1,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/ethan0119-dev/tanban/apps/api/internal/config"
+	"github.com/go-chi/chi/v5"
 )
 
 type fixedWidthPrintContent struct{ columns int }
@@ -91,6 +97,44 @@ func TestNormalizePrinterCopyRoleRoutingAndLegacyDefaults(t *testing.T) {
 	invalid = printerInput{OutputType: "LABEL", CopyRoles: []string{"MERCHANT"}}
 	if err := normalizePrinterInput(&invalid); err == nil {
 		t.Fatal("label printers must reject receipt copy roles")
+	}
+}
+
+func TestUpdatePrinterAcceptsUnchangedValues(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectExec("UPDATE printer_devices SET").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM printer_devices").
+		WithArgs(int64(11), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices").
+		WithArgs(int64(11), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
+			AddRow(11, 9, "后厨打印机", "mock", "Mock Printer", "MOCK-11", 58, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT", "ticket", "ACTIVE"))
+
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+	router := chi.NewRouter()
+	router.Put("/printers/{printerID}", server.updatePrinter)
+	request := httptest.NewRequest(http.MethodPut, "/printers/11", bytes.NewBufferString(`{
+		"name":"后厨打印机","provider":"mock","model":"Mock Printer","sn":"MOCK-11",
+		"paper_width":58,"print_trigger":"PAYMENT_SUCCESS","output_type":"RECEIPT",
+		"copyRoles":["MERCHANT"],"template_text":"ticket","status":"ACTIVE"
+	}`))
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 7, TenantID: 5, Role: RoleMerchantManager}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

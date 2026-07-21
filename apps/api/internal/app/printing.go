@@ -230,9 +230,22 @@ func (s *Server) updatePrinter(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "printer not found")
+	if n, rowsErr := result.RowsAffected(); rowsErr != nil {
+		handleSQLError(w, rowsErr)
 		return
+	} else if n == 0 {
+		// MySQL reports changed rows by default, so saving an unchanged printer
+		// legitimately returns zero. Query the scoped record before deciding that
+		// it does not exist.
+		var exists int
+		if err = s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID).Scan(&exists); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if exists == 0 {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "printer not found")
+			return
+		}
 	}
 	s.audit(r.Context(), identity, "printer.update", "printer", int64String(id), map[string]any{"sn": input.SN, "copy_roles": input.CopyRoles}, r)
 	s.getPrinterByID(w, r, identity.TenantID, id)
