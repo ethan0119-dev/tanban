@@ -21,7 +21,7 @@ import {
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import tanbanLogo from '../assets/brand/tanban-logo-web.png';
+import tanbanIcon from '../assets/brand/tanban-icon.png';
 import { useAuth } from '../auth/AuthContext';
 import { isMerchantStaff } from '../auth/permissions';
 import { initials } from '../utils/format';
@@ -169,7 +169,8 @@ export function AppLayout() {
         }}
       >
         <button className="sider-brand" type="button" onClick={() => navigate('/dashboard')} aria-label="返回经营总览">
-          <img className="tanban-brand-image" src={tanbanLogo} alt="摊伴 TANBAN" />
+          <span className="tanban-brand-mark"><img className="tanban-brand-image" src={tanbanIcon} alt="" /></span>
+          {!collapsed && <span className="brand-word"><strong>摊伴</strong><small>TANBAN</small></span>}
         </button>
         <Menu
           className="merchant-menu"

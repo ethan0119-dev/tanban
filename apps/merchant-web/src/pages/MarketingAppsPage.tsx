@@ -41,7 +41,7 @@ interface AppDefinition {
 const MARKETING_APPS: AppDefinition[] = [
   { key: 'COUPON', name: '优惠券', description: '创建代金券和满减券，统一管理领取、库存与使用规则', icon: <TagsOutlined />, tone: 'amber', route: '/marketing/coupons' },
   { key: 'FULL_REDUCTION', name: '满额立减', description: '按订单门槛配置满减券，复用优惠券的资格与核销能力', icon: <PercentageOutlined />, tone: 'red', route: '/marketing/coupons' },
-  { key: 'DELIVERY_REDUCTION', name: '配送费满减', description: '按外卖配送金额减免配送费', icon: <CarOutlined />, tone: 'blue', reserved: '外卖能力预留' },
+  { key: 'DELIVERY_REDUCTION', name: '配送费满减', description: '按外卖配送金额减免配送费', icon: <CarOutlined />, tone: 'blue', reserved: '随外卖服务开放' },
   { key: 'ORDER_RED_PACKET', name: '下单返红包', description: '订单完成后向顾客返还下一单权益', icon: <GiftOutlined />, tone: 'pink' },
   { key: 'POPUP_COUPON', name: '弹窗优惠券', description: '进入门店时展示领券入口', icon: <NotificationOutlined />, tone: 'purple' },
   { key: 'POPUP_AD', name: '弹窗广告', description: '配置首页弹窗图片、频次、跳转动作与投放优先级', icon: <RocketOutlined />, tone: 'blue', route: '/marketing/popup-ads' },
@@ -93,16 +93,16 @@ export function MarketingAppsPage() {
       {holder}
       <PageHeading
         title="营销应用"
-        description="完整记录对标系统营销能力；已打通的应用可直接进入，其余入口随业务闭环逐步开放"
+        description="集中管理门店营销活动；已开放的应用可直接进入，其余服务将陆续开放"
         extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新状态</Button>}
       />
       {loadError ? <Alert className="marketing-alert" type="warning" showIcon message="应用状态暂未同步" description={`${loadError}。能力目录仍可查看，已开放页面不受影响。`} /> : null}
       <Card bordered={false} className="content-card marketing-intro-card">
         <div>
           <Typography.Title level={4}>营销玩法</Typography.Title>
-          <Typography.Paragraph type="secondary">首版聚焦优惠券 / 满减券、弹窗广告和抽奖。所有金额、库存、领取与中奖结果都以服务端校验为准。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">当前可配置优惠券、满减券、弹窗广告和抽奖活动；金额、库存和参与结果以系统记录为准。</Typography.Paragraph>
         </div>
-        <Space wrap><Tag color="success">4 个可进入入口</Tag><Tag>19 个能力已登记</Tag><Tag color="blue">外卖能力独立预留</Tag></Space>
+        <Space wrap><Tag color="success">4 个已开放入口</Tag><Tag>更多玩法陆续开放</Tag><Tag color="blue">外卖活动随外卖服务开放</Tag></Space>
       </Card>
       <Row gutter={[16, 16]} className="marketing-app-grid">
         {MARKETING_APPS.map((item) => {
@@ -119,7 +119,7 @@ export function MarketingAppsPage() {
               <div className="marketing-app-copy">
                 <div className="marketing-app-title"><Typography.Text strong>{item.name}</Typography.Text>{item.reserved ? <Tag color="blue">{item.reserved}</Tag> : available ? <Tag color="success">已开放</Tag> : <Tag>规划中</Tag>}</div>
                 <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }}>{remote?.description || item.description}</Typography.Paragraph>
-                <div className="marketing-app-footer"><Typography.Text type="secondary">{remote?.status ? `服务状态：${remote.status}` : available ? '进入配置' : '能力已登记'}</Typography.Text>{available ? <span>→</span> : null}</div>
+                <div className="marketing-app-footer"><Typography.Text type="secondary">{available ? '进入配置' : '敬请期待'}</Typography.Text>{available ? <span>→</span> : null}</div>
               </div>
             </Card>
           </Col>;

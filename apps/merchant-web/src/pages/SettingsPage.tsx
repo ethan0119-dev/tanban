@@ -33,6 +33,8 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import type { MerchantSettings, StoreBusinessDay, StoreBusinessHours } from '../types';
@@ -160,14 +162,14 @@ export function SettingsPage() {
             </Card>
 
             <Card bordered={false} className="content-card settings-card" title={<Space><QrcodeOutlined />门店点单入口</Space>}>
-              <Alert type="info" showIcon message="所有商户共用同一个小程序" description="二维码通过 scene=s=门店码区分门店；小程序收到参数后按门店码加载对应商户的数据、装修、商品和订单上下文。" />
+              <Alert type="info" showIcon message="每家门店都有专属点单入口" description="顾客扫描正式点单码后，会直接进入当前门店并看到对应的商品、活动和订单。" />
               <Row gutter={[24, 16]} align="middle" style={{ marginTop: 20 }}>
-                <Col xs={24} md={8}><div style={{ display: 'flex', justifyContent: 'center' }}>{storeCode ? <QRCode size={190} value={`pages/home/index?scene=${encodeURIComponent(`s=${storeCode}`)}`} /> : <Typography.Text type="secondary">门店码加载中</Typography.Text>}</div></Col>
+                <Col xs={24} md={8}><div style={{ display: 'flex', justifyContent: 'center' }}>{import.meta.env.DEV && storeCode ? <QRCode size={190} value={`pages/home/index?scene=${encodeURIComponent(`s=${storeCode}`)}`} /> : <div className="official-code-placeholder"><QrcodeOutlined /><span>{merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.title}</span></div>}</div></Col>
                 <Col xs={24} md={16}>
-                  <Typography.Title level={5}>当前门店：{storeCode || '—'}</Typography.Title>
-                  <Typography.Paragraph type="secondary">正式小程序码 scene：<Typography.Text code>{storeCode ? `s=${storeCode}` : '—'}</Typography.Text></Typography.Paragraph>
-                  <Space wrap><Button disabled={!storeCode} icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(`s=${storeCode}`).then(() => messageApi.success('scene 已复制'))}>复制 scene</Button><Button disabled={!storeCode} icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(`pages/home/index?scene=${encodeURIComponent(`s=${storeCode}`)}`).then(() => messageApi.success('小程序路径已复制'))}>复制路径</Button></Space>
-                  <Alert style={{ marginTop: 16 }} type="warning" showIcon message="当前二维码用于开发联调" description="正式物料应由平台调用微信 getUnlimited 接口，把同一 AppID 与当前 scene 生成官方小程序码。" />
+                  <Typography.Title level={5}>门店识别码：{storeCode || '—'}</Typography.Title>
+                  <Typography.Paragraph type="secondary">{merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.description}</Typography.Paragraph>
+                  <Button disabled={!storeCode} icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(storeCode).then(() => messageApi.success('门店识别码已复制'))}>复制门店识别码</Button>
+                  <div style={{ marginTop: 16 }}><DeveloperOnlyNote>开发预览参数为 <Typography.Text code>{storeCode ? `s=${storeCode}` : '—'}</Typography.Text>；这里只用于开发排查，不会出现在正式构建中。</DeveloperOnlyNote></div>
                 </Col>
               </Row>
             </Card>

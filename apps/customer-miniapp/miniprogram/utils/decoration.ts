@@ -10,6 +10,7 @@ import type {
 import type { TanbanAppOption } from "../app";
 import { clearFastFoodContext } from "./fast-food-context";
 import { clearTableOrderingContext, tableContextForStore } from "./table-context";
+import { showUnavailableFeature } from "./availability";
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const MODULE_TYPES: DecorationModuleType[] = [
@@ -401,7 +402,7 @@ export function runDecorationAction(action: DecorationAction): void {
       break;
     }
     case "OPEN_DELIVERY":
-      wx.showModal({ title: "外卖暂未开放", content: "当前版本支持堂食和门店自取，外卖配送将在后续版本开放。", showCancel: false });
+      showUnavailableFeature("DELIVERY");
       break;
     case "OPEN_MENU":
       wx.switchTab({ url: "/pages/menu/index" });

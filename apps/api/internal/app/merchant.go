@@ -28,6 +28,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	r.Post("/notifications/read-all", s.markAllMerchantNotificationsRead)
 	r.Get("/notifications/{notificationID}", s.getMerchantNotification)
 	r.Post("/notifications/{notificationID}/read", s.markMerchantNotificationRead)
+	r.Put("/account/password", s.changeMerchantPassword)
 
 	r.Group(func(managers chi.Router) {
 		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))

@@ -34,6 +34,7 @@ import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
+import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import { marketingApi } from '../features/marketing/api';
 import type { CouponCampaign, LotteryCampaign, LotteryCampaignPayload, LotteryPrize, LotteryPrizeType } from '../features/marketing/types';
@@ -204,7 +205,7 @@ export function LotteryPage() {
     <div className="page-shell marketing-page">
       {holder}
       <PageHeading title="抽奖活动" description="配置参与周期、每日次数、奖项权重和有限奖品库存" extra={<Space><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建抽奖</Button></Space>} />
-      <Alert className="marketing-alert" type="warning" showIcon message="中奖结果不可重抽" description="同一次抽奖请求会固定返回同一结果，优惠券奖品和库存扣减由服务端在同一事务完成。当前中奖券仍是匿名联调资产，不能抵扣真实订单；正式开放前需补齐微信顾客身份和订单计价闭环。" />
+      <FeatureAvailabilityNotice className="marketing-alert" type="warning" feature="LOTTERY_REWARD_REDEMPTION" />
       <Row gutter={[16, 16]} className="marketing-summary-grid">
         <Col xs={12} lg={6}><Card bordered={false}><Statistic title="抽奖活动" value={items.length} prefix={<TrophyOutlined />} /></Card></Col>
         <Col xs={12} lg={6}><Card bordered={false}><Statistic title="进行中" value={activeCount} /></Card></Col>
@@ -231,7 +232,7 @@ export function LotteryPage() {
             { title: '参与限制', width: 190, render: (_, item) => <Space direction="vertical" size={0}><span>每人每日 {item.dailyLimit} 次</span><Typography.Text type="secondary">每人活动期 {item.totalLimit} 次</Typography.Text></Space> },
             { title: '活动数据', width: 210, render: (_, item) => <div className="lottery-progress"><Progress percent={item.drawCount ? Math.min(item.winCount / item.drawCount * 100, 100) : 0} showInfo={false} /><Typography.Text type="secondary">{item.drawCount} 次抽奖 · {item.winCount} 次中奖</Typography.Text></div> },
             { title: '奖项', dataIndex: 'prizes', width: 100, render: (prizes: LotteryPrize[]) => `${prizes.length} 项` },
-            { title: '渠道', width: 160, render: (_, item) => <Tag>{item.channelScope === 'ALL' ? '全部店内渠道' : item.channelScope === 'DINE_IN' ? '桌码堂食' : item.channelScope === 'TAKEOUT' ? '快餐自取' : '外卖预留'}</Tag> },
+            { title: '渠道', width: 160, render: (_, item) => <Tag>{item.channelScope === 'ALL' ? '全部店内渠道' : item.channelScope === 'DINE_IN' ? '桌码堂食' : item.channelScope === 'TAKEOUT' ? '快餐自取' : '外卖暂未开放'}</Tag> },
             { title: '状态', dataIndex: 'status', width: 100, render: lotteryStatus },
             { title: '操作', fixed: 'right', width: 220, render: (_, item) => <Space size={4}><Button type="link" icon={<EditOutlined />} title={item.drawCount > 0 ? '已有抽奖记录，活动与奖项不可再编辑' : undefined} disabled={item.status === 'ACTIVE' || item.status === 'ENDED' || item.drawCount > 0} onClick={() => openEditor(item)}>编辑奖项</Button>{item.status === 'ACTIVE' ? <Popconfirm title="暂停后顾客不能继续抽奖" onConfirm={() => void transition(item, 'pause')}><Button type="link" icon={<PauseCircleOutlined />}>暂停</Button></Popconfirm> : item.status !== 'ENDED' ? <Popconfirm title="启用前将校验活动周期、奖项和库存" onConfirm={() => void transition(item, 'activate')}><Button type="link" icon={<PlayCircleOutlined />}>启用</Button></Popconfirm> : null}</Space> },
           ]}
@@ -242,7 +243,7 @@ export function LotteryPage() {
         <Form form={form} layout="vertical">
           <Row gutter={16}><Col span={12}><Form.Item label="活动名称" name="name" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input placeholder="例如：夏日咖啡幸运转盘" /></Form.Item></Col><Col span={12}><Form.Item label="活动周期" name="active_range" rules={[{ required: true, message: '请选择活动周期' }]}><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item></Col></Row>
           <Form.Item label="活动简介" name="description" rules={[{ max: 500 }]}><Input placeholder="展示在活动列表中的一句话简介" /></Form.Item>
-          <Row gutter={16}><Col span={8}><Form.Item label="每人每日次数" name="daily_limit" rules={[{ required: true }]}><InputNumber min={1} max={100} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="每人活动期总次数" name="total_limit" rules={[{ required: true }]}><InputNumber min={1} max={10000} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（预留）', disabled: true }]} /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={8}><Form.Item label="每人每日次数" name="daily_limit" rules={[{ required: true }]}><InputNumber min={1} max={100} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="每人活动期总次数" name="total_limit" rules={[{ required: true }]}><InputNumber min={1} max={10000} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="渠道范围" name="channel_scope" rules={[{ required: true }]}><Select options={[{ value: 'ALL', label: '全部店内渠道' }, { value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col></Row>
           <Form.Item label="活动说明与规则" name="terms" rules={[{ required: true, whitespace: true }, { max: 5000 }]}><Input.TextArea rows={3} maxLength={5000} showCount /></Form.Item>
           <div className="lottery-editor-heading"><div><Typography.Title level={5}>奖项设置</Typography.Title><Typography.Text type="secondary">权重只决定相对概率；优惠券奖项还受券库存与奖项库存双重限制。</Typography.Text></div></div>
           <Form.List name="prizes" rules={[{ validator: async (_, value) => { if (!value || value.length < 1) throw new Error('至少配置一个奖项'); if (value.length > 50) throw new Error('最多配置 50 个奖项'); } }]}>

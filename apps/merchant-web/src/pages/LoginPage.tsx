@@ -3,7 +3,7 @@ import { CoffeeOutlined, LockOutlined, MobileOutlined, SafetyCertificateOutlined
 import { Alert, Button, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import tanbanLogo from '../assets/brand/tanban-logo-web.png';
+import tanbanIcon from '../assets/brand/tanban-icon.png';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
 
@@ -54,7 +54,8 @@ export function LoginPage() {
       <section className="login-panel">
         <div className="login-card">
           <div className="login-brand">
-            <img src={tanbanLogo} alt="摊伴 TANBAN" />
+            <span className="login-brand-mark"><img src={tanbanIcon} alt="" /></span>
+            <span><strong>摊伴</strong><small>TANBAN</small></span>
           </div>
           <Typography.Title level={2}>欢迎回来</Typography.Title>
           <Typography.Paragraph type="secondary">登录商户运营后台，开始今天的营业</Typography.Paragraph>

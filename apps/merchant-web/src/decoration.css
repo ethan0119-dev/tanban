@@ -118,7 +118,7 @@
 .mini-hero small { color: var(--decor-accent); font-size: 7px; font-weight: 700; letter-spacing: 3px; }
 .mini-hero strong { max-width: 210px; font-size: 17px; line-height: 1.35; }
 .mini-store { display: flex; align-items: center; gap: 10px; padding: 13px 15px 8px; }
-.mini-logo { width: 40px; height: 40px; flex: 0 0 40px; object-fit: cover; border-radius: 12px; }
+.mini-logo { width: 40px; height: 40px; flex: 0 0 40px; padding: 3px; object-fit: contain; border-radius: 12px; background: rgba(255,255,255,.9); }
 .mini-logo.placeholder { display: grid; place-items: center; color: var(--decor-accent); background: var(--decor-primary); font-size: 17px; font-weight: 800; }
 .mini-store > div { display: flex; flex-direction: column; gap: 3px; }
 .mini-store strong { font-size: 15px; }

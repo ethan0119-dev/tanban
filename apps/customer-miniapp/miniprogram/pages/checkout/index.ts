@@ -9,6 +9,7 @@ import { ApiError, request } from "../../utils/request";
 import { revalidateTableOrderingContext, sameTableContext, tableContextForStore, tableOrderFields } from "../../utils/table-context";
 import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
+import { customerSafeErrorMessage } from "../../utils/availability";
 
 interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
@@ -83,7 +84,7 @@ Page({
         detailsLocked: true,
       });
     } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "订单恢复失败", icon: "none" });
+      wx.showToast({ title: customerSafeErrorMessage(error, "订单暂时无法恢复，请稍后重试。"), icon: "none" });
     } finally {
       this.setData({ submitting: false });
     }
@@ -258,7 +259,7 @@ Page({
       } else {
         wx.showModal({
           title: "下单未完成",
-          content: orderNoLongerPayable ? "原订单已关闭，请重新提交订单" : error instanceof Error ? error.message : "请稍后重试",
+          content: orderNoLongerPayable ? "原订单已关闭，请重新提交订单" : customerSafeErrorMessage(error),
           showCancel: false,
         });
       }

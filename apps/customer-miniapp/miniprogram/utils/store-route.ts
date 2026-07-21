@@ -1,5 +1,8 @@
 export type StoreRouteQuery = Record<string, string | undefined>;
 
+const INVALID_QR_MESSAGE = "二维码无效或已过期，请重新扫描门店提供的二维码";
+const WRONG_STORE_QR_MESSAGE = "该二维码不适用于当前门店，请重新扫码";
+
 export interface OrderingEntryOptions {
   query?: StoreRouteQuery;
   /** WeChat launch scene number. It is not the custom mini-program-code payload. */
@@ -93,55 +96,55 @@ export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntry
   const rawStore = presentValue(query, storeKeys);
   const explicitStore = validStoreCode(rawStore);
   if (hasExplicitStore && !explicitStore) {
-    return { kind: "INVALID", message: "门店参数无效，请重新扫码" };
+    return { kind: "INVALID", message: INVALID_QR_MESSAGE };
   }
 
   if (hasAnyKey(query, TABLE_KEYS)) {
     const publicScene = validTableScene(presentValue(query, TABLE_KEYS));
-    if (!publicScene) return { kind: "INVALID", message: "桌码参数无效，请重新扫码" };
+    if (!publicScene) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
     return { kind: "TABLE", publicScene, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
   }
 
   if (hasAnyKey(query, FAST_FOOD_KEYS)) {
     const publicId = validFastFoodPublicId(presentValue(query, FAST_FOOD_KEYS));
-    if (!publicId) return { kind: "INVALID", message: "快餐码牌参数无效，请重新扫码" };
+    if (!publicId) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
     return { kind: "FAST_FOOD", publicId, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
   }
 
   if (Object.prototype.hasOwnProperty.call(query, "scene")) {
     const rawScene = query.scene;
-    if (!rawScene) return { kind: "INVALID", message: "二维码参数为空，请重新扫码" };
+    if (!rawScene) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
     const scene = decode(rawScene).trim();
-    if (!scene) return { kind: "INVALID", message: "二维码参数为空，请重新扫码" };
+    if (!scene) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
 
     if (scene.includes("=")) {
       const fields = sceneFields(scene);
       if (hasAnyKey(fields, TABLE_KEYS)) {
         const publicScene = validTableScene(presentValue(fields, TABLE_KEYS));
-        if (!publicScene) return { kind: "INVALID", message: "桌码参数无效或已损坏，请重新扫码" };
+        if (!publicScene) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
         const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
         if (hasAnyKey(fields, storeKeys) && !sceneStore) {
-          return { kind: "INVALID", message: "桌码中的门店参数无效，请重新扫码" };
+          return { kind: "INVALID", message: INVALID_QR_MESSAGE };
         }
         if (explicitStore && sceneStore && explicitStore !== sceneStore) {
-          return { kind: "INVALID", message: "桌码与门店不匹配，请重新扫码" };
+          return { kind: "INVALID", message: WRONG_STORE_QR_MESSAGE };
         }
         const expectedStoreCode = explicitStore || sceneStore;
         return { kind: "TABLE", publicScene, ...(expectedStoreCode ? { expectedStoreCode } : {}) };
       }
       if (hasAnyKey(fields, FAST_FOOD_KEYS)) {
         const publicId = validFastFoodPublicId(presentValue(fields, FAST_FOOD_KEYS));
-        if (!publicId) return { kind: "INVALID", message: "快餐码牌参数无效或已损坏，请重新扫码" };
+        if (!publicId) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
         const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
-        if (hasAnyKey(fields, storeKeys) && !sceneStore) return { kind: "INVALID", message: "码牌中的门店参数无效，请重新扫码" };
-        if (explicitStore && sceneStore && explicitStore !== sceneStore) return { kind: "INVALID", message: "快餐码牌与门店不匹配，请重新扫码" };
+        if (hasAnyKey(fields, storeKeys) && !sceneStore) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
+        if (explicitStore && sceneStore && explicitStore !== sceneStore) return { kind: "INVALID", message: WRONG_STORE_QR_MESSAGE };
         const expectedStoreCode = explicitStore || sceneStore;
         return { kind: "FAST_FOOD", publicId, ...(expectedStoreCode ? { expectedStoreCode } : {}) };
       }
       const sceneStore = validStoreCode(fields.storeCode) || validStoreCode(fields.store) || validStoreCode(fields.s);
-      if (!sceneStore) return { kind: "INVALID", message: "二维码参数无效，请重新扫码" };
+      if (!sceneStore) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
       if (explicitStore && explicitStore !== sceneStore) {
-        return { kind: "INVALID", message: "二维码中的门店不一致，请重新扫码" };
+        return { kind: "INVALID", message: WRONG_STORE_QR_MESSAGE };
       }
       return { kind: "STORE", storeCode: explicitStore || sceneStore };
     }
@@ -154,9 +157,9 @@ export function parseOrderingEntry(options: OrderingEntryOptions): OrderingEntry
       return { kind: "TABLE", publicScene: bareTableScene, ...(explicitStore ? { expectedStoreCode: explicitStore } : {}) };
     }
     const sceneStore = validStoreCode(scene);
-    if (!sceneStore) return { kind: "INVALID", message: "二维码参数无效，请重新扫码" };
+    if (!sceneStore) return { kind: "INVALID", message: INVALID_QR_MESSAGE };
     if (explicitStore && explicitStore !== sceneStore) {
-      return { kind: "INVALID", message: "二维码中的门店不一致，请重新扫码" };
+      return { kind: "INVALID", message: WRONG_STORE_QR_MESSAGE };
     }
     return { kind: "STORE", storeCode: explicitStore || sceneStore };
   }

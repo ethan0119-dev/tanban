@@ -142,6 +142,10 @@ func (s *Server) listPlatformAnnouncements(w http.ResponseWriter, r *http.Reques
 		}
 		items = append(items, item)
 	}
+	if err = rows.Err(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	writeList(w, http.StatusOK, items, total, page, size)
 }
 
@@ -397,6 +401,10 @@ func (s *Server) listMerchantNotifications(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		handleSQLError(w, err)
+		return
 	}
 	writeList(w, http.StatusOK, items, total, page, size)
 }

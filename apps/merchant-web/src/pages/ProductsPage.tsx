@@ -45,6 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { PageHeading } from '../components/PageHeading';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import type { MediaAsset } from '../features/media/model';
 import type { Category, Product, ProductImage, Sku } from '../types';
 import { yuan } from '../utils/format';
@@ -561,7 +562,7 @@ export function ProductsPage() {
       {contextHolder}
       <PageHeading
         title="商品管理"
-        description="维护商品图片、规格库存、上下架与推荐状态，并查看真实成交统计"
+        description="维护商品图片、规格库存、上下架与推荐状态，并查看成交统计"
         extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openProduct()}>新增商品</Button></Space>}
       />
       <Row gutter={[16, 16]} align="stretch">
@@ -725,10 +726,10 @@ export function ProductsPage() {
             <Col span={12}><Form.Item label="立即上架" name="enabled" valuePropName="checked"><Switch /></Form.Item></Col>
             <Col span={12}>
               <Form.Item
-                label="每日营业自动填满库存（预留）"
+                label="每日营业自动填满库存（暂未开放）"
                 name="autoRestock"
                 valuePropName="checked"
-                extra="当前版本尚未启用幂等日切任务，避免误以为库存会自动恢复。"
+                extra={merchantFeatureCopy.PRODUCT_AUTO_RESTOCK.description}
               >
                 <Switch disabled />
               </Form.Item>
@@ -761,7 +762,7 @@ export function ProductsPage() {
             )}
           </Form.List>
           <Divider orientation="left">点单属性</Divider>
-          <Typography.Paragraph type="secondary">用于甜度、温度、是否去冰等不决定库存的点单选项；小程序会按必选和多选规则展示，并由服务端校验加价。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">用于甜度、温度、是否去冰等不决定库存的点单选项；小程序会按必选和多选规则展示，保存订单时会重新核对加价。</Typography.Paragraph>
           <Form.List name="optionGroups">
             {(groupFields, { add: addGroup, remove: removeGroup }) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -794,7 +795,7 @@ export function ProductsPage() {
           <Form.Item label="绑定加料组" name="modifierGroupIds" extra="加料组在“商品配置中心”统一维护，绑定后会出现在小程序选项弹层。">
             <Select mode="multiple" allowClear placeholder="选择可用加料组" options={modifierGroups.filter((item) => item.status === 'ACTIVE').map((item) => ({ value: item.id, label: `${item.name}（${item.min_select}–${item.max_select}项）` }))} />
           </Form.Item>
-          <Form.Item label="单位、标签、备注与打印标签" name="resourceIds" extra="V1 保存商品与配置资料的绑定关系；运营筛选、快捷备注和真实打印路由将在对应能力接入后启用。">
+          <Form.Item label="单位、标签、备注与打印标签" name="resourceIds" extra={merchantFeatureCopy.CATALOG_TEMPLATE_APPLICATION.description}>
             <Select mode="multiple" allowClear placeholder="选择商品扩展配置" options={catalogResources.filter((item) => item.status === 'ACTIVE' && !['PACKAGE', 'TEMP_PRODUCT'].includes(item.resource_type)).map((item) => ({ value: item.id, label: `${item.name} · ${item.resource_type}` }))} />
           </Form.Item>
         </Form>

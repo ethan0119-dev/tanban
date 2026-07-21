@@ -17,7 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const provisionalMarketingAssetWarning = "当前领取/中奖记录仅使用匿名关联键，尚未经过微信顾客会话验证，不可作为正式可核销顾客资产"
+const provisionalMarketingAssetWarning = "领取记录已保存到当前设备，是否可使用请以活动规则和订单结算页展示为准"
 
 // registerMarketingMerchantRoutes deliberately lives outside merchant.go so the
 // marketing module can be mounted without widening staff permissions. The

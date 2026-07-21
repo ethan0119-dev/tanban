@@ -5,6 +5,7 @@ import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
 import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
 
 interface CouponView extends MarketingCoupon {
   amountText: string;
@@ -57,7 +58,7 @@ Page({
       const coupons = Array.isArray(response) ? response : response.items || [];
       this.setData({ coupons: (coupons || []).map(viewOf), loading: false });
     } catch (error) {
-      this.setData({ loading: false, error: error instanceof Error ? error.message : "优惠券加载失败" });
+      this.setData({ loading: false, error: customerSafeErrorMessage(error, "优惠券暂时无法加载，请稍后重试。") });
     }
   },
   async claim(event: WechatMiniprogram.BaseEvent) {
@@ -73,10 +74,11 @@ Page({
         data: { subject_key: customerGuestKey() },
       });
       rememberClaimedCoupon(storeCode, coupon);
-      wx.showModal({ title: "领取已记录", content: result.warning || "当前仅生成联调领取记录，暂不能抵扣真实订单。", showCancel: false });
+      void result;
+      wx.showModal({ title: "领取结果", content: customerExperienceCopy.couponClaimed, showCancel: false });
       await this.loadCoupons();
     } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "领取失败", icon: "none" });
+      wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法领取，请稍后重试。"), icon: "none" });
       this.setData({ coupons: this.data.coupons.map((item) => item.id === id ? { ...item, claiming: false } : item) });
     }
   },

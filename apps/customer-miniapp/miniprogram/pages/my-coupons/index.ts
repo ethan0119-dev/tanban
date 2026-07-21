@@ -19,15 +19,11 @@ function viewOf(item: LocalCouponAsset): CouponAssetView {
 }
 
 Page({
-  data: { coupons: [] as CouponAssetView[], activeTab: "USABLE", appearanceStyle: "" },
+  data: { coupons: [] as CouponAssetView[], appearanceStyle: "" },
   async onShow() {
     const appearance = await loadPageAppearance();
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     this.setData({ coupons: localCouponAssets(storeCode).map(viewOf), appearanceStyle: appearance.appearanceStyle });
   },
-  chooseTab(event: WechatMiniprogram.BaseEvent) {
-    this.setData({ activeTab: String(event.currentTarget.dataset.tab || "USABLE") });
-  },
   goCouponCenter() { wx.navigateTo({ url: "/pages/coupons/index" }); },
-  goMenu() { wx.switchTab({ url: "/pages/menu/index" }); },
 });

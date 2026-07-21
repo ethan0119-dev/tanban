@@ -33,9 +33,12 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, errorMessage } from '../api/client';
+import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
+import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import type { MerchantOperationSettings, MerchantOperationSettingsResponse, MerchantPaymentSettings, MerchantSettings } from '../types';
 
 export type SettingsSection = 'ORDER' | 'PAYMENT' | 'NOTIFICATION' | 'PRIVACY' | 'PRINT';
@@ -43,7 +46,7 @@ export type SettingsSection = 'ORDER' | 'PAYMENT' | 'NOTIFICATION' | 'PRIVACY' |
 const sectionMeta: Record<SettingsSection, { title: string; description: string }> = {
   ORDER: { title: '点餐设置', description: '配置堂食结算、多人点餐、距离校验和顾客下单规则' },
   PAYMENT: { title: '支付设置', description: '查看会生活 / 随行付商户绑定、资金流向、费率和支付确认方式' },
-  NOTIFICATION: { title: '通知设置', description: '配置商户消息事件，并为后续微信服务号通知预留绑定能力' },
+  NOTIFICATION: { title: '通知设置', description: '配置商户希望接收的消息类型，并查看微信通知开通状态' },
   PRIVACY: { title: '隐私与客服', description: '维护小程序隐私政策、用户协议和私人客服联系方式' },
   PRINT: { title: '打印设置', description: '配置门店打印总开关与新模板的默认触发点' },
 };
@@ -169,10 +172,10 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
                 <Form.Item label="堂食结算模式" name="settlementMode">
                   <Radio.Group>
                     <Radio.Button value="PAY_BEFORE">先结账后用餐</Radio.Button>
-                    <Radio.Button value="PAY_AFTER" disabled>先用餐后结账（预留）</Radio.Button>
+                    <Radio.Button value="PAY_AFTER" disabled>先用餐后结账（暂未开放）</Radio.Button>
                   </Radio.Group>
                 </Form.Item>
-                <Alert type="info" showIcon message="当前只开放先结账后用餐" description="订单必须由支付机构确认成功后才进入制作链路；后结账需要开台、并台、加菜、结账和逃单风控，暂不提供虚假开关。" />
+                <FeatureAvailabilityNotice feature="PAY_AFTER_MEAL" />
                 <Divider />
                 <Form.Item label="堂食点餐模式" name="orderingMode">
                   <Radio.Group>
@@ -184,7 +187,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
               </Card>
 
               <Card bordered={false} className="content-card settings-card" title={<Space><EnvironmentOutlined />距离与顾客校验</Space>}>
-                <SettingRow title="判定用户距离" description="启用后，顾客下单必须授权定位并位于门店允许范围内。服务端会重新计算距离，不能只依赖小程序显示。" control={<Form.Item name="distanceCheckEnabled" valuePropName="checked" noStyle><Switch /></Form.Item>} />
+                <SettingRow title="判定用户距离" description="启用后，顾客下单必须授权定位并位于门店允许范围内；下单时系统会再次核对距离。" control={<Form.Item name="distanceCheckEnabled" valuePropName="checked" noStyle><Switch /></Form.Item>} />
                 {distanceEnabled && <>
                   <Alert type="warning" showIcon message="启用后没有定位信息的订单将被拒绝" />
                   <Row gutter={12} style={{ marginTop: 16 }}>
@@ -199,11 +202,11 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
               </Card>
 
               <Card bordered={false} className="content-card settings-card" title="订单时效与提醒">
-                <SettingRow title="自动接单" description="需要先补齐待接单状态、拒单和超时退款链路；当前支付成功订单仍由商户明确开始制作。" tag={<Tag>预留</Tag>} />
-                <SettingRow title="后台语音提醒" description="可靠播报需要页面前台权限或云喇叭；当前不把静默保存的开关标成已生效。" tag={<Tag>预留</Tag>} />
+                <SettingRow title="自动接单" description={merchantFeatureCopy.AUTO_ACCEPT_ORDER.description} tag={<Tag>暂未开放</Tag>} />
+                <SettingRow title="后台语音提醒" description={merchantFeatureCopy.ORDER_VOICE_NOTICE.description} tag={<Tag>暂未开放</Tag>} />
                 <SettingRow title="超时后允许继续付款" description="关闭后，超过支付提示时间的未付款订单会被关单；关闭订单后始终禁止付款。" control={<Form.Item name="allowLatePayment" valuePropName="checked" noStyle><Switch /></Form.Item>} />
                 <Form.Item label="未支付提示 / 关单时长" name="paymentTimeoutMinutes" rules={[{ required: true }]}><InputNumber min={1} max={1440} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
-                <SettingRow title="允许顾客催单" description="保存催单开关与最短间隔；顾客端催单入口将在消息链路接入后开放。" control={<Form.Item name="orderReminderEnabled" valuePropName="checked" noStyle><Switch /></Form.Item>} />
+                <SettingRow title="允许顾客催单" description={merchantFeatureCopy.ORDER_REMINDER.description} control={<Form.Item name="orderReminderEnabled" valuePropName="checked" noStyle><Switch disabled /></Form.Item>} />
                 <Form.Item label="催单最短间隔" name="orderReminderIntervalMinutes"><InputNumber min={1} max={120} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
               </Card>
             </Col>
@@ -212,12 +215,12 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
                 <Alert type="success" showIcon message="关键资金保护策略由系统强制开启，不允许商户关闭" />
                 <SettingRow title="已取消订单迟到支付隔离" description="支付回调晚于关单时，订单进入支付异常，不错误推进制作；退款由有权限的人员确认金额后发起。" tag={<Tag color="success">强制开启</Tag>} />
                 <SettingRow title="重复付款识别与隔离" description="追加式支付尝试和唯一机构流水能识别重复实收；系统保留两笔事实并进入支付异常，不静默吞单。" tag={<Tag color="success">强制开启</Tag>} />
-                <SettingRow title="库存扣减" description="下单预占库存，支付成功确认；关单或过期时释放。" tag={<Tag color="blue">服务端控制</Tag>} />
+                <SettingRow title="库存扣减" description="下单时预留库存，支付成功后确认；关单或过期时释放。" tag={<Tag color="blue">系统保障</Tag>} />
               </Card>
-              <Card bordered={false} className="content-card settings-card" title="待外部链路开放">
-                <SettingRow title="超时未接单自动退款" description="需要可靠定时任务与支付查单闭环后开放。" tag={<Tag>预留</Tag>} />
-                <SettingRow title="自提核销" description="需要顾客核销码和店员核销权限后开放。" tag={<Tag>预留</Tag>} />
-                <SettingRow title="顾客评价" description="已记录配置位，评价表单和审核流尚未开放。" tag={<Tag>预留</Tag>} />
+              <Card bordered={false} className="content-card settings-card" title="尚未开通的服务">
+                <SettingRow title="超时未接单自动退款" description={merchantFeatureCopy.AUTO_REFUND.description} tag={<Tag>暂未开放</Tag>} />
+                <SettingRow title="自提核销" description={merchantFeatureCopy.PICKUP_VERIFICATION.description} tag={<Tag>暂未开放</Tag>} />
+                <SettingRow title="顾客评价" description={merchantFeatureCopy.CUSTOMER_REVIEW.description} tag={<Tag>暂未开放</Tag>} />
               </Card>
             </Col>
           </Row>
@@ -227,12 +230,10 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={15}>
               <Card bordered={false} className="content-card settings-card" title={<Space><WechatOutlined />微信服务号通知</Space>}>
-                <Alert
-                  type={operationMeta?.officialAccount.platformConfigured ? 'info' : 'warning'}
-                  showIcon
-                  message={operationMeta?.officialAccount.platformConfigured ? '平台服务号参数已配置' : '平台尚未配置微信服务号'}
-                  description="这里保存商户的通知偏好；真正发送前还需要平台服务号 AppID/Secret、消息模板、商户接收人关注及 OpenID 绑定。未完成绑定时系统不会假装发送成功。"
-                />
+                {operationMeta?.officialAccount.platformConfigured
+                  ? <Alert type="info" showIcon message="平台微信通知服务已准备" description="完成接收人绑定后，系统会按下方选择发送消息。" />
+                  : <FeatureAvailabilityNotice type="warning" feature="OFFICIAL_ACCOUNT_NOTICE" />}
+                <DeveloperOnlyNote style={{ marginTop: 12 }}>消息发送还需要平台服务号参数、消息模板和商户接收人身份绑定；未完成全部配置时不得标记为发送成功。</DeveloperOnlyNote>
                 <SettingRow title="启用服务号通知偏好" description="开启只代表商户希望接收，实际发送状态以下方接入状态为准。" control={<Form.Item name="officialAccountNotifyEnabled" valuePropName="checked" noStyle><Switch /></Form.Item>} />
                 <Form.Item label="通知事件" name="officialAccountEvents"><Checkbox.Group options={eventOptions} /></Form.Item>
                 <Form.Item label="接收人备注" name="notificationRecipientLabel"><Input placeholder="例如：老板微信、夜班店长" maxLength={120} /></Form.Item>
@@ -246,7 +247,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
                   <Descriptions.Item label="消息投递"><Tag>未启用</Tag></Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <Typography.Paragraph type="secondary">短信、云喇叭和语音合成属于独立收费或硬件通道，已纳入能力清单，但当前版本不会用浏览器提示冒充可靠消息通知。</Typography.Paragraph>
+                <Typography.Paragraph type="secondary">短信、云喇叭和语音播报需要单独开通；未开通前请以站内通知和订单列表为准。</Typography.Paragraph>
               </Card>
             </Col>
           </Row>
@@ -256,7 +257,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={15}>
               <Card bordered={false} className="content-card settings-card" title={<Space><SafetyCertificateOutlined />协议与隐私</Space>}>
-                <Alert type="info" showIcon message="小程序提交审核前必须补齐真实、可执行的文本" description="隐私政策应与微信《用户隐私保护指引》、实际收集字段和第三方共享清单保持一致，不能直接复制对标系统主体信息。" />
+                <Alert type="info" showIcon message="小程序提交审核前必须补齐真实、可执行的文本" description="隐私政策应与微信《用户隐私保护指引》、实际收集字段和第三方共享清单保持一致，不能直接复制其他经营主体的信息。" />
                 <Form.Item label="隐私政策" name="privacyPolicyText" rules={[{ required: true, message: '请输入隐私政策' }]}><Input.TextArea rows={10} maxLength={20000} showCount placeholder="填写当前商户适用的隐私说明，平台通用隐私政策另由平台管理端维护" /></Form.Item>
                 <Form.Item label="用户协议" name="userAgreementText" rules={[{ required: true, message: '请输入用户协议' }]}><Input.TextArea rows={8} maxLength={20000} showCount placeholder="填写点餐、退款、储值等规则" /></Form.Item>
               </Card>

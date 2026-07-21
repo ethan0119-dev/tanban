@@ -44,10 +44,10 @@ export function AssetLibraryPanel(props: AssetLibraryPanelProps) {
   return (
     <div className="decoration-panel-stack">
       <div className="decor-panel-intro with-action">
-        <div><Typography.Title level={4}>素材管理</Typography.Title><Typography.Paragraph>维护可复用的 HTTPS 图片地址。首版采用 URL 素材库，后续可无缝切换对象存储上传。</Typography.Paragraph></div>
+        <div><Typography.Title level={4}>素材管理</Typography.Title><Typography.Paragraph>统一维护门店常用图片，可用于首页、启动页和活动页面。</Typography.Paragraph></div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => props.onOpen()}>录入素材</Button>
       </div>
-      <Alert showIcon type="info" message="请确保图片地址长期有效且允许小程序访问" description="正式上线前，需要把图片域名加入微信小程序 downloadFile 合法域名。" />
+      <Alert showIcon type="info" message="请使用长期有效的 HTTPS 图片地址" description="若图片无法显示，请联系平台管理员检查图片访问设置。" />
       {!props.loading && !props.assets.length
         ? <Card className="decor-section-card"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有素材，先录入 Logo 或 Banner 图片地址" /></Card>
         : <div className="asset-grid">

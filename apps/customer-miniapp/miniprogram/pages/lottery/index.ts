@@ -4,6 +4,7 @@ import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { customerSafeErrorMessage } from "../../utils/availability";
 
 interface LotteryPrizeView extends MarketingLotteryPrize {
   stockText: string;
@@ -45,7 +46,7 @@ Page({
       const selected = campaigns.find((item) => item.id === preferredID) || campaigns[0] || null;
       this.setData({ campaigns, selected, loading: false });
     } catch (error) {
-      this.setData({ loading: false, error: error instanceof Error ? error.message : "活动加载失败" });
+      this.setData({ loading: false, error: customerSafeErrorMessage(error, "活动暂时无法加载，请稍后重试。") });
     }
   },
   onPullDownRefresh() { this.loadCampaigns(this.data.selected?.id || 0).finally(() => wx.stopPullDownRefresh()); },
@@ -68,12 +69,12 @@ Page({
       const prizeName = result.prize_name || result.prize?.name || "谢谢参与";
       wx.showModal({
         title: prizeType === "COUPON" ? "恭喜中奖" : "本次结果",
-        content: `${prizeName}${result.warning ? `\n\n${result.warning}` : ""}`,
+        content: prizeName,
         showCancel: false,
       });
       await this.loadCampaigns(campaign.id);
     } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "抽奖失败", icon: "none" });
+      wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法参与活动，请稍后重试。"), icon: "none" });
     } finally {
       this.setData({ drawing: false });
     }

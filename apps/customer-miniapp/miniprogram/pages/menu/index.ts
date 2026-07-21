@@ -8,6 +8,7 @@ import { fastFoodContextForStore } from "../../utils/fast-food-context";
 import { clearTableOrderingContext } from "../../utils/table-context";
 import { clearFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
+import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -96,14 +97,14 @@ Page({
       applyDecorationChrome(decoration);
     } catch (error) {
       this.setData({ loading: false });
-      wx.showToast({ title: error instanceof Error ? error.message : "菜单加载失败", icon: "none" });
+      wx.showToast({ title: customerSafeErrorMessage(error, "菜单暂时无法加载，请稍后重试。"), icon: "none" });
     }
   },
   chooseCategory(event: WechatMiniprogram.BaseEvent) { this.setData({ activeCategoryId: Number(event.currentTarget.dataset.id) }); },
   chooseMode(event: WechatMiniprogram.BaseEvent) {
     const mode = String(event.currentTarget.dataset.mode || "TAKEOUT");
     if (mode === "DELIVERY") {
-      wx.showModal({ title: "外卖暂未开放", content: "当前版本支持堂食和门店自取，外卖配送将在后续版本开放。", showCancel: false });
+      showUnavailableFeature("DELIVERY");
       return;
     }
     const app = getApp<TanbanAppOption>();

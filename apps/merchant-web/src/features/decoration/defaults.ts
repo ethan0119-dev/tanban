@@ -256,7 +256,7 @@ export const BUILTIN_TEMPLATES: DecorationTemplate[] = [
 
 export const SAMPLE_ASSETS: MediaAsset[] = [
   { id: 'sample-banner', name: '示例 Banner', url: '', type: 'IMAGE' },
-  { id: 'sample-logo', name: '门店 Logo 占位', url: '', type: 'IMAGE' },
+  { id: 'sample-logo', name: '门店 Logo 示例', url: '', type: 'IMAGE' },
 ];
 
 export function cloneDecoration(config: DecorationConfig): DecorationConfig {

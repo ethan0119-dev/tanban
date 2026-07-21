@@ -1,5 +1,4 @@
 import {
-  CopyOutlined,
   DownloadOutlined,
   EyeOutlined,
   FileImageOutlined,
@@ -31,6 +30,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import {
   TABLE_AREAS_ENDPOINT,
   TABLE_CODES_ENDPOINT,
@@ -206,15 +207,6 @@ export function TableCodesPage() {
     }
   };
 
-  const copyScene = async (item: TableCode) => {
-    try {
-      await navigator.clipboard.writeText(item.scene);
-      messageApi.success('scene 已复制');
-    } catch {
-      messageApi.warning(`请手工复制：${item.scene}`);
-    }
-  };
-
   const downloadDevelopmentCode = (item: TableCode) => {
     const canvas = qrContainerRef.current?.querySelector('canvas');
     if (!canvas) {
@@ -222,7 +214,7 @@ export function TableCodesPage() {
       return;
     }
     const link = document.createElement('a');
-    link.download = `${item.areaName}-${item.tableNo}-联调二维码.png`;
+    link.download = `${item.areaName}-${item.tableNo}-桌码预览.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -240,7 +232,7 @@ export function TableCodesPage() {
         type="info"
         showIcon
         message="桌码下单链路"
-        description="后端生成不可猜测的 qrScene 和带 scene 参数的小程序路径 → 顾客扫码进入点单页 → 小程序向服务端解析商户、门店、区域和桌位 → 创建订单时服务端再次校验并固化桌台快照。桌码只定位消费场景，不参与价格或支付判断。"
+        description="顾客扫描当前桌位的正式点单码后，会直接进入本桌点餐；订单会自动带上区域和桌号，方便商家出餐与查单。"
       />
       <Card bordered={false} className="content-card table-card" title="桌台区域" extra={<Button type="link" onClick={() => openAreaForm()}>新增区域</Button>}>
         <Table<TableArea>
@@ -278,10 +270,7 @@ export function TableCodesPage() {
             { title: '桌号', dataIndex: 'tableNo', width: 105, render: (value) => <strong className="table-number">{value}</strong> },
             { title: '桌位名称', dataIndex: 'tableName', width: 160 },
             { title: '容量', dataIndex: 'seats', width: 80, render: (value) => value > 0 ? `${value} 人` : '--' },
-            {
-              title: '扫码参数', dataIndex: 'scene', minWidth: 240,
-              render: (value, item) => value ? <Space size={4}><Typography.Text code ellipsis={{ tooltip: value }} style={{ maxWidth: 190 }}>{value}</Typography.Text><Button type="text" size="small" icon={<CopyOutlined />} onClick={() => void copyScene(item)} /></Space> : <Tag color="processing">生成中</Tag>,
-            },
+            { title: '桌码识别码', dataIndex: 'publicId', minWidth: 190, render: (value) => value ? <Typography.Text code copyable>{value}</Typography.Text> : <Tag color="processing">生成中</Tag> },
             { title: '启用', dataIndex: 'status', width: 80, render: (_, item) => <Switch checked={item.status === 'ACTIVE'} onChange={(checked) => void toggleStatus(item, checked)} /> },
             { title: '操作', key: 'action', width: 145, fixed: 'right', render: (_, item) => <Space size={2}><Button type="link" icon={<EyeOutlined />} onClick={() => setPreviewing(item)}>查看</Button><Button type="link" onClick={() => openForm(item)}>编辑</Button></Space> },
           ]}
@@ -306,7 +295,7 @@ export function TableCodesPage() {
             <Col span={8}><Form.Item label="立即启用" name="enabled" valuePropName="checked"><Switch /></Form.Item></Col>
           </Row>
           <Form.Item label="备注" name="remark"><Input.TextArea rows={2} maxLength={200} showCount placeholder="例如：靠近电源、适合四人" /></Form.Item>
-          <Alert type="warning" showIcon message="桌号在同一门店内不能重复" description="创建后由服务端生成随机 publicId、qrScene 和完整小程序路径；前端不会把商户 ID 或桌位主键直接编码进二维码。" />
+          <Alert type="warning" showIcon message="桌号在同一门店内不能重复" description="创建后系统会为该桌位生成独立识别码，顾客扫码下单时会自动关联当前桌位。" />
         </Form>
       </Modal>
 
@@ -318,23 +307,23 @@ export function TableCodesPage() {
         </Form>
       </Modal>
 
-      <Modal title={previewing ? `${previewing.areaName} · ${previewing.tableName}` : '桌码预览'} width={760} open={Boolean(previewing)} onCancel={() => setPreviewing(undefined)} footer={previewing ? <Space><Button onClick={() => setPreviewing(undefined)}>关闭</Button><Button type="primary" icon={<DownloadOutlined />} onClick={() => downloadDevelopmentCode(previewing)}>下载联调二维码</Button></Space> : null}>
+      <Modal title={previewing ? `${previewing.areaName} · ${previewing.tableName}` : '桌码预览'} width={760} open={Boolean(previewing)} onCancel={() => setPreviewing(undefined)} footer={previewing ? <Space><Button onClick={() => setPreviewing(undefined)}>关闭</Button>{import.meta.env.DEV && <Button type="primary" icon={<DownloadOutlined />} onClick={() => downloadDevelopmentCode(previewing)}>下载开发预览码</Button>}</Space> : null}>
         {previewing && <div className="table-code-preview">
-          <Alert type="warning" showIcon message="当前是普通二维码 / 开发联调码" description="二维码内容为后端返回的 miniappPath，并非微信官方无限制小程序码。待配置正式 AppID、AppSecret 并接入微信 getUnlimited 接口后，再切换为官方小程序码。" />
+          <Alert type="info" showIcon message={merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.title} description={merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.description} />
           <div className="table-code-code-grid single-code">
-            <div className="table-code-image" ref={qrContainerRef}>
+            {import.meta.env.DEV && <div className="table-code-image" ref={qrContainerRef}>
               <QRCode type="canvas" value={previewing.miniappPath} size={230} bordered={false} status={previewing.scene ? 'active' : 'loading'} />
-              <strong>普通二维码 · 开发联调</strong>
+              <strong>开发预览码</strong>
               <Typography.Text type="secondary" ellipsis={{ tooltip: previewing.miniappPath }}>{previewing.miniappPath}</Typography.Text>
-            </div>
-            <div className="table-code-image official-placeholder"><FileImageOutlined /><span>微信官方小程序码待接入</span></div>
+            </div>}
+            <div className="table-code-image official-placeholder"><FileImageOutlined /><span>{merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.title}</span></div>
           </div>
           <Descriptions size="small" column={1} bordered items={[
             { label: '桌号', children: previewing.tableNo },
-            { label: '小程序路径', children: <Typography.Text code copyable>{previewing.miniappPath}</Typography.Text> },
-            { label: 'qrScene', children: <Typography.Text code copyable>{previewing.scene || '生成中'}</Typography.Text> },
+            { label: '桌码识别码', children: <Typography.Text code copyable>{previewing.publicId || '生成中'}</Typography.Text> },
             { label: '状态', children: <Tag color={previewing.status === 'ACTIVE' ? 'success' : 'default'}>{previewing.status === 'ACTIVE' ? '可扫码下单' : '已停用'}</Tag> },
           ]} />
+          <DeveloperOnlyNote>开发路径：{previewing.miniappPath}；扫码参数：{previewing.scene || '生成中'}。</DeveloperOnlyNote>
           <Typography.Paragraph type="secondary" className="table-code-help"><QrcodeOutlined /> 顾客扫码后，小程序顶部应持续显示当前桌台；购物车、结算页和订单详情都沿用本次解析得到的桌码上下文。</Typography.Paragraph>
         </div>}
       </Modal>

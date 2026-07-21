@@ -2,6 +2,7 @@ import type { MarketingPlacement } from "../../types/domain";
 import { customerGuestKey } from "../../utils/customer";
 import { marketingEventKey, rememberMarketingPopup, shouldDisplayMarketingPopup } from "../../utils/marketing";
 import { idempotencyKey, request } from "../../utils/request";
+import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
 
 Component({
   properties: {
@@ -89,9 +90,10 @@ Component({
             header: { "Idempotency-Key": idempotencyKey("popup_coupon") },
             data: { subject_key: customerGuestKey() },
           });
-          wx.showModal({ title: "领取已记录", content: result.warning || "当前仅生成联调领取记录，暂不能抵扣真实订单。", showCancel: false });
+          void result;
+          wx.showModal({ title: "领取结果", content: customerExperienceCopy.couponClaimed, showCancel: false });
         } catch (error) {
-          wx.showToast({ title: error instanceof Error ? error.message : "领取失败", icon: "none" });
+          wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法领取，请稍后重试。"), icon: "none" });
         }
       }
     },

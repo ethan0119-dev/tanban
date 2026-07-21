@@ -50,7 +50,7 @@ export function readFastFoodContext(now = Date.now()): FastFoodOrderingContext |
 }
 
 export function saveFastFoodContext(context: FastFoodOrderingContext): void {
-  if (!fastFoodContextIsValid(context)) throw new FastFoodRouteError("无法保存无效的快餐码牌");
+  if (!fastFoodContextIsValid(context)) throw new FastFoodRouteError("码牌信息已更新，请重新扫码");
   wx.setStorageSync(FAST_FOOD_CONTEXT_KEY, context);
 }
 
@@ -70,7 +70,7 @@ export async function resolveFastFoodContext(publicId: string, expectedStoreCode
   try {
     const response = await request<FastFoodPlateResolution>({ url: `/public/fast-food-plates/${encodeURIComponent(publicId)}`, method: "GET" });
     const context = normalizeFastFoodResolution(publicId, response);
-    if (expectedStoreCode && context.storeCode !== expectedStoreCode) throw new FastFoodRouteError("快餐码牌不属于当前门店", "FAST_FOOD_STORE_MISMATCH");
+    if (expectedStoreCode && context.storeCode !== expectedStoreCode) throw new FastFoodRouteError("该码牌不适用于当前门店，请重新扫码", "FAST_FOOD_STORE_MISMATCH");
     return context;
   } catch (error) {
     if (error instanceof FastFoodRouteError) throw error;
@@ -81,7 +81,7 @@ export async function resolveFastFoodContext(publicId: string, expectedStoreCode
 
 export async function revalidateFastFoodContext(context: FastFoodOrderingContext): Promise<FastFoodOrderingContext> {
   const current = readFastFoodContext();
-  if (!current || !sameFastFoodContext(current, context)) throw new FastFoodRouteError("快餐码牌上下文已变化，请重新扫码");
+  if (!current || !sameFastFoodContext(current, context)) throw new FastFoodRouteError("码牌信息已更新，请重新扫码");
   const verified = await resolveFastFoodContext(context.publicId, context.storeCode);
   saveFastFoodContext(verified);
   return verified;

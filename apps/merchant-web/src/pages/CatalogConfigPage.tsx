@@ -29,6 +29,7 @@ import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import './catalog.css';
 
 type ResourceType = 'PACKAGE' | 'TEMP_PRODUCT' | 'UNIT' | 'PRODUCT_TAG' | 'PRINT_LABEL' | 'NOTE' | 'SPEC_TEMPLATE' | 'ATTRIBUTE_TEMPLATE' | 'MODIFIER_TEMPLATE';
@@ -111,9 +112,9 @@ function ResourcePanel({ type, resources, reload }: { type: ResourceType; resour
   return <>
     {holder}
     <div className="catalog-type-tip">
-      {type === 'PACKAGE' ? '维护固定套餐的名称、售价和组成说明；V1 仅保存资料，不进入小程序售卖，分组任选与组件库存联动后续接入。' :
-        type === 'PRINT_LABEL' ? '定义商品打印标签名称与模板元数据；V1 可绑定商品，具体标签路由与模板渲染后续接入真实打印机时完成。' :
-          `${resourceLabels[type]}作为可维护、可绑定的配置资料；V1 不自动套用模板，也不会改变点单价格。`}
+      {type === 'PACKAGE' ? merchantFeatureCopy.CATALOG_PACKAGE_SALE.description :
+        type === 'PRINT_LABEL' ? '定义商品打印标签名称与版式信息；绑定正式打印设备后即可按商品生成标签。' :
+          `${resourceLabels[type]}可作为商品资料维护并绑定；不会自动改变商品选项或点单价格。`}
     </div>
     <div className="catalog-toolbar"><Typography.Text type="secondary">共 {rows.length} 条配置</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新增{resourceLabels[type]}</Button></div>
     <Table<ResourceRow> rowKey="id" dataSource={rows} pagination={{ pageSize: 10 }} columns={[
@@ -255,7 +256,7 @@ export function CatalogConfigPage() {
   </>;
 
   const modifierItemContent = <>
-    <div className="catalog-type-tip">加料商品可设置独立加价，并被一个或多个加料组复用；V1 不独立扣减加料库存。</div>
+    <div className="catalog-type-tip">{merchantFeatureCopy.MODIFIER_INVENTORY.description}</div>
     <div className="catalog-toolbar"><Typography.Text type="secondary">共 {modifierItems.length} 个加料</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openItem()}>新增加料</Button></div>
     <Table<ModifierItem> rowKey="id" dataSource={modifierItems} columns={[
       { title: '图片', dataIndex: 'image_url', width: 76, render: (value) => value ? <Image src={value} alt="加料图片" width={44} height={44} style={{ objectFit: 'cover', borderRadius: 8 }} /> : '—' },
@@ -266,7 +267,7 @@ export function CatalogConfigPage() {
   </>;
 
   const modifierGroupContent = <>
-    <div className="catalog-type-tip">加料组定义“至少选几个、最多选几个”，绑定商品后小程序会按这里的约束校验并由服务端重新计价。</div>
+    <div className="catalog-type-tip">加料组定义“至少选几个、最多选几个”，绑定商品后小程序会按这里的规则展示，保存订单时会重新核对金额。</div>
     <div className="catalog-toolbar"><Typography.Text type="secondary">共 {modifierGroups.length} 个加料组</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openGroup()}>新增加料组</Button></div>
     <Table<ModifierGroup> rowKey="id" dataSource={modifierGroups} columns={[
       { title: '组名', dataIndex: 'name' }, { title: '选择规则', render: (_, row) => `${row.min_select}–${row.max_select} 项` },

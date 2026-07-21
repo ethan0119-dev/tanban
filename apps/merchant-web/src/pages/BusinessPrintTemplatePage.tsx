@@ -32,6 +32,7 @@ import {
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
+import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import {
   PRINT_TEMPLATES_ENDPOINT,
@@ -298,7 +299,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
         description="为 58/80mm 热敏打印机维护结构化票据；不同经营场景、不同联次互不串用"
         extra={<Space><Button icon={<ReloadOutlined />} loading={loading} disabled={saving} onClick={reloadWithGuard}>重新加载</Button><Button disabled={loading || saving} onClick={reset}>恢复当前默认</Button><Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={loading || !dirtyRoles.has(activeRole)} onClick={() => void save()}>保存当前联次</Button></Space>}
       />
-      {businessType === 'DELIVERY' && <Alert className="printer-tip" type="info" showIcon message="可提前配置外卖打印模板" description="外卖履约一期尚未启用，但商家联、顾客联、厨房联和标签可以预先维护；开放配送后直接按 DELIVERY 订单使用。" />}
+      {businessType === 'DELIVERY' && <FeatureAvailabilityNotice className="printer-tip" feature="DELIVERY" />}
       {businessType === 'DINE_IN' && (
         <Card bordered={false} className="content-card print-scene-switch">
           <Typography.Text strong>店内订单场景</Typography.Text>
@@ -316,7 +317,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
         <Col xs={24} xxl={10}>
           <Card bordered={false} className="content-card print-preview-stage" title={<Space>{roleMeta[activeRole].icon}<span>打印效果预览</span><Tag>{section.paperWidth}mm</Tag></Space>}>
             <PaperPreview section={section} businessType={activeType} />
-            <Typography.Paragraph type="secondary" className="print-preview-note">预览使用示例订单。真实任务由服务端按设备纸宽定宽排版；当前虚拟打印保留二维码对应的订单码，接入云打印硬件后再输出原生二维码、倍高和切纸指令。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" className="print-preview-note">预览使用示例订单；实际打印会根据所绑定设备的纸张宽度自动排版。</Typography.Paragraph>
           </Card>
         </Col>
         <Col xs={24} xxl={14}>
@@ -362,7 +363,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
           <Typography.Paragraph type="secondary" className="template-meta">当前联次更新：{dateTime(section.updatedAt)}</Typography.Paragraph>
         </Col>
       </Row>
-      <Alert className="printer-compatibility-note" icon={<QrcodeOutlined />} type="success" showIcon message="同一份模板同时支持页面预览与设备输出" description="当前虚拟打印机接收服务端生成的定宽票据；接入芯烨等云打印 API 后，由厂商适配层把纸宽、字号和二维码映射为设备指令，不需要商户重新配置模板。" />
+      <Alert className="printer-compatibility-note" icon={<QrcodeOutlined />} type="success" showIcon message="模板可适配不同纸宽的打印设备" description="更换受支持的打印设备后，已有模板仍可继续使用，无需重新录入票据内容。" />
     </div>
   );
 }

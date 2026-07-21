@@ -46,6 +46,12 @@ interface StaffFormValues {
   enabled: boolean;
 }
 
+interface PasswordFormValues {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 function normalizeStaff(value: Staff): Staff {
   const raw = value as unknown as Record<string, unknown>;
   const role = value.role ?? String(raw.role ?? 'MERCHANT_STAFF');
@@ -77,7 +83,9 @@ export function StaffPage() {
   const [editing, setEditing] = useState<Staff | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [form] = Form.useForm<StaffFormValues>();
+  const [passwordForm] = Form.useForm<PasswordFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
   const assignableRoles = assignableMerchantRoles(user);
   const roleOptions = roles
@@ -145,12 +153,30 @@ export function StaffPage() {
     }
   };
 
+  const changeMyPassword = async () => {
+    const values = await passwordForm.validateFields();
+    setSaving(true);
+    try {
+      await api.put('/merchant/account/password', {
+        current_password: values.currentPassword,
+        new_password: values.newPassword,
+      });
+      messageApi.success('登录密码已修改，下次登录请使用新密码');
+      setPasswordOpen(false);
+      passwordForm.resetFields();
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const roleCounts = useMemo(() => staff.reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.role]: (counts[item.role] ?? 0) + 1 }), {}), [staff]);
 
   return (
     <div className="page-shell">
       {contextHolder}
-      <PageHeading title="员工与角色" description="按岗位分配最小权限，所有关键操作都会记录操作人" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => openStaff()}>新增员工</Button>} />
+      <PageHeading title="员工与角色" description="按岗位分配最小权限，所有关键操作都会记录操作人" extra={<Space><Button icon={<LockOutlined />} onClick={() => { passwordForm.resetFields(); setPasswordOpen(true); }}>修改我的密码</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openStaff()}>新增员工</Button></Space>} />
       <Row gutter={[16, 16]} className="role-grid">
         {roles.map((role) => (
           <Col xs={12} xl={6} key={role.key}>
@@ -192,6 +218,13 @@ export function StaffPage() {
             <Select options={roleOptions} />
           </Form.Item>
           <Form.Item label="启用账号" name="enabled" valuePropName="checked"><Switch disabled={editing?.role === 'MERCHANT_OWNER'} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal title="修改我的登录密码" open={passwordOpen} onCancel={() => setPasswordOpen(false)} onOk={() => void changeMyPassword()} confirmLoading={saving} okText="确认修改" destroyOnHidden>
+        <Form<PasswordFormValues> form={passwordForm} layout="vertical" requiredMark={false}>
+          <Form.Item label="当前密码" name="currentPassword" rules={[{ required: true, message: '请输入当前密码' }]}><Input.Password prefix={<LockOutlined />} autoComplete="current-password" /></Form.Item>
+          <Form.Item label="新密码" name="newPassword" rules={[{ required: true, message: '请输入新密码' }, { min: 8, max: 72, message: '密码须为 8 至 72 位' }]}><Input.Password prefix={<LockOutlined />} autoComplete="new-password" /></Form.Item>
+          <Form.Item label="确认新密码" name="confirmPassword" dependencies={['newPassword']} rules={[{ required: true, message: '请再次输入新密码' }, ({ getFieldValue }) => ({ validator: (_, value) => !value || getFieldValue('newPassword') === value ? Promise.resolve() : Promise.reject(new Error('两次输入的新密码不一致')) })]}><Input.Password prefix={<LockOutlined />} autoComplete="new-password" /></Form.Item>
         </Form>
       </Modal>
     </div>

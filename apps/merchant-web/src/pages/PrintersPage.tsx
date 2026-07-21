@@ -11,7 +11,6 @@ import {
   WifiOutlined,
 } from '@ant-design/icons';
 import {
-  Alert,
   Badge,
   Button,
   Card,
@@ -32,6 +31,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
+import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
 import { PageHeading } from '../components/PageHeading';
 import type { PrintCopyRole, PrintJob, Printer } from '../types';
 import { dateTime } from '../utils/format';
@@ -177,7 +177,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
     setEditingPrinter(null);
     form.resetFields();
     form.setFieldsValue(virtual ? {
-      name: '开发调试虚拟打印机', vendor: 'TANBAN', model: 'Mock Printer', sn: `MOCK-${Date.now()}`, type: 'VIRTUAL', outputType: 'RECEIPT', copyRoles: ['MERCHANT'], paperWidth: 58, enabled: true,
+      name: '模拟打印机（测试）', vendor: 'TANBAN', model: 'Test Printer', sn: `MOCK-${Date.now()}`, type: 'VIRTUAL', outputType: 'RECEIPT', copyRoles: ['MERCHANT'], paperWidth: 58, enabled: true,
     } : { vendor: '芯烨', model: 'T58H', type: 'LABEL', outputType: 'LABEL', copyRoles: ['ITEM'], paperWidth: 58, enabled: true, name: '出单打印机', sn: '' });
     setBinding(true);
   };
@@ -219,7 +219,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
       setBinding(false);
       setEditingPrinter(null);
       form.resetFields();
-      messageApi.success(editingPrinter ? '打印机配置已更新' : values.type === 'VIRTUAL' ? '虚拟打印机已启用' : '打印机绑定成功');
+      messageApi.success(editingPrinter ? '打印机配置已更新' : values.type === 'VIRTUAL' ? '模拟打印机已启用' : '打印机绑定成功');
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
@@ -307,10 +307,10 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
       {contextHolder}
       <PageHeading
         title="打印中心"
-        description="按打印机 SN 绑定云打印设备；硬件接入前可使用虚拟打印机联调任务链路"
-        extra={<Space><Button icon={<ExperimentOutlined />} onClick={() => openBind(true)}>添加虚拟打印机</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openBind()}>绑定打印机</Button></Space>}
+        description="按打印机 SN 绑定设备，并查看打印任务、异常状态和补打记录"
+        extra={<Space>{import.meta.env.DEV ? <Button icon={<ExperimentOutlined />} onClick={() => openBind(true)}>添加模拟打印机</Button> : null}<Button type="primary" icon={<PlusOutlined />} onClick={() => openBind()}>绑定打印机</Button></Space>}
       />
-      <Alert className="printer-tip" type="info" showIcon message="当前阶段建议使用 Mock 虚拟打印机" description="虚拟打印机会完整记录打印任务和补打动作，但不会向真实硬件发送内容。接入芯烨云打印后，只需替换打印供应商适配器。" />
+      <DeveloperOnlyNote className="printer-tip">模拟打印机只记录任务和补打动作，不会向实体设备发送内容。</DeveloperOnlyNote>
       <Row gutter={[16, 16]} className="printer-stats">
         <Col xs={8}><Card bordered={false}><strong>{stats.online}</strong><span>在线设备</span><WifiOutlined /></Card></Col>
         <Col xs={8}><Card bordered={false}><strong>{stats.today}</strong><span>今日任务</span><ThunderboltOutlined /></Card></Col>
@@ -335,7 +335,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
                             <div><Typography.Title level={5}>{printer.name}</Typography.Title><Badge status={state.status} text={state.text} /></div>
                             <Switch checked={printer.enabled} onChange={(checked) => void togglePrinter(printer, checked)} />
                           </div>
-                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? 'Mock 虚拟机' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>纸张宽度</span><strong>{printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
+                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? '模拟设备（测试）' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>纸张宽度</span><strong>{printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
                           <Row gutter={8}>
                             <Col span={10}><Button block icon={<EditOutlined />} onClick={() => openEdit(printer)}>编辑配置</Button></Col>
                             <Col span={14}><Button block icon={<PrinterOutlined />} disabled={!printer.enabled} onClick={() => void testPrint(printer)}>测试打印</Button></Col>
@@ -345,7 +345,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
                     );
                   })}
                 </Row>
-              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有打印机"><Button type="primary" onClick={() => openBind(true)}>先添加虚拟打印机</Button></Empty>,
+              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有打印机"><Button type="primary" onClick={() => openBind(false)}>绑定第一台打印机</Button></Empty>,
             },
             {
               key: 'jobs', label: <>打印任务 {stats.failed > 0 && <Tag color="error">{stats.failed} 个异常</Tag>}</>,
@@ -363,7 +363,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
             <Col span={12}><Form.Item label="型号" name="model" rules={[{ required: true, message: '请输入型号' }]}><Input placeholder="T58H" /></Form.Item></Col>
           </Row>
           <Form.Item label="设备 SN" name="sn" rules={[{ required: true, message: '请输入打印机底部的 SN' }]}><Input placeholder="打印机底部标签中的序列号" /></Form.Item>
-          <Form.Item label="设备类型" name="type" rules={[{ required: true }]}><Select options={[{ label: '虚拟打印机（开发调试）', value: 'VIRTUAL' }, { label: '标签打印机', value: 'LABEL' }, { label: '小票打印机', value: 'RECEIPT' }]} /></Form.Item>
+          <Form.Item label="设备类型" name="type" rules={[{ required: true }]}><Select options={[...(import.meta.env.DEV ? [{ label: '模拟打印机（测试）', value: 'VIRTUAL' as const }] : []), { label: '标签打印机', value: 'LABEL' }, { label: '小票打印机', value: 'RECEIPT' }]} /></Form.Item>
           <Form.Item label="输出类型" name="outputType" rules={[{ required: true, message: '请选择输出类型' }]}><Select options={[{ label: '订单小票', value: 'RECEIPT' }, { label: '商品标签 / 杯贴', value: 'LABEL' }]} /></Form.Item>
           <Form.Item label="纸张宽度" name="paperWidth" rules={[{ required: true, message: '请选择打印机实际纸宽' }]} extra="任务会按这台设备的实际宽度重新排版，避免 80mm 模板发送到 58mm 设备后截断。"><Select options={[{ label: '58mm 热敏纸', value: 58 }, { label: '80mm 热敏纸', value: 80 }]} /></Form.Item>
           <Form.Item label="打印联次" name="copyRoles" rules={[{ required: true, type: 'array', min: 1, message: '请至少选择一个打印联次' }]}>

@@ -208,8 +208,8 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	input.OwnerDisplayName = strings.TrimSpace(input.OwnerDisplayName)
 	input.InitialStoreCode = strings.TrimSpace(input.InitialStoreCode)
 	input.InitialStoreName = strings.TrimSpace(input.InitialStoreName)
-	if input.OwnerUsername == "" || len(input.OwnerPassword) < 8 || input.OwnerDisplayName == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username, owner_display_name and an owner_password of at least 8 characters are required")
+	if input.OwnerUsername == "" || len(input.OwnerUsername) > 64 || len([]byte(input.OwnerPassword)) < 8 || len([]byte(input.OwnerPassword)) > 72 || input.OwnerDisplayName == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username, owner_display_name and an owner_password of 8 to 72 bytes are required")
 		return
 	}
 	if input.InitialStoreCode == "" || input.InitialStoreName == "" {
@@ -325,8 +325,8 @@ func (s *Server) createTenantOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Username = strings.TrimSpace(input.Username)
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if input.Username == "" || input.DisplayName == "" || len(input.Password) < 8 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username, display_name and a password of at least 8 characters are required")
+	if input.Username == "" || len(input.Username) > 64 || input.DisplayName == "" || len([]byte(input.Password)) < 8 || len([]byte(input.Password)) > 72 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username, display_name and a password of 8 to 72 bytes are required")
 		return
 	}
 	var tenantExists bool

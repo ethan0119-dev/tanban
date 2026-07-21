@@ -3,6 +3,7 @@ import type { Order } from "../../types/domain";
 import { localOrderNumbers } from "../../utils/orders";
 import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { showUnavailableFeature } from "../../utils/availability";
 
 type PrimaryTab = "CURRENT" | "HISTORY";
 type SceneTab = "ALL" | "DELIVERY" | "DINE_IN" | "TAKEOUT" | "COUNTER" | "QUEUE" | "RESERVATION";
@@ -31,7 +32,7 @@ function decorate(order: Order): OrderView {
     ...order,
     scene,
     sceneText: scene === "DINE_IN" ? "堂食订单" : "门店自取",
-    statusText: statusText[String(order.status).toUpperCase()] || order.status,
+    statusText: statusText[String(order.status).toUpperCase()] || "状态更新中",
     dateText: String(order.createdAt || "").replace("T", " ").slice(0, 16),
     summaryText: summary || `取餐号 ${order.pickupCode || "--"}`,
     current: currentStatuses.has(String(order.status).toUpperCase()),
@@ -74,7 +75,15 @@ Page({
   },
   chooseScene(event: WechatMiniprogram.BaseEvent) {
     const sceneTab = String(event.currentTarget.dataset.tab) as SceneTab;
-    if (sceneTab === "DELIVERY") wx.showToast({ title: "外卖暂未开放", icon: "none" });
+    if (sceneTab === "DELIVERY") {
+      showUnavailableFeature("DELIVERY");
+      return;
+    }
+    if (["COUNTER", "QUEUE", "RESERVATION"].includes(sceneTab)) {
+      const featureName = sceneTab === "COUNTER" ? "当面付" : sceneTab === "QUEUE" ? "排队取号" : "预约服务";
+      showUnavailableFeature("PROFILE_SERVICE", featureName);
+      return;
+    }
     this.setData({ sceneTab });
     this.applyFilters();
   },

@@ -115,7 +115,7 @@ export function DecorationPage() {
       setWorkspace({ draft: { revision: 0, config: cloneDecoration(DEFAULT_DECORATION) }, published: null });
       setConfig(cloneDecoration(DEFAULT_DECORATION));
       setDirty(false);
-      setLoadWarning(`服务器草稿暂未加载，当前展示内置默认方案。保存前请先确认接口状态：${errorMessage(error)}`);
+      setLoadWarning(`装修草稿暂时无法加载，当前展示默认方案。请刷新重试后再保存：${errorMessage(error)}`);
     } finally {
       setLoading(false);
     }

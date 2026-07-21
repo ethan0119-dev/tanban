@@ -40,8 +40,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
+import { ordersForBusinessType } from '../features/orders/model';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import { normalizeOrder } from '../features/storefront/model';
-import type { ListResult, Order, OrderBusinessType, OrderStatus, TableBoardResponse, TableBoardTable } from '../types';
+import type { ListResult, Order, OrderBusinessType, OrderStatus, OrderType, TableBoardResponse, TableBoardTable } from '../types';
 import { dateTime, yuan } from '../utils/format';
 
 const { RangePicker } = DatePicker;
@@ -154,7 +156,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         page,
         page_size: pageSize,
       });
-      const items = normalized.items.map(normalizeOrder);
+      const expectedType: OrderType = isDelivery ? 'DELIVERY' : serviceMode;
+      const items = ordersForBusinessType(normalized.items.map(normalizeOrder), expectedType);
       setResult({
         ...normalized,
         items,
@@ -168,6 +171,10 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
   }, [dates, isDelivery, keyword, messageApi, result.meta.pageSize, serviceMode, status, unavailable]);
 
   useEffect(() => { void load(1); }, [serviceMode, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (sceneMode) setServiceMode(sceneMode);
+  }, [sceneMode]);
 
   const loadTableBoard = useCallback(async () => {
     setTableBoardLoading(true);
@@ -289,10 +296,16 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
       {contextHolder}
       <PageHeading
         title={`${domainName}订单`}
-        description={isDelivery ? '独立承载配送订单、收货信息和外卖打印链路' : '查看桌码堂食和门店自取订单，统一处理支付、制作与出单'}
+        description={isDelivery
+          ? '集中查看配送订单、收货信息和外卖打印记录'
+          : sceneMode === 'DINE_IN'
+            ? '集中处理桌码堂食订单的支付、制作和桌台状态'
+            : sceneMode === 'TAKEOUT'
+              ? '集中处理快餐与到店自取订单，按取餐号和码牌安排放餐'
+              : '查看店内订单，统一处理支付、制作与出单'}
         extra={<Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>}
       />
-      {unavailable && <Alert className="order-domain-alert" type="warning" showIcon message="外卖订单一期未开放" description="系统已经将外卖识别为独立经营域，但尚未接入配送地址、配送范围、运费、骑手或第三方外卖平台。当前不会创建外卖订单，也不会把店内订单误显示到这里。" />}
+      {unavailable && <Alert className="order-domain-alert" type="warning" showIcon message={merchantFeatureCopy.DELIVERY.title} description={merchantFeatureCopy.DELIVERY.description} />}
       {sceneMode === 'DINE_IN' && <Card bordered={false} className="content-card order-view-tabs-card">
         <Tabs activeKey={viewMode} onChange={(key) => setViewMode(key as typeof viewMode)} items={[
           { key: 'ORDERS', label: '订单管理' },

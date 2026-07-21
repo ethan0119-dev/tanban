@@ -7,7 +7,6 @@ import {
   TagsOutlined,
 } from '@ant-design/icons';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -31,6 +30,7 @@ import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../api/client';
+import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import { marketingApi } from '../features/marketing/api';
 import type {
@@ -186,14 +186,8 @@ export function CouponsPage() {
   return (
     <div className="page-shell marketing-page">
       {holder}
-      <PageHeading title="优惠券" description="统一维护代金券和满减券；领取与库存由服务端校验，正式抵扣将在顾客身份和订单计价闭环后开放" extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建优惠券</Button></Space>} />
-      <Alert
-        className="marketing-alert"
-        type="warning"
-        showIcon
-        message="当前为优惠资产联调版"
-        description="领取记录目前仅按匿名设备生成临时资产，尚未接入微信顾客身份和订单核销，不能抵扣真实订单。启用正式优惠前需先完成顾客登录、券包与服务端计价闭环。"
-      />
+      <PageHeading title="优惠券" description="统一维护代金券和满减券的券面、库存、领取时间与适用订单" extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新建优惠券</Button></Space>} />
+      <FeatureAvailabilityNotice className="marketing-alert" type="warning" feature="COUPON_REDEMPTION" />
       <Row gutter={[16, 16]} className="marketing-summary-grid">
         <Col xs={12} lg={6}><Card bordered={false}><Statistic title="优惠券活动" value={items.length} prefix={<TagsOutlined />} /></Card></Col>
         <Col xs={12} lg={6}><Card bordered={false}><Statistic title="进行中" value={activeCount} /></Card></Col>
@@ -213,7 +207,7 @@ export function CouponsPage() {
           { title: '领取时间', width: 210, render: (_, item) => item.claimStartAt ? <><div>{dateTime(item.claimStartAt)}</div><Typography.Text type="secondary">至 {item.claimEndAt ? dateTime(item.claimEndAt) : '长期'}</Typography.Text></> : '长期' },
           { title: '券有效期', width: 160, render: (_, item) => item.validityMode === 'RELATIVE_DAYS' ? `领取后 ${item.validDays} 天` : `${dateTime(item.validFrom)} 至 ${dateTime(item.validTo)}` },
           { title: '状态', dataIndex: 'status', width: 100, render: (status) => <CampaignStatusTag status={status} /> },
-          { title: '操作', fixed: 'right', width: 210, render: (_, item) => <Space size={4}><Button type="link" icon={<EditOutlined />} disabled={item.status === 'ACTIVE' || item.status === 'ENDED'} onClick={() => openEditor(item)}>编辑</Button>{item.status === 'ACTIVE' ? <Popconfirm title="暂停后顾客暂时无法领取，已领取券不受影响" onConfirm={() => void transition(item, 'pause')}><Button type="link" icon={<PauseCircleOutlined />}>暂停</Button></Popconfirm> : item.status !== 'ENDED' ? <Popconfirm title="启用前会由服务端再次校验库存和时间规则" onConfirm={() => void transition(item, 'activate')}><Button type="link" icon={<PlayCircleOutlined />}>启用</Button></Popconfirm> : null}</Space> },
+          { title: '操作', fixed: 'right', width: 210, render: (_, item) => <Space size={4}><Button type="link" icon={<EditOutlined />} disabled={item.status === 'ACTIVE' || item.status === 'ENDED'} onClick={() => openEditor(item)}>编辑</Button>{item.status === 'ACTIVE' ? <Popconfirm title="暂停后顾客暂时无法领取，已领取券不受影响" onConfirm={() => void transition(item, 'pause')}><Button type="link" icon={<PauseCircleOutlined />}>暂停</Button></Popconfirm> : item.status !== 'ENDED' ? <Popconfirm title="启用前会再次核对库存和时间规则" onConfirm={() => void transition(item, 'activate')}><Button type="link" icon={<PlayCircleOutlined />}>启用</Button></Popconfirm> : null}</Space> },
         ]} />
       </Card>
 
@@ -222,7 +216,7 @@ export function CouponsPage() {
           <Row gutter={16}><Col span={15}><Form.Item label="活动名称" name="name" rules={[{ required: true, whitespace: true, message: '请输入活动名称' }, { max: 100 }]}><Input placeholder="例如：新客满 30 减 5" /></Form.Item></Col><Col span={9}><Form.Item label="优惠券类型" name="type" rules={[{ required: true }]}><Select options={[{ value: 'CASH', label: '代金券' }, { value: 'FULL_REDUCTION', label: '满减券' }]} /></Form.Item></Col></Row>
           <Form.Item label="活动说明" name="description" rules={[{ max: 500 }]}><Input.TextArea rows={2} placeholder="面向商户和顾客的简短说明" /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.type !== current.type}>{({ getFieldValue }) => <Row gutter={16}>{getFieldValue('type') === 'FULL_REDUCTION' ? <Col span={8}><Form.Item label="使用门槛" name="threshold" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col> : null}<Col span={8}><Form.Item label="优惠金额" name="discount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="总库存" name="total_stock" rules={[{ required: true }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col></Row>}</Form.Item>
-          <Row gutter={16}><Col span={8}><Form.Item label="发放方式" name="distribution_mode" rules={[{ required: true }]}><Select options={[{ value: 'PUBLIC_CLAIM', label: '顾客公开领取' }, { value: 'MANUAL_ONLY', label: '仅商户人工发放' }, { value: 'LOTTERY_ONLY', label: '仅作为抽奖奖品' }]} /></Form.Item></Col><Col span={8}><Form.Item label="每位顾客限领" name="per_subject_limit"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="适用订单" name="order_types" rules={[{ required: true }]}><Select mode="multiple" options={[{ value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（预留）', disabled: true }]} /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={8}><Form.Item label="发放方式" name="distribution_mode" rules={[{ required: true }]}><Select options={[{ value: 'PUBLIC_CLAIM', label: '顾客公开领取' }, { value: 'MANUAL_ONLY', label: '仅商户人工发放' }, { value: 'LOTTERY_ONLY', label: '仅作为抽奖奖品' }]} /></Form.Item></Col><Col span={8}><Form.Item label="每位顾客限领" name="per_subject_limit"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col><Col span={8}><Form.Item label="适用订单" name="order_types" rules={[{ required: true }]}><Select mode="multiple" options={[{ value: 'DINE_IN', label: '桌码堂食' }, { value: 'TAKEOUT', label: '快餐自取' }, { value: 'DELIVERY', label: '外卖（暂未开放）', disabled: true }]} /></Form.Item></Col></Row>
           <Form.Item label="领取时间" name="claim_range"><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item>
           <Row gutter={16}><Col span={10}><Form.Item label="有效期方式" name="validity_mode"><Select options={[{ value: 'RELATIVE_DAYS', label: '领取后若干天' }, { value: 'FIXED_RANGE', label: '固定日期区间' }]} /></Form.Item></Col><Col span={14}><Form.Item noStyle shouldUpdate={(previous, current) => previous.validity_mode !== current.validity_mode}>{({ getFieldValue }) => getFieldValue('validity_mode') === 'FIXED_RANGE' ? <Form.Item label="固定有效期" name="validity_range" rules={[{ required: true, message: '请选择固定有效期' }]}><DatePicker.RangePicker showTime style={{ width: '100%' }} /></Form.Item> : <Form.Item label="领取后有效天数" name="valid_days" rules={[{ required: true }]}><InputNumber min={1} max={3650} precision={0} addonAfter="天" style={{ width: '100%' }} /></Form.Item>}</Form.Item></Col></Row>
         </Form>

@@ -17,5 +17,6 @@
 .coupon-content text { overflow: hidden; color: #8a817a; font-size: 20rpx; text-overflow: ellipsis; white-space: nowrap; }
 .coupon-content .coupon-name { color: var(--ink); font-size: 28rpx; font-weight: 800; }
 .coupon-card button { width: 84rpx; min-width: 0; margin: 0 18rpx 0 0; padding: 0; border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); font-size: var(--font-caption); line-height: 56rpx; }
+.coupon-pending { margin-right: 18rpx; color: var(--muted); font-size: var(--font-caption); text-align: center; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 24rpx; }
 .empty button { width: 280rpx; }

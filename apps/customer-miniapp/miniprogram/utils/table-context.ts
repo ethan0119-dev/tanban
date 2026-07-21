@@ -85,7 +85,7 @@ export function readTableOrderingContext(now = Date.now()): TableOrderingContext
 }
 
 export function saveTableOrderingContext(context: TableOrderingContext): void {
-  if (!tableContextIsValid(context)) throw new TableRouteError("无法保存无效的桌码信息");
+  if (!tableContextIsValid(context)) throw new TableRouteError("桌台信息已更新，请重新扫码");
   wx.setStorageSync(TABLE_CONTEXT_KEY, context);
 }
 
@@ -117,7 +117,7 @@ export async function resolveTableOrderingContext(
     });
     const context = normalizeTableCodeResolution(publicScene, response);
     if (expectedStoreCode && context.storeCode !== expectedStoreCode) {
-      throw new TableRouteError("桌码不属于当前门店，请重新扫码", "TABLE_STORE_MISMATCH");
+      throw new TableRouteError("该桌码不适用于当前门店，请重新扫码", "TABLE_STORE_MISMATCH");
     }
     return context;
   } catch (error) {
@@ -132,7 +132,7 @@ export async function resolveTableOrderingContext(
 export async function revalidateTableOrderingContext(context: TableOrderingContext): Promise<TableOrderingContext> {
   const current = readTableOrderingContext();
   if (!current || !sameTableContext(current, context)) {
-    throw new TableRouteError("桌码上下文已变化，请重新扫码后下单", "TABLE_CONTEXT_CHANGED");
+    throw new TableRouteError("桌台信息已更新，请重新扫码后下单", "TABLE_CONTEXT_CHANGED");
   }
   const verified = await resolveTableOrderingContext(context.publicScene, context.storeCode);
   if (verified.tablePublicId !== context.tablePublicId) {

@@ -1,4 +1,5 @@
 import { env } from "./config/env";
+import { customerSafeErrorMessage } from "./utils/availability";
 import type { DecorationConfig, FastFoodOrderingContext, Store, TableOrderingContext } from "./types/domain";
 import { clearFastFoodContext, resolveFastFoodContext, saveFastFoodContext } from "./utils/fast-food-context";
 import { orderingEntryKey, parseOrderingEntry, type OrderingEntryOptions } from "./utils/store-route";
@@ -112,7 +113,7 @@ App<TanbanAppOption>({
           clearFastFoodContext();
           this.globalData.fastFoodContext = null;
           this.globalData.storeCode = env.defaultStoreCode;
-          this.globalData.routeError = error instanceof Error ? error.message : "快餐码牌识别失败，请重新扫码";
+          this.globalData.routeError = customerSafeErrorMessage(error, "快餐码牌不可用，请重新扫描门店提供的二维码。");
           wx.showModal({ title: "快餐码牌不可用", content: this.globalData.routeError, showCancel: false });
         });
     }
@@ -130,7 +131,7 @@ App<TanbanAppOption>({
         clearTableOrderingContext();
         this.globalData.tableContext = null;
         this.globalData.storeCode = env.defaultStoreCode;
-        this.globalData.routeError = error instanceof Error ? error.message : "桌码识别失败，请重新扫码";
+        this.globalData.routeError = customerSafeErrorMessage(error, "桌码不可用，请重新扫描桌面上的二维码。");
         wx.showModal({ title: "桌码不可用", content: this.globalData.routeError, showCancel: false });
       });
   },

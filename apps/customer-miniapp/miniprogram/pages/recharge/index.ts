@@ -1,6 +1,7 @@
 import type { TanbanAppOption } from "../../app";
 import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { customerFeatureCopy, customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 
 interface StoredValueRule {
   id: number;
@@ -29,13 +30,13 @@ Page({
     try {
       const result = await request<StoredValueView>({ url: `/public/stores/${encodeURIComponent(storeCode)}/stored-value`, method: "GET" });
       const rules = (result.rules || []).map((item) => ({ ...item, rechargeText: (item.rechargeCents / 100).toFixed(0), giftText: (item.giftCents / 100).toFixed(0) }));
-      this.setData({ loading: false, available: result.available, message: result.message, rules, selectedRuleId: rules[0]?.id || 0 });
+      this.setData({ loading: false, available: result.available, message: result.available ? "请选择充值金额" : customerFeatureCopy.STORED_VALUE.content, rules, selectedRuleId: rules[0]?.id || 0 });
     } catch (error) {
-      this.setData({ loading: false, available: false, message: error instanceof Error ? error.message : "充值能力加载失败", rules: [] });
+      this.setData({ loading: false, available: false, message: customerSafeErrorMessage(error, "储值服务暂时无法加载。"), rules: [] });
     }
   },
   chooseRule(event: WechatMiniprogram.BaseEvent) { this.setData({ selectedRuleId: Number(event.currentTarget.dataset.id) }); },
   recharge() {
-    wx.showModal({ title: "储值支付暂未开放", content: "储值涉及真实资金。待顾客登录、支付通道、资金账本和退款对账闭环完成后再开放。", showCancel: false });
+    showUnavailableFeature("STORED_VALUE");
   },
 });

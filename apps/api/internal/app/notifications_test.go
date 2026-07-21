@@ -89,3 +89,32 @@ func TestMarkMerchantNotificationReadIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestListMerchantNotificationsUsesMySQLSafeReadAlias(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery(`SELECT COUNT\(\*\).*LEFT JOIN merchant_notification_reads mread`).
+		WithArgs(int64(21), int64(7), false).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`SELECT a.id,a.title.*LEFT JOIN merchant_notification_reads mread`).
+		WithArgs(int64(21), int64(7), false, 15, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "summary", "content", "category", "severity", "published_at", "read_at"}).
+			AddRow(12, "系统更新", "摘要", "正文", "SYSTEM_UPDATE", "INFO", "2026-07-21T10:00:00Z", ""))
+
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+	router := chi.NewRouter()
+	server.merchantRoutes(router)
+	request := httptest.NewRequest(http.MethodGet, "/notifications?page=1&page_size=15", nil)
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 21, TenantID: 7, Role: RoleMerchantStaff}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -41,6 +41,68 @@ type loginRequest struct {
 	Portal   string `json:"portal"`
 }
 
+type changeMerchantPasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func (s *Server) changeMerchantPassword(w http.ResponseWriter, r *http.Request) {
+	var input changeMerchantPasswordRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.CurrentPassword == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请输入当前密码")
+		return
+	}
+	// bcrypt accepts at most 72 bytes (not runes). Enforce the same boundary
+	// before hashing so an oversized password is reported as a validation error.
+	if len([]byte(input.NewPassword)) < 8 || len([]byte(input.NewPassword)) > 72 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "新密码须为 8 至 72 位")
+		return
+	}
+	if input.NewPassword == input.CurrentPassword {
+		writeError(w, http.StatusBadRequest, "PASSWORD_UNCHANGED", "新密码不能与当前密码相同")
+		return
+	}
+	actor := currentIdentity(r.Context())
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	var currentHash string
+	if err = tx.QueryRowContext(r.Context(), `SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, actor.UserID, actor.TenantID).Scan(&currentHash); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(input.CurrentPassword)) != nil {
+		writeError(w, http.StatusBadRequest, "CURRENT_PASSWORD_INCORRECT", "当前密码不正确")
+		return
+	}
+	nextHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PASSWORD_HASH_ERROR", "密码更新失败")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE users SET password_hash=?,updated_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, string(nextHash), actor.UserID, actor.TenantID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		writeError(w, http.StatusConflict, "ACCOUNT_CHANGED", "账号状态已变化，请重新登录后再试")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	s.audit(r.Context(), actor, "account.password.change", "user", int64String(actor.UserID), nil, r)
+	writeData(w, http.StatusOK, map[string]bool{"changed": true})
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var input loginRequest
 	if !decodeJSON(w, r, &input) {

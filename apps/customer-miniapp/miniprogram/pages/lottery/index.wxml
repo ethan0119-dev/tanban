@@ -8,7 +8,7 @@
     <button class="draw-button" loading="{{drawing}}" disabled="{{drawing}}" bindtap="draw">{{drawing ? '正在开奖' : '立即抽奖'}}</button>
     <text class="draw-limit">每日 {{selected.daily_limit}} 次 · 每人最多 {{selected.total_limit}} 次</text>
   </view>
-  <view class="lottery-terms card" wx:if="{{selected}}"><text>活动规则</text><text>{{selected.terms || '本活动免费参与，奖品数量有限。优惠券正式抵扣需完成微信顾客登录与订单计价闭环。'}}</text></view>
+  <view class="lottery-terms card" wx:if="{{selected}}"><text>活动规则</text><text>{{selected.terms || '本活动免费参与，奖品数量有限，权益使用范围和有效期以活动说明为准。'}}</text></view>
   <view class="empty" wx:elif="{{loading}}">正在准备抽奖活动…</view>
   <view class="empty" wx:elif="{{error}}"><text>{{error}}</text><button bindtap="loadCampaigns">重新加载</button></view>
   <view class="empty" wx:else><text>暂时没有进行中的抽奖</text><button bindtap="goCoupons">去领优惠券</button></view>

@@ -3,6 +3,8 @@ import { Alert, Button, Card, Form, Input, InputNumber, Modal, QRCode, Space, Sw
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
+import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
+import { merchantFeatureCopy } from '../features/availability/copy';
 import type { Id } from '../types';
 
 const ENDPOINT = '/merchant/fast-food-plates';
@@ -123,7 +125,8 @@ export function FastFoodPlatesPage() {
         description="维护到店自取场景的桌面码牌；扫码下单后订单固化码牌，并按营业日生成稳定取餐号"
         extra={<Space><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openForm()}>新增码牌</Button></Space>}
       />
-      <Alert className="table-code-flow-alert" type="info" showIcon message={`已启用 ${activeCount} 个码牌`} description="二维码 scene 使用 fp=随机公共标识，不暴露租户或门店主键。服务端在下单事务内再次校验码牌归属和状态，码牌只绑定取餐场景，不参与金额或支付判断。" />
+      <Alert className="table-code-flow-alert" type="info" showIcon message={`已启用 ${activeCount} 个码牌`} description="顾客扫码后会自动绑定当前取餐码牌，商家可按码牌和取餐号安排放餐。" />
+      <DeveloperOnlyNote style={{ marginBottom: 16 }}>码牌使用随机公共标识生成扫码参数；下单时还会校验码牌所属门店和启用状态。</DeveloperOnlyNote>
       <Card bordered={false} className="content-card table-card">
         <Table<FastFoodPlate>
           rowKey="id"
@@ -133,7 +136,7 @@ export function FastFoodPlatesPage() {
           columns={[
             { title: '排序', dataIndex: 'sortOrder', width: 76 },
             { title: '码牌', key: 'plate', render: (_, item) => <Space direction="vertical" size={0}><Typography.Text strong>{item.plateName}</Typography.Text><Typography.Text type="secondary">编号 {item.plateCode}</Typography.Text></Space> },
-            { title: '扫码参数', dataIndex: 'qrScene', render: (value: string) => <Typography.Text code copyable>{value}</Typography.Text> },
+            { title: '码牌识别码', dataIndex: 'publicId', render: (value: string) => <Typography.Text code copyable>{value}</Typography.Text> },
             { title: '状态', dataIndex: 'status', width: 100, render: (value: string) => value === 'ACTIVE' ? <Tag color="success">启用</Tag> : <Tag>停用</Tag> },
             { title: '启用', key: 'enabled', width: 84, render: (_, item) => <Switch checked={item.status === 'ACTIVE'} onChange={(checked) => void toggle(item, checked)} /> },
             { title: '操作', key: 'actions', width: 220, render: (_, item) => <Space><Button type="link" icon={<QrcodeOutlined />} onClick={() => setPreviewing(item)}>二维码</Button><Button type="link" onClick={() => openForm(item)}>编辑</Button><Button type="link" danger onClick={() => remove(item)}>删除</Button></Space> },
@@ -154,7 +157,13 @@ export function FastFoodPlatesPage() {
       </Modal>
 
       <Modal title={previewing ? `${previewing.plateName} · ${previewing.plateCode}` : '码牌二维码'} open={Boolean(previewing)} footer={null} onCancel={() => setPreviewing(undefined)}>
-        {previewing && <Space direction="vertical" align="center" style={{ width: '100%' }} size="large"><QRCode value={`${previewing.miniappPath}?scene=${encodeURIComponent(previewing.qrScene)}`} size={240} /><Typography.Text code>{previewing.qrScene}</Typography.Text><Button icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(previewing.qrScene).then(() => messageApi.success('scene 已复制'))}>复制 scene</Button><Alert type="warning" showIcon message="当前为联调二维码" description="配置小程序 AppID/AppSecret 后，应使用微信 getUnlimited 生成正式小程序码。" /></Space>}
+        {previewing && <Space direction="vertical" align="center" style={{ width: '100%' }} size="large">
+          {import.meta.env.DEV ? <QRCode value={`${previewing.miniappPath}?scene=${encodeURIComponent(previewing.qrScene)}`} size={240} /> : <div className="official-code-placeholder"><QrcodeOutlined /><span>{merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.title}</span></div>}
+          <Typography.Text>码牌识别码：<Typography.Text code>{previewing.publicId}</Typography.Text></Typography.Text>
+          <Button icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(previewing.publicId).then(() => messageApi.success('码牌识别码已复制'))}>复制识别码</Button>
+          {!import.meta.env.DEV && <Alert type="info" showIcon message={merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.title} description={merchantFeatureCopy.OFFICIAL_MINIAPP_CODE.description} />}
+          <DeveloperOnlyNote>开发环境扫码参数：{previewing.qrScene}</DeveloperOnlyNote>
+        </Space>}
       </Modal>
     </div>
   );

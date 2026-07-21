@@ -1,4 +1,5 @@
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { customerSafeErrorMessage } from "../../utils/availability";
 
 Page({
   data: { loading: true, storeName: "", activeTab: "privacy", privacyPolicy: "", userAgreement: "", appearanceStyle: "" },
@@ -8,7 +9,7 @@ Page({
       const store = appearance.store;
       this.setData({ appearanceStyle: appearance.appearanceStyle, storeName: store.name, privacyPolicy: store.legal?.privacyPolicy || "商户暂未配置隐私政策。", userAgreement: store.legal?.userAgreement || "商户暂未配置用户协议。" });
     } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "加载失败", icon: "none" });
+      wx.showToast({ title: customerSafeErrorMessage(error, "协议内容暂时无法加载。"), icon: "none" });
     } finally {
       this.setData({ loading: false });
     }

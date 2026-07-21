@@ -57,12 +57,94 @@ paths:
                 owner_display_name: {type: string}
                 initial_store_code: {type: string}
                 initial_store_name: {type: string}
-      responses: {'201': {description: Created tenant}}
+      responses: {'200': {description: 'Created tenant, first store and owner account'}}
+  /platform/tenants/{tenantID}/owner:
+    parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 为尚无老板账号的商户补建首个老板账号
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, display_name]
+              properties:
+                username: {type: string, maxLength: 64}
+                password: {type: string, format: password, minLength: 8, maxLength: 72}
+                display_name: {type: string}
+      responses:
+        '201': {description: Created merchant owner account; plaintext password is never returned}
+        '409': {description: Merchant already has an owner account}
   /merchant/dashboard:
     get:
       summary: 商户经营概览
       security: [{bearerAuth: []}]
       responses: {'200': {description: Merchant metrics}}
+  /merchant/account/password:
+    put:
+      summary: 当前商户账号修改自己的登录密码
+      description: 只能修改当前 JWT 对应账号；接口不接受目标用户 ID。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: {type: string, format: password}
+                new_password: {type: string, format: password, minLength: 8, maxLength: 72}
+      responses:
+        '200': {description: Password changed}
+        '400': {description: Current password is incorrect or new password is invalid}
+  /merchant/notifications:
+    get:
+      summary: 当前商户账号的通知收件箱
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: unread_only
+          schema: {type: boolean}
+      responses: {'200': {description: Paginated platform notifications}}
+  /merchant/notifications/unread-count:
+    get:
+      summary: 当前商户账号的未读通知数
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Unread count}}
+  /merchant/notifications/read-all:
+    post:
+      summary: 将当前商户账号的全部通知标记为已读
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Number of notifications marked as read}}
+  /merchant/notifications/{notificationID}:
+    parameters:
+      - in: path
+        name: notificationID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 查看当前商户可见的通知详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Notification detail}}
+  /merchant/notifications/{notificationID}/read:
+    parameters:
+      - in: path
+        name: notificationID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 幂等标记一条通知为已读
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Updated notification}}
   /merchant/products:
     get:
       summary: 商品和 SKU 列表

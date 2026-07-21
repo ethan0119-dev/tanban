@@ -15,6 +15,7 @@ import { marketingEventKey, rememberMarketingPopup, shouldDisplayMarketingPopup 
 import { tableContextForStore } from "../../utils/table-context";
 import { fastFoodContextForStore } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
+import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -67,7 +68,7 @@ Page({
       const marketingShown = await this.loadMarketingPopup(storeCode);
       if (!marketingShown) this.showSplashIfNeeded(storeCode, store.decorationVersion || 0, decoration);
     } catch (error) {
-      this.setData({ loading: false, error: error instanceof Error ? error.message : "门店加载失败" });
+      this.setData({ loading: false, error: customerSafeErrorMessage(error, "门店信息暂时无法加载，请稍后重试。") });
     }
   },
   async loadMarketingPopup(storeCode: string): Promise<boolean> {
@@ -122,9 +123,10 @@ Page({
           header: { "Idempotency-Key": idempotencyKey("popup_coupon") },
           data: { subject_key: customerGuestKey() },
         });
-        wx.showModal({ title: "领取已记录", content: result.warning || "当前仅生成联调领取记录，暂不能抵扣真实订单。", showCancel: false });
+        void result;
+        wx.showModal({ title: "领取结果", content: customerExperienceCopy.couponClaimed, showCancel: false });
       } catch (error) {
-        wx.showToast({ title: error instanceof Error ? error.message : "领取失败", icon: "none" });
+        wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法领取，请稍后重试。"), icon: "none" });
       }
     }
   },

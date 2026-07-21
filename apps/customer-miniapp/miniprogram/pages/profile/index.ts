@@ -3,6 +3,7 @@ import type { Store } from "../../types/domain";
 import { localCouponCount } from "../../utils/coupon-wallet";
 import { tableContextForStore } from "../../utils/table-context";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { showUnavailableFeature } from "../../utils/availability";
 
 Page({
   data: { version: "v0.2.2", storeCode: "", store: null as Store | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
@@ -24,7 +25,7 @@ Page({
   goLegal() { wx.navigateTo({ url: "/pages/legal/index" }); },
   unavailable(event: WechatMiniprogram.BaseEvent) {
     const feature = String(event.currentTarget.dataset.feature || "该功能");
-    wx.showModal({ title: `${feature}暂未开放`, content: "当前优先跑通点单、支付确认和履约闭环，该能力已预留入口。", showCancel: false });
+    showUnavailableFeature("PROFILE_SERVICE", feature);
   },
   contact() {
     const service = this.data.store?.customerService;
@@ -33,7 +34,7 @@ Page({
     if (service?.qrUrl) options.push({ label: "查看客服二维码", action: () => wx.previewImage({ urls: [service.qrUrl!], current: service.qrUrl }) });
     if (service?.wechat) options.push({ label: `客服微信：${service.wechat}`, action: () => wx.setClipboardData({ data: service.wechat!, success: () => wx.showToast({ title: "微信号已复制" }) }) });
     if (!options.length) {
-      wx.showModal({ title: "联系商家", content: "商家暂未配置客服联系信息。", showCancel: false });
+      wx.showModal({ title: "联系商家", content: "暂时无法联系门店，请稍后再试。", showCancel: false });
       return;
     }
     wx.showActionSheet({ itemList: options.map((item) => item.label), success: (result) => options[result.tapIndex]?.action() });
