@@ -1,6 +1,7 @@
 import type { TanbanAppOption } from "../../app";
 import type { Order } from "../../types/domain";
 import { request } from "../../utils/request";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 interface OrderView extends Order {
   isDineIn: boolean;
@@ -37,10 +38,12 @@ function decorateOrder(order: Order): OrderView {
 let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
 
 Page({
-  data: { order: null as OrderView | null, loading: true, orderNo: "", storeCode: "", confirmationAttempts: 0 },
+  data: { order: null as OrderView | null, loading: true, orderNo: "", storeCode: "", confirmationAttempts: 0, appearanceStyle: "" },
   onLoad(options: Record<string, string>) { this.setData({ orderNo: options.orderNo || "" }); },
-  onShow() {
+  async onShow() {
+    const appearance = await loadPageAppearance();
     this.setData({ storeCode: getApp<TanbanAppOption>().globalData.storeCode });
+    this.setData({ appearanceStyle: appearance.appearanceStyle });
     if (!this.data.orderNo) return;
     this.setData({ confirmationAttempts: 0 });
     void this.loadOrder();

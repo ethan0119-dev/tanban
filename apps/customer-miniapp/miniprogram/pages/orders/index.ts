@@ -2,6 +2,7 @@ import type { TanbanAppOption } from "../../app";
 import type { Order } from "../../types/domain";
 import { localOrderNumbers } from "../../utils/orders";
 import { request } from "../../utils/request";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 type PrimaryTab = "CURRENT" | "HISTORY";
 type SceneTab = "ALL" | "DELIVERY" | "DINE_IN" | "TAKEOUT" | "COUNTER" | "QUEUE" | "RESERVATION";
@@ -49,8 +50,13 @@ Page({
       { key: "ALL", text: "全部" }, { key: "DELIVERY", text: "外卖" }, { key: "DINE_IN", text: "堂食" },
       { key: "TAKEOUT", text: "快餐" }, { key: "COUNTER", text: "当面付" }, { key: "QUEUE", text: "排队" }, { key: "RESERVATION", text: "预约" },
     ],
+    appearanceStyle: "",
   },
-  onShow() { void this.loadOrders(); },
+  async onShow() {
+    const appearance = await loadPageAppearance();
+    this.setData({ appearanceStyle: appearance.appearanceStyle });
+    await this.loadOrders();
+  },
   onPullDownRefresh() { this.loadOrders().finally(() => wx.stopPullDownRefresh()); },
   async loadOrders() {
     try {

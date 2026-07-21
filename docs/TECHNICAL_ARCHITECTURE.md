@@ -113,7 +113,7 @@ scene = qrcode_token（随机、不可枚举、可撤销）
 qrcode_token -> tenant_id + store_id + table_id? + channel
 ```
 
-这是目标方案。当前一期只解析 `scene` 中的 `storeCode`，并未实现随机、可撤销的 `qrcode_token` 或平台侧小程序码生成；小程序启动后按门店编码读取品牌和商品目录。正式批量发码前应实现 token 映射，不能把可顺序猜测的 `tenant_id` 当安全凭证。
+当前实现支持三种入口：门店 `s=<storeCode>`、堂食桌码 `tc=<opaqueToken>`、快餐码牌 `fp=<opaqueToken>`。后两者已经使用服务端生成的不可猜随机令牌并在下单事务中复核归属；门店码只选择公开门店，不作为权限凭证。平台侧微信 `getUnlimited` 正式小程序码生成仍待接入，详细边界见 `MULTI_TENANT_ONBOARDING_AND_QR.md`。
 
 ### 3.2 下单、支付与打印
 

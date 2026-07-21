@@ -1,16 +1,17 @@
 import type { TanbanAppOption } from "../../app";
 import type { Store } from "../../types/domain";
 import { localCouponCount } from "../../utils/coupon-wallet";
-import { request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 Page({
-  data: { version: "v0.2.1", storeCode: "", store: null as Store | null, channelScope: "TAKEOUT", couponCount: 0 },
+  data: { version: "v0.2.2", storeCode: "", store: null as Store | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
   async onShow() {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     this.setData({ storeCode, couponCount: localCouponCount(storeCode), channelScope: tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT" });
     try {
-      this.setData({ store: await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" }) });
+      const appearance = await loadPageAppearance();
+      this.setData({ store: appearance.store, appearanceStyle: appearance.appearanceStyle });
     } catch {
       // 联系方式仍以服务端下单页最终校验为准，个人中心加载失败不阻断其他入口。
     }

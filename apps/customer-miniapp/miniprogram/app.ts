@@ -1,5 +1,5 @@
 import { env } from "./config/env";
-import type { FastFoodOrderingContext, TableOrderingContext } from "./types/domain";
+import type { DecorationConfig, FastFoodOrderingContext, Store, TableOrderingContext } from "./types/domain";
 import { clearFastFoodContext, resolveFastFoodContext, saveFastFoodContext } from "./utils/fast-food-context";
 import { orderingEntryKey, parseOrderingEntry, type OrderingEntryOptions } from "./utils/store-route";
 import { clearTableOrderingContext, resolveTableOrderingContext, saveTableOrderingContext } from "./utils/table-context";
@@ -15,6 +15,10 @@ export interface TanbanAppOption {
     routeRevision: number;
     lastEntryKey: string;
     lastEntryAt: number;
+    appearanceStoreCode: string;
+    appearanceStore: Store | null;
+    appearanceDecoration: DecorationConfig | null;
+    appearanceStyle: string;
   };
   prepareOrderingEntry(options: OrderingEntryOptions, restoreWhenEmpty?: boolean): Promise<void>;
 }
@@ -30,6 +34,10 @@ App<TanbanAppOption>({
     routeRevision: 0,
     lastEntryKey: "",
     lastEntryAt: 0,
+    appearanceStoreCode: "",
+    appearanceStore: null,
+    appearanceDecoration: null,
+    appearanceStyle: "",
   },
   onLaunch(options) {
     const token = wx.getStorageSync<string>("tanban_customer_token");
@@ -52,6 +60,7 @@ App<TanbanAppOption>({
         this.globalData.tableContext = null;
         this.globalData.fastFoodContext = null;
         this.globalData.storeCode = env.defaultStoreCode;
+        this.globalData.appearanceStoreCode = "";
         this.globalData.routeError = "";
       }
       return Promise.resolve();
@@ -72,6 +81,7 @@ App<TanbanAppOption>({
       this.globalData.tableContext = null;
       this.globalData.fastFoodContext = null;
       this.globalData.storeCode = route.storeCode;
+      this.globalData.appearanceStoreCode = "";
       this.globalData.routeError = "";
       return Promise.resolve();
     }
@@ -95,6 +105,7 @@ App<TanbanAppOption>({
           saveFastFoodContext(context);
           this.globalData.fastFoodContext = context;
           this.globalData.storeCode = context.storeCode;
+          this.globalData.appearanceStoreCode = "";
         })
         .catch((error: unknown) => {
           if (revision !== this.globalData.routeRevision) return;
@@ -112,6 +123,7 @@ App<TanbanAppOption>({
         this.globalData.tableContext = context;
         this.globalData.fastFoodContext = null;
         this.globalData.storeCode = context.storeCode;
+        this.globalData.appearanceStoreCode = "";
       })
       .catch((error: unknown) => {
         if (revision !== this.globalData.routeRevision) return;

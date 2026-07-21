@@ -40,6 +40,7 @@ export const DEFAULT_DECORATION: DecorationConfig = {
     { id: 'orders', key: 'ORDERS', label: '订单', enabled: true },
     { id: 'profile', key: 'PROFILE', label: '我的', enabled: true },
   ],
+  navigationTemplate: 'classic',
   splash: {
     enabled: false,
     imageUrl: '',

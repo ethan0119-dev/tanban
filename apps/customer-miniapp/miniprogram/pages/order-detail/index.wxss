@@ -5,7 +5,7 @@
 .success .muted, .payment-waiting .muted { margin-top: 10rpx; font-size: 23rpx; text-align: center; }
 .pickup { display: flex; width: 100%; flex-direction: column; align-items: center; margin-top: 36rpx; padding: 30rpx 0; border-radius: 22rpx; background: var(--cream); }
 .pickup text:last-child { margin-top: 6rpx; font-family: Georgia, serif; font-size: 82rpx; font-weight: 800; }
-.table-destination { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 7rpx; margin-top: 36rpx; padding: 28rpx 0; border-radius: 22rpx; background: linear-gradient(145deg, var(--cream), #edf4ee); }
+.table-destination { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 7rpx; margin-top: 36rpx; padding: 28rpx 0; border-radius: var(--radius); background: var(--paper); }
 .table-destination text:first-child { color: var(--green); font-size: 22rpx; font-weight: 800; }
 .table-destination text:nth-child(2) { font-size: 48rpx; font-weight: 800; }
 .table-destination text:last-child { color: var(--muted); font-size: 22rpx; }

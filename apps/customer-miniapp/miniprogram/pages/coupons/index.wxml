@@ -1,4 +1,4 @@
-<view class="page coupons-page">
+<view class="page coupons-page" style="{{appearanceStyle}}">
   <view class="coupon-hero"><text>领券中心</text><text>当前点单场景可领取的门店优惠</text></view>
   <view class="coupon-notice">优惠资产涉及真实金额，正式抵扣需先完成微信顾客登录、券包与订单计价闭环；当前领取仅用于联调。</view>
   <view class="coupon-list" wx:if="{{coupons.length}}">

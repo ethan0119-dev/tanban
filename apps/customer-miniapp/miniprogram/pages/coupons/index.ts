@@ -4,6 +4,7 @@ import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
 import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 interface CouponView extends MarketingCoupon {
   amountText: string;
@@ -42,10 +43,12 @@ function viewOf(coupon: MarketingCoupon): CouponView {
 }
 
 Page({
-  data: { loading: true, coupons: [] as CouponView[], error: "" },
+  data: { loading: true, coupons: [] as CouponView[], error: "", appearanceStyle: "" },
   onLoad() { void this.loadCoupons(); },
   onPullDownRefresh() { this.loadCoupons().finally(() => wx.stopPullDownRefresh()); },
   async loadCoupons() {
+    const appearance = await loadPageAppearance();
+    this.setData({ appearanceStyle: appearance.appearanceStyle });
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     const channel = tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT";
     this.setData({ loading: true, error: "" });

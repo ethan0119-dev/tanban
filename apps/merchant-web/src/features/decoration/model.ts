@@ -67,6 +67,7 @@ export interface OrderingConfig {
 }
 
 export type NavigationKey = 'HOME' | 'MENU' | 'ORDERS' | 'PROFILE';
+export type NavigationTemplateKey = 'classic' | 'soft' | 'warm' | 'dark';
 
 export interface NavigationItemConfig {
   id: string;
@@ -93,6 +94,7 @@ export interface DecorationConfig {
   theme: ThemeConfig;
   ordering: OrderingConfig;
   navigation: NavigationItemConfig[];
+  navigationTemplate: NavigationTemplateKey;
   splash: SplashConfig;
 }
 

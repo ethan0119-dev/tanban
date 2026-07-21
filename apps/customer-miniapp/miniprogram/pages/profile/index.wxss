@@ -1,4 +1,4 @@
-.profile-page { min-height: 100vh; padding-bottom: 48rpx; background: linear-gradient(145deg, #fff 0, #f2f2ee 55%, #f7f5ef 100%); }
+.profile-page { min-height: 100vh; padding-bottom: 48rpx; background: var(--paper); }
 .profile-hero { padding: 58rpx 38rpx 30rpx; }
 .welcome { display: flex; align-items: center; justify-content: space-between; }
 .welcome > view { display: flex; flex-direction: column; gap: 24rpx; }
@@ -10,12 +10,12 @@
 .asset-summary view:last-child { border-right: 0; }
 .asset-summary text:first-child { font-size: 34rpx; font-weight: 900; }
 .asset-summary text:last-child { font-size: 23rpx; }
-.member-card { display: flex; justify-content: space-between; min-height: 182rpx; margin-top: 42rpx; padding: 34rpx; box-sizing: border-box; border-radius: 30rpx; color: white; background: linear-gradient(135deg, #7a817e, #aeb2b0); box-shadow: 0 20rpx 48rpx rgba(45,52,49,.15); }
+.member-card { display: flex; justify-content: space-between; min-height: 182rpx; margin-top: 42rpx; padding: 34rpx; box-sizing: border-box; border-radius: var(--radius); color: white; background: var(--green); box-shadow: 0 20rpx 48rpx rgba(45,52,49,.15); }
 .member-card > view { display: flex; flex-direction: column; gap: 18rpx; }
 .member-card > view:first-child text:first-child { font-size: 34rpx; font-weight: 900; }
 .member-card > view:first-child text:last-child { color: rgba(255,255,255,.62); font-size: 22rpx; }
 .member-card > view:last-child { align-items: flex-end; font-size: 22rpx; }
-.service-card { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 40rpx; margin: 12rpx 24rpx 0; padding: 42rpx 22rpx; border-radius: 28rpx; background: rgba(255,255,255,.9); box-shadow: 0 14rpx 42rpx rgba(23,32,27,.05); }
+.service-card { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 40rpx; margin: 12rpx 24rpx 0; padding: 42rpx 22rpx; border-radius: var(--radius); background: var(--surface); box-shadow: 0 14rpx 42rpx rgba(23,32,27,.05); }
 .service-item { display: flex; flex-direction: column; align-items: center; gap: 15rpx; font-size: 23rpx; }
 .service-item image { width: 48rpx; height: 48rpx; }
 .version { margin-top: 46rpx; color: #a2a6a1; font-size: 20rpx; text-align: center; }

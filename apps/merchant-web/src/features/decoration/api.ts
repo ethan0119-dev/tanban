@@ -52,6 +52,7 @@ interface ApiDecorationConfig {
   };
   navigation: {
     items: Array<{ key: string; text: string; visible: boolean; sortOrder: number }>;
+    templateKey: 'classic' | 'soft' | 'warm' | 'dark';
     backgroundColor: string;
     textColor: string;
     selectedColor: string;
@@ -204,6 +205,9 @@ export function normalizeConfig(payload: unknown): DecorationConfig {
         enabled: booleanValue(true, nav.visible),
       };
     }) : base.navigation,
+    navigationTemplate: ['soft', 'warm', 'dark'].includes(stringValue(rawNavigation.templateKey))
+      ? stringValue(rawNavigation.templateKey) as DecorationConfig['navigationTemplate']
+      : 'classic',
     splash: {
       enabled: booleanValue(false, rawSplash.enabled),
       imageUrl: stringValue(rawSplash.imageUrl),
@@ -286,6 +290,7 @@ export function toApiConfig(config: DecorationConfig): ApiDecorationConfig {
     },
     navigation: {
       items: config.navigation.map((item, index) => ({ key: item.key.toLowerCase(), text: item.label, visible: item.enabled, sortOrder: (index + 1) * 10 })),
+      templateKey: config.navigationTemplate,
       backgroundColor: config.theme.navBackgroundColor,
       textColor: config.theme.navTextColor,
       selectedColor: config.theme.navSelectedColor,

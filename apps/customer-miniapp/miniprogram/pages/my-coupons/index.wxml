@@ -1,4 +1,4 @@
-<view class="page coupon-wallet-page">
+<view class="page coupon-wallet-page" style="{{appearanceStyle}}">
   <view class="wallet-hero"><text>我的优惠券</text><text>已领取的门店优惠都在这里</text></view>
   <view class="coupon-tabs">
     <view class="{{activeTab === 'USABLE' ? 'active' : ''}}" data-tab="USABLE" bindtap="chooseTab">可使用</view>

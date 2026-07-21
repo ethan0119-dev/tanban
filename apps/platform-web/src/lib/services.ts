@@ -73,6 +73,10 @@ function tenantFromRaw(value: unknown): Tenant {
     status: statusValue(item.status),
     storeCount: numberValue(item.store_count ?? item.storeCount),
     orderCount: numberValue(item.order_count ?? item.orderCount),
+    ownerUsername: text(item.owner_username ?? item.ownerUsername) || undefined,
+    ownerDisplayName: text(item.owner_display_name ?? item.ownerDisplayName) || undefined,
+    ownerStatus: text(item.owner_status ?? item.ownerStatus) ? statusValue(item.owner_status ?? item.ownerStatus) : undefined,
+    hasOwner: Boolean(item.has_owner ?? item.hasOwner ?? item.owner_username ?? item.ownerUsername),
     paymentMerchantNo: merchantNo || undefined,
     paymentProvider: text(item.payment_provider ?? item.paymentProvider) || undefined,
     paymentSubAppId: text(item.payment_sub_appid ?? item.paymentSubAppId) || undefined,
@@ -256,6 +260,13 @@ export const tenantService = {
     tenantFromRaw((await http.post<RawRecord>('/platform/tenants', tenantPayload(values))).data),
   update: async (id: string, values: Partial<Tenant>) =>
     tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/`, tenantPayload(values))).data),
+  createOwner: async (id: string, values: { username: string; password: string; displayName: string }) => {
+    await http.post(`/platform/tenants/${id}/owner`, {
+      username: values.username,
+      password: values.password,
+      display_name: values.displayName,
+    });
+  },
 };
 
 export const storeService = {

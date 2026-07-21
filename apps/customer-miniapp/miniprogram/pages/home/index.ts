@@ -14,6 +14,7 @@ import { idempotencyKey, request } from "../../utils/request";
 import { marketingEventKey, rememberMarketingPopup, shouldDisplayMarketingPopup } from "../../utils/marketing";
 import { tableContextForStore } from "../../utils/table-context";
 import { fastFoodContextForStore } from "../../utils/fast-food-context";
+import { rememberPageAppearance } from "../../utils/page-appearance";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,6 +59,7 @@ Page({
     try {
       const store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
       const decoration = normalizeDecoration(store.decoration, store);
+      rememberPageAppearance(store);
       const modules = decoration.home.modules.filter((module) => module.enabled);
       this.setData({ store, decoration, modules, appearanceStyle: decorationStyle(decoration), loading: false, marketingPopup: null, marketingPopupVisible: false });
       wx.setNavigationBarTitle({ title: store.name || "摊伴点单" });

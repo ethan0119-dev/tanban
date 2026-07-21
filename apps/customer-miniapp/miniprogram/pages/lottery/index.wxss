@@ -1,17 +1,17 @@
-.lottery-page { min-height: 100vh; padding: 36rpx 28rpx 60rpx; background: radial-gradient(circle at 50% 0, #f8d38c 0, #be6f43 420rpx, #793d2c 900rpx); box-sizing: border-box; }
+.lottery-page { min-height: 100vh; padding: 36rpx 28rpx 60rpx; background: var(--green); box-sizing: border-box; }
 .lottery-heading { display: flex; flex-direction: column; align-items: center; gap: 12rpx; padding: 18rpx 20rpx 28rpx; color: #fff; text-align: center; }
 .lottery-heading text:first-child { font-size: 48rpx; font-weight: 900; }
 .lottery-heading text:last-child { color: rgba(255,255,255,.8); font-size: 23rpx; }
 .campaign-tabs { margin-bottom: 20rpx; white-space: nowrap; }
 .campaign-tabs button { display: inline-block; margin-right: 12rpx; padding: 0 24rpx; border-radius: 999rpx; color: #fff; background: rgba(255,255,255,.18); font-size: 22rpx; line-height: 62rpx; }
-.campaign-tabs button.active { color: #783d2c; background: #fff5dc; }
-.lottery-board { padding: 24rpx; border: 8rpx solid #f9d997; border-radius: 40rpx; background: #a74f35; box-shadow: 0 22rpx 60rpx rgba(61,20,13,.28); }
+.campaign-tabs button.active { color: var(--ink); background: var(--lime); }
+.lottery-board { padding: 24rpx; border: 8rpx solid var(--lime); border-radius: 40rpx; background: var(--surface); box-shadow: 0 22rpx 60rpx rgba(61,20,13,.28); }
 .prize-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16rpx; }
 .prize-card { min-height: 154rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7rpx; padding: 18rpx; border-radius: 24rpx; color: #663424; background: linear-gradient(145deg, #fff9e9, #f3d69e); text-align: center; }
 .prize-card .prize-symbol { width: 45rpx; height: 45rpx; border-radius: 50%; color: #fff; background: #b85c3b; font-size: 20rpx; line-height: 45rpx; }
 .prize-card .prize-name { font-size: 25rpx; font-weight: 800; }
 .prize-card .prize-stock { color: #a16b4f; font-size: 18rpx; }
-.draw-button { width: 72%; margin: 30rpx auto 12rpx; border-radius: 999rpx; color: #8d3e28; background: linear-gradient(180deg, #fff4b6, #f4bd4c); box-shadow: 0 10rpx 0 #c96a30; font-size: 31rpx; font-weight: 900; line-height: 86rpx; }
+.draw-button { width: 72%; margin: 30rpx auto 12rpx; border-radius: 999rpx; color: var(--ink); background: var(--lime); font-size: 31rpx; font-weight: 900; line-height: 86rpx; }
 .draw-limit { display: block; color: rgba(255,255,255,.72); font-size: 20rpx; text-align: center; }
 .lottery-terms { display: flex; flex-direction: column; gap: 14rpx; margin: 26rpx 0 0; color: #6f5548; line-height: 1.7; }
 .lottery-terms text:first-child { color: #412d24; font-weight: 800; }

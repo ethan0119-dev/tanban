@@ -61,7 +61,7 @@ export function PhonePreview({ config, storeName = '我的门店', page, onPageC
             : page === 'HOME'
               ? <HomePreview config={config} storeName={storeName} />
               : <MenuPreview config={config} />}
-          <nav className="mini-tabbar">
+          <nav className={`mini-tabbar nav-${config.navigationTemplate}`}>
             {config.navigation.filter((item) => item.enabled).map((item) => (
               <button
                 type="button"

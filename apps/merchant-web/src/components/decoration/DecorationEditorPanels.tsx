@@ -1,4 +1,4 @@
-import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, FolderOpenOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, CheckCircleFilled, DeleteOutlined, FolderOpenOutlined, HomeOutlined, PictureOutlined, PlusOutlined, ShoppingOutlined, SnippetsOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -199,12 +199,32 @@ export function TemplatePanel({ config, templates, loading, onApply }: { config:
 
 export function NavigationPanel({ config, onChange }: ConfigPanelProps) {
   const update = (index: number, patch: Partial<DecorationConfig['navigation'][number]>) => onChange({ ...config, navigation: config.navigation.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+  const templates = [
+    { key: 'classic' as const, name: '经典线框', description: '白底、线框图标，适合多数门店。', background: '#FFFFFF', text: '#7B807A', selected: config.theme.primaryColor },
+    { key: 'soft' as const, name: '轻柔圆润', description: '柔和底色与强调色，视觉更轻盈。', background: config.theme.surfaceColor, text: config.theme.mutedColor, selected: config.theme.primaryColor },
+    { key: 'warm' as const, name: '暖调门店', description: '奶油底与暖棕图标，适合烘焙和咖啡。', background: '#FFF7EA', text: '#806F65', selected: '#9A5F3D' },
+    { key: 'dark' as const, name: '深色强调', description: '深色底栏与高对比图标，适合夜市。', background: config.theme.textColor, text: config.theme.mutedColor, selected: config.theme.accentColor },
+  ];
+  const applyTemplate = (template: typeof templates[number]) => onChange({
+    ...config,
+    navigationTemplate: template.key,
+    theme: { ...config.theme, navBackgroundColor: template.background, navTextColor: template.text, navSelectedColor: template.selected },
+  });
   return (
     <div className="decoration-panel-stack">
-      <PanelIntro title="导航设置" description="设置小程序底部入口名称。当前采用微信原生 TabBar，四个入口及顺序固定。" />
-      <Alert showIcon type="info" message="当前仅支持修改导航文案和颜色" description="单项隐藏和排序为未来自定义 TabBar 预留，本版本不会向商户承诺生效。" />
+      <PanelIntro title="导航设置" description="从预置导航模板中选择图标和底栏配色，并设置四个固定入口名称。" />
+      <Row gutter={[12, 12]} className="navigation-template-grid">
+        {templates.map((template) => <Col xs={24} md={12} key={template.key}>
+          <Card hoverable size="small" className={`navigation-template-card ${config.navigationTemplate === template.key ? 'selected' : ''}`} onClick={() => applyTemplate(template)}>
+            <div className="navigation-template-preview" style={{ background: template.background, color: template.text }}>
+              {[<HomeOutlined key="home" />, <ShoppingOutlined key="menu" />, <SnippetsOutlined key="orders" />, <UserOutlined key="profile" />].map((icon, index) => <span key={index} style={{ color: index === 0 ? template.selected : template.text }}>{icon}<i>{['首页', '点单', '订单', '我的'][index]}</i></span>)}
+            </div>
+            <div><Space><strong>{template.name}</strong>{config.navigationTemplate === template.key && <CheckCircleFilled />}</Space><Typography.Text type="secondary">{template.description}</Typography.Text></div>
+          </Card>
+        </Col>)}
+      </Row>
+      <Alert showIcon type="info" message="图标随模板统一提供" description="页面路径和顺序固定，商户可修改入口文案；发布后真机导航会同步模板图标与配色。" />
       {config.navigation.map((item, index) => <Card size="small" className="navigation-card" key={item.id}><div><Tag>{NAVIGATION_LABELS[item.key]}</Tag><Input value={item.label} maxLength={8} onChange={(event) => update(index, { label: event.target.value })} /></div><Tag color="default">固定入口</Tag></Card>)}
-      <Typography.Paragraph type="secondary">微信原生 TabBar 的图标和页面路径由小程序版本统一提供。</Typography.Paragraph>
     </div>
   );
 }

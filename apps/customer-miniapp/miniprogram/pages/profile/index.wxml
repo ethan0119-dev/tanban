@@ -1,4 +1,4 @@
-<view class="page profile-page">
+<view class="page profile-page" style="{{appearanceStyle}}">
   <view class="profile-hero">
     <view class="welcome"><view><text>欢迎回来</text><text class="name">微信顾客</text></view><image src="/assets/icons/profile.png" mode="aspectFit" /></view>
     <view class="asset-summary">
@@ -21,4 +21,4 @@
   </view>
   <view class="version">摊伴 TANBAN {{version}}</view>
 </view>
-<marketing-popup store-code="{{storeCode}}" placement-code="PROFILE_POPUP" channel-scope="{{channelScope}}" />
+<marketing-popup style="{{appearanceStyle}}" store-code="{{storeCode}}" placement-code="PROFILE_POPUP" channel-scope="{{channelScope}}" />

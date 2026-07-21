@@ -21,6 +21,10 @@ type tenantDTO struct {
 	PaymentSubAppID   string `json:"payment_sub_appid"`
 	StoreCount        int    `json:"store_count"`
 	OrderCount        int    `json:"order_count"`
+	OwnerUsername     string `json:"owner_username"`
+	OwnerDisplayName  string `json:"owner_display_name"`
+	OwnerStatus       string `json:"owner_status"`
+	HasOwner          bool   `json:"has_owner"`
 	CreatedAt         string `json:"created_at"`
 }
 
@@ -38,6 +42,12 @@ type tenantInput struct {
 	OwnerDisplayName  string `json:"owner_display_name"`
 	InitialStoreCode  string `json:"initial_store_code"`
 	InitialStoreName  string `json:"initial_store_name"`
+}
+
+type tenantOwnerInput struct {
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
 }
 
 type storeDTO struct {
@@ -100,6 +110,7 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.Get("/", s.getTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/", s.updateTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deleteTenant)
+		t.With(requireRoles(RolePlatformAdmin)).Post("/owner", s.createTenantOwner)
 		t.Get("/stores", s.listPlatformStores)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/stores", s.createPlatformStore)
 		t.Route("/stores/{storeID}", func(st chi.Router) {
@@ -122,15 +133,24 @@ func (s *Server) platformRoutes(r chi.Router) {
 func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	page, size, offset := pagination(r)
 	search := "%" + strings.TrimSpace(r.URL.Query().Get("q")) + "%"
+	status := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
+	if status != "" && !validStatus(status, "ACTIVE", "PENDING", "DISABLED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE, PENDING or DISABLED")
+		return
+	}
 	var total int
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tenants WHERE deleted_at IS NULL AND (name LIKE ? OR code LIKE ?)`, search, search).Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tenants WHERE deleted_at IS NULL AND (name LIKE ? OR code LIKE ?) AND (?='' OR status=?)`, search, search, status, status).Scan(&total); err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
-		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
-		FROM tenants t WHERE t.deleted_at IS NULL AND (t.name LIKE ? OR t.code LIKE ?) ORDER BY t.id DESC LIMIT ? OFFSET ?`, search, search, size, offset)
+		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
+		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
+		FROM tenants t WHERE t.deleted_at IS NULL AND (t.name LIKE ? OR t.code LIKE ?) AND (?='' OR t.status=?) ORDER BY t.id DESC LIMIT ? OFFSET ?`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, search, search, status, status, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -139,7 +159,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantDTO{}
 	for rows.Next() {
 		var item tenantDTO
-		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -161,8 +181,8 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		input.Status = "ACTIVE"
 	}
 	input.Status = strings.ToUpper(input.Status)
-	if !validStatus(input.Status, "ACTIVE", "DISABLED") {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE or DISABLED")
+	if !validStatus(input.Status, "ACTIVE", "PENDING", "DISABLED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE, PENDING or DISABLED")
 		return
 	}
 	if input.PaymentProvider == "" {
@@ -173,12 +193,16 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock or tianque")
 		return
 	}
-	if (input.OwnerUsername == "") != (input.OwnerPassword == "") || input.OwnerPassword != "" && len(input.OwnerPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username and an owner_password of at least 8 characters must be provided together")
+	input.OwnerUsername = strings.TrimSpace(input.OwnerUsername)
+	input.OwnerDisplayName = strings.TrimSpace(input.OwnerDisplayName)
+	input.InitialStoreCode = strings.TrimSpace(input.InitialStoreCode)
+	input.InitialStoreName = strings.TrimSpace(input.InitialStoreName)
+	if input.OwnerUsername == "" || len(input.OwnerPassword) < 8 || input.OwnerDisplayName == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username, owner_display_name and an owner_password of at least 8 characters are required")
 		return
 	}
-	if (input.InitialStoreCode == "") != (input.InitialStoreName == "") {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "initial_store_code and initial_store_name must be provided together")
+	if input.InitialStoreCode == "" || input.InitialStoreName == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "initial_store_code and initial_store_name are required")
 		return
 	}
 	tx, err := s.DB.BeginTx(r.Context(), nil)
@@ -194,26 +218,18 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := result.LastInsertId()
-	if input.InitialStoreCode != "" {
-		if _, err = tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,status) VALUES(?,?,?,'ACTIVE')`, id, input.InitialStoreCode, input.InitialStoreName); err != nil {
-			handleSQLError(w, err)
-			return
-		}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,status) VALUES(?,?,?,'ACTIVE')`, id, input.InitialStoreCode, input.InitialStoreName); err != nil {
+		handleSQLError(w, err)
+		return
 	}
-	if input.OwnerUsername != "" {
-		displayName := strings.TrimSpace(input.OwnerDisplayName)
-		if displayName == "" {
-			displayName = input.ContactName
-		}
-		hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcrypt.DefaultCost)
-		if hashErr != nil {
-			handleSQLError(w, hashErr)
-			return
-		}
-		if _, err = tx.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,'ACTIVE')`, id, input.OwnerUsername, string(hash), displayName, RoleMerchantOwner); err != nil {
-			handleSQLError(w, err)
-			return
-		}
+	hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcrypt.DefaultCost)
+	if hashErr != nil {
+		handleSQLError(w, hashErr)
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,'ACTIVE')`, id, input.OwnerUsername, string(hash), input.OwnerDisplayName, RoleMerchantOwner); err != nil {
+		handleSQLError(w, err)
+		return
 	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
@@ -237,9 +253,13 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 	var item tenantDTO
 	err := s.DB.QueryRowContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
-		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
-		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, id).
-		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.CreatedAt)
+		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
+		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
+		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%dT%H:%i:%sZ')
+		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
+		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -259,6 +279,11 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "" {
 		input.Status = "ACTIVE"
 	}
+	input.Status = strings.ToUpper(input.Status)
+	if !validStatus(input.Status, "ACTIVE", "PENDING", "DISABLED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE, PENDING or DISABLED")
+		return
+	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET code=?,name=?,contact_name=?,contact_phone=?,status=?,payment_provider=?,payment_merchant_no=?,payment_sub_appid=?
 		WHERE id=? AND deleted_at IS NULL`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID, id)
 	if err != nil {
@@ -274,6 +299,54 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		"payment_provider": input.PaymentProvider, "payment_merchant_no_configured": input.PaymentMerchantNo != "",
 	}, r)
 	s.getTenantByID(w, r, id)
+}
+
+func (s *Server) createTenantOwner(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var input tenantOwnerInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Username = strings.TrimSpace(input.Username)
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	if input.Username == "" || input.DisplayName == "" || len(input.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username, display_name and a password of at least 8 characters are required")
+		return
+	}
+	var tenantExists bool
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM tenants WHERE id=? AND deleted_at IS NULL)`, tenantID).Scan(&tenantExists); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if !tenantExists {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tenant not found")
+		return
+	}
+	var ownerExists bool
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id=? AND role=?)`, tenantID, RoleMerchantOwner).Scan(&ownerExists); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if ownerExists {
+		writeError(w, http.StatusConflict, "OWNER_EXISTS", "tenant owner already exists")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,'ACTIVE')`, tenantID, input.Username, string(hash), input.DisplayName, RoleMerchantOwner)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	userID, _ := result.LastInsertId()
+	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.owner.create", "user", int64String(userID), map[string]any{"tenant_id": tenantID, "username": input.Username}, r)
+	writeData(w, http.StatusCreated, map[string]any{"id": userID, "tenant_id": tenantID, "username": input.Username, "display_name": input.DisplayName, "role": RoleMerchantOwner, "status": "ACTIVE"})
 }
 
 func (s *Server) deleteTenant(w http.ResponseWriter, r *http.Request) {

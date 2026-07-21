@@ -79,6 +79,7 @@ type DecorationMenu struct {
 
 type DecorationNavigation struct {
 	Items           []DecorationNavigationItem `json:"items"`
+	TemplateKey     string                     `json:"templateKey"`
 	BackgroundColor string                     `json:"backgroundColor"`
 	TextColor       string                     `json:"textColor"`
 	SelectedColor   string                     `json:"selectedColor"`
@@ -275,6 +276,7 @@ func defaultDecorationConfig(store storeDTO) DecorationConfig {
 			ShowSoldOut: true, LoadMode: "BY_CATEGORY", ProductActionMode: "SKU_SHEET", Density: "COMFORTABLE",
 		},
 		Navigation: DecorationNavigation{
+			TemplateKey:     "classic",
 			BackgroundColor: theme.NavBackgroundColor, TextColor: theme.NavTextColor, SelectedColor: theme.NavSelectedColor,
 			Items: []DecorationNavigationItem{
 				{Key: "home", Text: "首页", Visible: true, SortOrder: 10},
@@ -324,6 +326,7 @@ func normalizeDecorationConfig(config *DecorationConfig) {
 	fill(&config.Menu.ProductActionMode, defaults.Menu.ProductActionMode)
 	fill(&config.Menu.Density, defaults.Menu.Density)
 	fill(&config.Navigation.BackgroundColor, config.Theme.NavBackgroundColor)
+	fill(&config.Navigation.TemplateKey, defaults.Navigation.TemplateKey)
 	fill(&config.Navigation.TextColor, config.Theme.NavTextColor)
 	fill(&config.Navigation.SelectedColor, config.Theme.NavSelectedColor)
 	if len(config.Navigation.Items) == 0 {
@@ -391,6 +394,9 @@ func validateDecorationConfig(config DecorationConfig) error {
 	}
 	if len(config.Navigation.Items) < 2 || len(config.Navigation.Items) > 4 {
 		return errors.New("navigation must contain between 2 and 4 items")
+	}
+	if !oneOf(config.Navigation.TemplateKey, "classic", "soft", "warm", "dark") {
+		return errors.New("navigation.templateKey must be classic, soft, warm or dark")
 	}
 	for name, color := range map[string]string{"backgroundColor": config.Navigation.BackgroundColor, "textColor": config.Navigation.TextColor, "selectedColor": config.Navigation.SelectedColor} {
 		if !decorationHexColor.MatchString(color) {

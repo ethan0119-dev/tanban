@@ -13,10 +13,15 @@ function storageKey(storeCode: string, placement: MarketingPlacement): string {
 }
 
 export function shouldDisplayMarketingPopup(storeCode: string, placement: MarketingPlacement, now = new Date()): boolean {
+  if (!hasMarketingPopupVisual(placement)) return false;
   if (placement.frequency === "EVERY_VISIT") return true;
   const remembered = wx.getStorageSync<string>(storageKey(storeCode, placement));
   if (placement.frequency === "DAILY") return remembered !== localDay(now);
   return remembered !== "SEEN";
+}
+
+export function hasMarketingPopupVisual(placement: MarketingPlacement): boolean {
+  return Boolean(placement.image_url?.trim() || placement.title?.trim() || placement.subtitle?.trim());
 }
 
 export function rememberMarketingPopup(storeCode: string, placement: MarketingPlacement, now = new Date()): void {

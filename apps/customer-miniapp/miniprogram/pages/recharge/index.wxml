@@ -1,4 +1,4 @@
-<view class="page recharge-page">
+<view class="page recharge-page" style="{{appearanceStyle}}">
   <view class="balance-card"><text>账户余额</text><text class="balance">¥0.00</text><text>开发期暂未绑定正式会员账户</text></view>
   <view class="section-title"><text>充值金额</text><text>{{message}}</text></view>
   <view class="rule-grid" wx:if="{{rules.length}}">

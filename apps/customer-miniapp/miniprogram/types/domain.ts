@@ -108,6 +108,7 @@ export interface DecorationNavigationItem {
 
 export interface DecorationNavigation {
   items: DecorationNavigationItem[];
+  templateKey: "classic" | "soft" | "warm" | "dark";
   backgroundColor: string;
   textColor: string;
   selectedColor: string;

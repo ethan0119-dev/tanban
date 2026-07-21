@@ -1,11 +1,13 @@
 import {
   CalendarOutlined,
+  CopyOutlined,
   CoffeeOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
   PlusOutlined,
   SaveOutlined,
   ShopOutlined,
+  QrcodeOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -17,6 +19,7 @@ import {
   Form,
   Input,
   Radio,
+  QRCode,
   Row,
   Select,
   Space,
@@ -58,6 +61,7 @@ export function SettingsPage() {
   const [overrideReason, setOverrideReason] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
   const [logoLibraryOpen, setLogoLibraryOpen] = useState(false);
+  const [storeCode, setStoreCode] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +85,7 @@ export function SettingsPage() {
         allowLatePayment: settings.allowLatePayment ?? true,
         paymentTimeoutMinutes: settings.paymentTimeoutMinutes ?? 15,
       });
+      setStoreCode(settings.storeCode || '');
       setBusinessHours(hours);
       setTimezone(hours.timezone || 'Asia/Shanghai');
       setWeeklySchedule(hours.weeklySchedule?.length ? hours.weeklySchedule : emptyWeek());
@@ -139,6 +144,19 @@ export function SettingsPage() {
               <Form.Item label="门店 Logo"><Space.Compact block><Form.Item name="logo" noStyle><Input placeholder="从图片库选择，或填入 HTTPS 地址" /></Form.Item><Button icon={<FolderOpenOutlined />} onClick={() => setLogoLibraryOpen(true)}>图片库</Button></Space.Compact></Form.Item>
               <Form.Item label="经营地址" name="address"><Input placeholder="夜市、街区或摊位位置" /></Form.Item>
               <Form.Item label="店铺公告" name="announcement"><Input.TextArea rows={3} maxLength={120} showCount placeholder="将在顾客点单首页展示" /></Form.Item>
+            </Card>
+
+            <Card bordered={false} className="content-card settings-card" title={<Space><QrcodeOutlined />门店点单入口</Space>}>
+              <Alert type="info" showIcon message="所有商户共用同一个小程序" description="二维码通过 scene=s=门店码区分门店；小程序收到参数后按门店码加载对应商户的数据、装修、商品和订单上下文。" />
+              <Row gutter={[24, 16]} align="middle" style={{ marginTop: 20 }}>
+                <Col xs={24} md={8}><div style={{ display: 'flex', justifyContent: 'center' }}>{storeCode ? <QRCode size={190} value={`pages/home/index?scene=${encodeURIComponent(`s=${storeCode}`)}`} /> : <Typography.Text type="secondary">门店码加载中</Typography.Text>}</div></Col>
+                <Col xs={24} md={16}>
+                  <Typography.Title level={5}>当前门店：{storeCode || '—'}</Typography.Title>
+                  <Typography.Paragraph type="secondary">正式小程序码 scene：<Typography.Text code>{storeCode ? `s=${storeCode}` : '—'}</Typography.Text></Typography.Paragraph>
+                  <Space wrap><Button disabled={!storeCode} icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(`s=${storeCode}`).then(() => messageApi.success('scene 已复制'))}>复制 scene</Button><Button disabled={!storeCode} icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(`pages/home/index?scene=${encodeURIComponent(`s=${storeCode}`)}`).then(() => messageApi.success('小程序路径已复制'))}>复制路径</Button></Space>
+                  <Alert style={{ marginTop: 16 }} type="warning" showIcon message="当前二维码用于开发联调" description="正式物料应由平台调用微信 getUnlimited 接口，把同一 AppID 与当前 scene 生成官方小程序码。" />
+                </Col>
+              </Row>
             </Card>
 
             <Card bordered={false} className="content-card settings-card" title={<Space><CalendarOutlined />营业时间与临时状态</Space>}>

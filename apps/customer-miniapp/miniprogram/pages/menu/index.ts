@@ -7,6 +7,7 @@ import { tableContextForStore } from "../../utils/table-context";
 import { fastFoodContextForStore } from "../../utils/fast-food-context";
 import { clearTableOrderingContext } from "../../utils/table-context";
 import { clearFastFoodContext } from "../../utils/fast-food-context";
+import { rememberPageAppearance } from "../../utils/page-appearance";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -76,6 +77,7 @@ Page({
     try {
       const catalog = await request<Catalog>({ url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`, method: "GET" });
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
+      if (catalog.store) rememberPageAppearance(catalog.store);
       const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);
       this.setData({
         store: catalog.store || null,

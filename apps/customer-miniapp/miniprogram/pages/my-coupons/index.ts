@@ -1,6 +1,7 @@
 import type { TanbanAppOption } from "../../app";
 import type { LocalCouponAsset } from "../../utils/coupon-wallet";
 import { localCouponAssets } from "../../utils/coupon-wallet";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 interface CouponAssetView extends LocalCouponAsset {
   amountText: string;
@@ -18,10 +19,11 @@ function viewOf(item: LocalCouponAsset): CouponAssetView {
 }
 
 Page({
-  data: { coupons: [] as CouponAssetView[], activeTab: "USABLE" },
-  onShow() {
+  data: { coupons: [] as CouponAssetView[], activeTab: "USABLE", appearanceStyle: "" },
+  async onShow() {
+    const appearance = await loadPageAppearance();
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-    this.setData({ coupons: localCouponAssets(storeCode).map(viewOf) });
+    this.setData({ coupons: localCouponAssets(storeCode).map(viewOf), appearanceStyle: appearance.appearanceStyle });
   },
   chooseTab(event: WechatMiniprogram.BaseEvent) {
     this.setData({ activeTab: String(event.currentTarget.dataset.tab || "USABLE") });

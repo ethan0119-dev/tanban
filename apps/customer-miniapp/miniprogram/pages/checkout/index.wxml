@@ -1,4 +1,4 @@
-<view class="page">
+<view class="page" style="{{appearanceStyle}}">
   <view class="card checkout-closed" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><text class="section-title">门店休息中</text><text>{{orderNo ? '这笔订单已在营业时创建，若尚未关闭仍可继续支付。' : (store.businessStatusMessage || '当前不在营业时间，暂时不能提交新订单。')}}</text><text wx:if="{{!orderNo && store.nextOpenAt}}">下次营业：{{store.nextOpenAt}}</text></view>
   <view class="card" wx:if="{{paymentMode === 'mock'}}"><text class="section-title">联调模式</text><text class="muted">当前为虚拟支付，不会真实扣款；不可用于正式营业。</text></view>
   <view class="card table-order-card" wx:if="{{tableContext}}"><view><text class="table-badge">堂食桌码</text><text class="section-title">{{tableContext.tableName}}</text><text class="muted">{{tableContext.areaName ? tableContext.areaName + ' · ' : ''}}{{tableContext.storeName}}</text></view><text class="table-code" wx:if="{{tableContext.tableCode}}">{{tableContext.tableCode}}</text><text class="muted">本单将绑定该桌台；如需换桌，请重新扫描新桌码。</text></view>
@@ -10,4 +10,4 @@
   <view class="card location-hint" wx:if="{{store && store.orderingSettings && store.orderingSettings.distanceCheckEnabled}}"><text>提交时将请求微信定位，仅用于判断是否在门店 {{store.orderingSettings.distanceLimitM}} 米点餐范围内。</text></view>
   <view class="pay-footer"><view><text>实付</text><text class="price">¥{{amount / 100}}</text></view><button class="primary" loading="{{submitting}}" disabled="{{submitting || (store && store.businessStatus !== 'OPEN' && !orderNo)}}" bindtap="submitOrder">{{store && store.businessStatus !== 'OPEN' && !orderNo ? '门店休息中' : (submitting ? '处理中' : (orderNo ? '继续支付' : '提交并支付'))}}</button></view>
 </view>
-<marketing-popup store-code="{{storeCode}}" placement-code="CHECKOUT_POPUP" channel-scope="{{tableContext ? 'DINE_IN' : 'TAKEOUT'}}" />
+<marketing-popup style="{{appearanceStyle}}" store-code="{{storeCode}}" placement-code="CHECKOUT_POPUP" channel-scope="{{tableContext ? 'DINE_IN' : 'TAKEOUT'}}" />

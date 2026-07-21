@@ -1,4 +1,4 @@
-<view class="page lottery-page">
+<view class="page lottery-page" style="{{appearanceStyle}}">
   <view class="lottery-heading" wx:if="{{selected}}"><text>{{selected.name}}</text><text>{{selected.description || '免费参与，看看今天的手气'}}</text></view>
   <scroll-view class="campaign-tabs" scroll-x wx:if="{{campaigns.length > 1}}"><button class="{{selected.id === item.id ? 'active' : ''}}" wx:for="{{campaigns}}" wx:key="id" data-id="{{item.id}}" bindtap="chooseCampaign">{{item.name}}</button></scroll-view>
   <view class="lottery-board" wx:if="{{selected}}">

@@ -8,6 +8,7 @@ import { rememberOrder } from "../../utils/orders";
 import { ApiError, request } from "../../utils/request";
 import { revalidateTableOrderingContext, sameTableContext, tableContextForStore, tableOrderFields } from "../../utils/table-context";
 import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext } from "../../utils/fast-food-context";
+import { rememberPageAppearance } from "../../utils/page-appearance";
 
 interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
@@ -21,7 +22,7 @@ function customerLocation(): Promise<{ customerLatitude: number; customerLongitu
 }
 
 Page({
-  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], amount: 0, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode },
+  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], amount: 0, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode, appearanceStyle: "" },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -38,6 +39,7 @@ Page({
     let store: Store | null = null;
     try {
       store = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
+      this.setData({ appearanceStyle: rememberPageAppearance(store).appearanceStyle });
     } catch {
       // 创建订单时服务端仍会做最终营业状态校验。
     }

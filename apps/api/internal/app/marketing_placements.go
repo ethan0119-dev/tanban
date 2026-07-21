@@ -497,6 +497,9 @@ func (s *Server) publicMarketingPopup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, row := range placements {
+		if strings.TrimSpace(row.ImageURL) == "" && strings.TrimSpace(row.Title) == "" && strings.TrimSpace(row.Subtitle) == "" {
+			continue
+		}
 		available, availabilityErr := s.marketingPlacementTargetAvailable(r.Context(), row, now)
 		if availabilityErr != nil {
 			handleSQLError(w, availabilityErr)

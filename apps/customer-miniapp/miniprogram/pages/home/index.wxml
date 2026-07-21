@@ -75,8 +75,8 @@
 
 <view class="marketing-popup-mask" wx:if="{{marketingPopupVisible && marketingPopup}}" bindtap="closeMarketingPopup">
   <view class="marketing-popup-card" catchtap="noop">
-    <button class="marketing-popup-close" bindtap="closeMarketingPopup">×</button>
-    <image class="marketing-popup-image" src="{{marketingPopup.image_url}}" mode="aspectFill" />
+    <view class="marketing-popup-close" role="button" aria-label="关闭活动弹窗" bindtap="closeMarketingPopup"><image src="/assets/icons/close-white.png" mode="aspectFit" /></view>
+    <image wx:if="{{marketingPopup.image_url}}" class="marketing-popup-image" src="{{marketingPopup.image_url}}" mode="aspectFill" />
     <view class="marketing-popup-copy" wx:if="{{marketingPopup.title || marketingPopup.subtitle}}"><text>{{marketingPopup.title}}</text><text>{{marketingPopup.subtitle}}</text></view>
     <button wx:if="{{marketingPopup.action_type !== 'NONE'}}" class="marketing-popup-action" bindtap="onMarketingAction">立即参与</button>
   </view>
@@ -84,7 +84,7 @@
 
 <view class="splash-mask {{decoration.splash.displayMode === 'FULLSCREEN' ? 'fullscreen' : 'popup'}}" wx:if="{{splashVisible}}" bindtap="closeSplash">
   <view class="splash-card" catchtap="noop">
-    <button class="splash-close" bindtap="closeSplash">×</button>
+    <view class="splash-close" role="button" aria-label="关闭启动页" bindtap="closeSplash"><image src="/assets/icons/close-white.png" mode="aspectFit" /></view>
     <image class="splash-image" src="{{decoration.splash.imageUrl}}" mode="aspectFill" />
     <view class="splash-copy" wx:if="{{decoration.splash.title || decoration.splash.subtitle}}"><text>{{decoration.splash.title}}</text><text>{{decoration.splash.subtitle}}</text></view>
     <button wx:if="{{decoration.splash.action.type !== 'NONE'}}" class="splash-action" bindtap="onSplashAction">立即查看</button>

@@ -48,15 +48,16 @@
 .fullscreen .splash-card { width: 100%; height: 100%; max-width: none; border-radius: 0; }
 .splash-image { display: block; width: 100%; height: 720rpx; }
 .fullscreen .splash-image { height: 100%; }
-.splash-close { position: absolute; top: 24rpx; right: 24rpx; z-index: 3; width: 58rpx; height: 58rpx; margin: 0; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .45); color: white; font-size: 38rpx; line-height: 54rpx; }
+.splash-close { position: absolute; top: 24rpx; right: 24rpx; z-index: 3; width: 58rpx; height: 58rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(0, 0, 0, .55); }
+.splash-close image, .marketing-popup-close image { width: 28rpx; height: 28rpx; }
 .splash-copy { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 10rpx; padding: 80rpx 36rpx 38rpx; background: linear-gradient(transparent, rgba(0, 0, 0, .72)); color: white; }
 .splash-copy text:first-child { font-size: 38rpx; font-weight: 800; }
 .splash-action { position: absolute; right: 32rpx; bottom: 30rpx; z-index: 2; margin: 0; padding: 0 26rpx; border-radius: 999rpx; background: var(--lime); color: var(--ink); font-size: 24rpx; font-weight: 700; }
 .marketing-popup-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 54rpx; background: rgba(20,14,11,.72); box-sizing: border-box; }
-.marketing-popup-card { position: relative; width: 100%; max-width: 650rpx; overflow: hidden; border-radius: 32rpx; background: #fffefa; box-shadow: 0 34rpx 100rpx rgba(0,0,0,.32); }
-.marketing-popup-image { display: block; width: 100%; height: 720rpx; background: #eee4da; }
-.marketing-popup-close { position: absolute; top: 22rpx; right: 22rpx; z-index: 3; width: 58rpx; height: 58rpx; margin: 0; padding: 0; border-radius: 50%; color: #fff; background: rgba(0,0,0,.45); font-size: 38rpx; line-height: 54rpx; }
-.marketing-popup-copy { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 9rpx; padding: 100rpx 34rpx 42rpx; color: #fff; background: linear-gradient(transparent, rgba(20,10,6,.78)); }
+.marketing-popup-card { position: relative; width: 100%; max-width: 650rpx; overflow: hidden; border-radius: 32rpx; background: var(--surface, #fffefa); box-shadow: 0 34rpx 100rpx rgba(0,0,0,.32); }
+.marketing-popup-image { display: block; width: 100%; max-height: 610rpx; background: var(--paper, #eee4da); }
+.marketing-popup-close { position: absolute; top: 22rpx; right: 22rpx; z-index: 3; width: 58rpx; height: 58rpx; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border-radius: 50%; background: rgba(0,0,0,.58); }
+.marketing-popup-copy { display: flex; flex-direction: column; gap: 9rpx; padding: 28rpx 34rpx 8rpx; color: var(--ink); }
 .marketing-popup-copy text:first-child { font-size: 39rpx; font-weight: 900; }
 .marketing-popup-copy text:last-child { font-size: 23rpx; }
-.marketing-popup-action { position: absolute; right: 30rpx; bottom: 30rpx; z-index: 2; margin: 0; padding: 0 28rpx; border-radius: 999rpx; color: #3d2c22; background: #f8d36d; font-size: 23rpx; font-weight: 800; }
+.marketing-popup-action { width: calc(100% - 68rpx); min-height: 78rpx; margin: 24rpx 34rpx 32rpx; padding: 0 28rpx; border-radius: 18rpx; color: var(--ink); background: var(--lime); font-size: 28rpx; font-weight: 800; line-height: 78rpx; }

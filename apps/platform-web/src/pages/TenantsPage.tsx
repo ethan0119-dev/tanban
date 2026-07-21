@@ -1,6 +1,7 @@
-import { EyeOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined } from '@ant-design/icons';
+import { CopyOutlined, EyeOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
+  Alert,
   Card,
   Col,
   Descriptions,
@@ -15,6 +16,7 @@ import {
   Switch,
   Table,
   Tag,
+  Typography,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -40,6 +42,22 @@ interface TenantFormValues {
   ownerDisplayName: string;
 }
 
+interface OwnerFormValues {
+  username: string;
+  displayName: string;
+  password: string;
+}
+
+interface ProvisioningResult {
+  tenant: Tenant;
+  username: string;
+  password: string;
+  storeName: string;
+  storeCode: string;
+}
+
+const merchantPortalUrl = 'https://mysales.666qwe.cn';
+
 const paymentStatusText: Record<string, string> = {
   unbound: '未绑定',
   pending: '审核中',
@@ -63,7 +81,10 @@ export function TenantsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<Tenant>();
   const [saving, setSaving] = useState(false);
+  const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult>();
+  const [ownerOpen, setOwnerOpen] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
+  const [ownerForm] = Form.useForm<OwnerFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
 
   const load = useCallback(async (page = meta.page, pageSize = meta.pageSize) => {
@@ -85,13 +106,37 @@ export function TenantsPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      await tenantService.create(values);
-      messageApi.success('商户已创建，可继续配置门店和支付信息');
+      const tenant = await tenantService.create(values);
+      setProvisioningResult({ tenant, username: values.ownerUsername, password: values.ownerPassword, storeName: values.initialStoreName, storeCode: values.initialStoreCode });
+      messageApi.success('商户、首门店和老板账号已一并创建');
       setCreateOpen(false);
       form.resetFields();
       void load(1);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '商户创建失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copy = async (value: string, label: string) => {
+    await navigator.clipboard.writeText(value);
+    messageApi.success(`${label}已复制`);
+  };
+
+  const createOwner = async () => {
+    if (!selected) return;
+    const values = await ownerForm.validateFields();
+    setSaving(true);
+    try {
+      await tenantService.createOwner(selected.id, values);
+      messageApi.success('老板账号已创建');
+      setOwnerOpen(false);
+      ownerForm.resetFields();
+      setSelected({ ...selected, hasOwner: true, ownerUsername: values.username, ownerDisplayName: values.displayName, ownerStatus: 'active' });
+      void load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '老板账号创建失败');
     } finally {
       setSaving(false);
     }
@@ -114,6 +159,7 @@ export function TenantsPage() {
     },
     { title: '联系人', key: 'contact', width: 170, render: (_, row) => <div>{row.contactName || '—'}<small className="table-subtext">{row.contactPhone || ''}</small></div> },
     { title: '门店', dataIndex: 'storeCount', key: 'storeCount', width: 90, align: 'right', render: (value) => `${value || 0} 家` },
+    { title: '老板账号', key: 'owner', width: 150, render: (_, row) => row.hasOwner ? <div>{row.ownerUsername}<small className="table-subtext">{row.ownerDisplayName || '老板'}</small></div> : <Tag color="warning">待创建</Tag> },
     { title: '累计订单', dataIndex: 'orderCount', key: 'orderCount', width: 120, align: 'right', render: (value) => Number(value || 0).toLocaleString('zh-CN') },
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
@@ -146,7 +192,7 @@ export function TenantsPage() {
           columns={columns}
           dataSource={rows}
           loading={loading}
-          scroll={{ x: 1220 }}
+          scroll={{ x: 1370 }}
           pagination={{ current: meta.page, pageSize: meta.pageSize, total: meta.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 家商户`, onChange: (page, pageSize) => void load(page, pageSize) }}
         />
       </Card>
@@ -186,6 +232,8 @@ export function TenantsPage() {
             <Descriptions.Item label="商户编号">{selected.code || '—'}</Descriptions.Item>
             <Descriptions.Item label="联系人">{selected.contactName || '—'} {selected.contactPhone || ''}</Descriptions.Item>
             <Descriptions.Item label="门店数量">{selected.storeCount || 0} 家</Descriptions.Item>
+            <Descriptions.Item label="老板账号">{selected.hasOwner ? <Space><UserOutlined />{selected.ownerUsername}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(selected.ownerUsername || '', '账号')}>复制</Button></Space> : <Button type="primary" size="small" icon={<UserOutlined />} onClick={() => { ownerForm.resetFields(); ownerForm.setFieldsValue({ displayName: selected.contactName || '' }); setOwnerOpen(true); }}>创建首个老板账号</Button>}</Descriptions.Item>
+            {selected.hasOwner && <Descriptions.Item label="账号姓名 / 状态">{selected.ownerDisplayName || '—'} · <StatusTag status={selected.ownerStatus || 'active'} /></Descriptions.Item>}
             <Descriptions.Item label="累计订单">{selected.orderCount || 0} 单</Descriptions.Item>
             <Descriptions.Item label="支付状态"><Tag color={paymentStatusColor[selected.paymentStatus || 'unbound']}>{paymentStatusText[selected.paymentStatus || 'unbound']}</Tag></Descriptions.Item>
             <Descriptions.Item label="随行付商户号">{selected.paymentMerchantNo ? `${selected.paymentMerchantNo.slice(0, 4)}****${selected.paymentMerchantNo.slice(-4)}` : '未绑定'}</Descriptions.Item>
@@ -194,6 +242,27 @@ export function TenantsPage() {
           </Descriptions>
         </>}
       </Drawer>
+
+      <Modal title="创建首个老板账号" open={ownerOpen} okText="创建账号" onCancel={() => setOwnerOpen(false)} onOk={() => void createOwner()} confirmLoading={saving}>
+        <Form form={ownerForm} layout="vertical" requiredMark={false}>
+          <Form.Item label="登录账号" name="username" rules={[{ required: true, message: '请输入登录账号' }]}><Input prefix={<UserOutlined />} autoComplete="off" /></Form.Item>
+          <Form.Item label="老板姓名" name="displayName" rules={[{ required: true, message: '请输入老板姓名' }]}><Input /></Form.Item>
+          <Form.Item label="初始密码" name="password" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, message: '至少 8 位' }]}><Input.Password prefix={<KeyOutlined />} autoComplete="new-password" /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title="商户开通完成" open={Boolean(provisioningResult)} footer={<Button type="primary" onClick={() => setProvisioningResult(undefined)}>我已保存</Button>} closable={false} maskClosable={false}>
+        {provisioningResult && <>
+          <div className="drawer-entity"><span><ShopOutlined /></span><div><h2>{provisioningResult.tenant.name}</h2><p>首门店、老板账号已创建，可直接登录运营后台</p></div></div>
+          <Descriptions column={1} bordered size="small" className="detail-descriptions">
+            <Descriptions.Item label="运营后台"><Space>{merchantPortalUrl}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(merchantPortalUrl, '登录地址')}>复制</Button></Space></Descriptions.Item>
+            <Descriptions.Item label="登录账号"><Space>{provisioningResult.username}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(provisioningResult.username, '账号')}>复制</Button></Space></Descriptions.Item>
+            <Descriptions.Item label="初始密码"><Space><Typography.Text code>{provisioningResult.password}</Typography.Text><Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(provisioningResult.password, '初始密码')}>复制</Button></Space></Descriptions.Item>
+            <Descriptions.Item label="首门店">{provisioningResult.storeName}（{provisioningResult.storeCode}）</Descriptions.Item>
+          </Descriptions>
+          <Alert style={{ marginTop: 16 }} type="warning" showIcon message="初始密码仅在此处展示一次" description="请现在复制并安全交付给商户；系统只保存密码哈希，关闭后无法查看原密码。" />
+        </>}
+      </Modal>
     </div>
   );
 }

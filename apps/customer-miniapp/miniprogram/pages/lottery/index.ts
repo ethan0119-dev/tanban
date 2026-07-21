@@ -3,6 +3,7 @@ import type { MarketingLottery, MarketingLotteryPrize } from "../../types/domain
 import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 interface LotteryPrizeView extends MarketingLotteryPrize {
   stockText: string;
@@ -21,9 +22,11 @@ interface DrawResult {
 }
 
 Page({
-  data: { loading: true, campaigns: [] as LotteryView[], selected: null as LotteryView | null, drawing: false, error: "" },
+  data: { loading: true, campaigns: [] as LotteryView[], selected: null as LotteryView | null, drawing: false, error: "", appearanceStyle: "" },
   onLoad(options: Record<string, string>) { void this.loadCampaigns(Number(options.id || 0)); },
   async loadCampaigns(preferredID = 0) {
+    const appearance = await loadPageAppearance();
+    this.setData({ appearanceStyle: appearance.appearanceStyle });
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     const channelScope = tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT";
     this.setData({ loading: true, error: "" });

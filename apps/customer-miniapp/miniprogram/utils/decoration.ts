@@ -96,6 +96,7 @@ export function defaultDecoration(store?: Store): DecorationConfig {
       density: "COMFORTABLE",
     },
     navigation: {
+      templateKey: "classic",
       backgroundColor: "#fffefa",
       textColor: "#7b807a",
       selectedColor: "#214d3f",
@@ -237,6 +238,7 @@ export function normalizeDecoration(value: unknown, store?: Store): DecorationCo
       density: menu.density === "COMPACT" ? "COMPACT" : "COMFORTABLE",
     },
     navigation: {
+      templateKey: navigation.templateKey === "soft" || navigation.templateKey === "warm" || navigation.templateKey === "dark" ? navigation.templateKey : "classic",
       items: safeNavigation(navigation.items, fallback.navigation.items),
       backgroundColor: color(navigation.backgroundColor, fallback.navigation.backgroundColor),
       textColor: color(navigation.textColor, fallback.navigation.textColor),
@@ -288,7 +290,8 @@ export function applyDecorationChrome(config: DecorationConfig): void {
   });
   const pathByKey: Record<DecorationNavigationItem["key"], number> = { home: 0, menu: 1, orders: 2, profile: 3 };
   config.navigation.items.forEach((item) => {
-    wx.setTabBarItem({ index: pathByKey[item.key], text: item.text });
+    const iconRoot = `/assets/tabbar/${config.navigation.templateKey}`;
+    wx.setTabBarItem({ index: pathByKey[item.key], text: item.text, iconPath: `${iconRoot}/${item.key}.png`, selectedIconPath: `${iconRoot}/${item.key}-selected.png` });
   });
 }
 

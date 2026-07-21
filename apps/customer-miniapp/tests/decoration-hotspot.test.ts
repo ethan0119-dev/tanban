@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeDecoration } from '../miniprogram/utils/decoration';
+import { hasMarketingPopupVisual } from '../miniprogram/utils/marketing';
 
 describe('miniapp hotspot decoration', () => {
   it('keeps valid hotspot actions and percentage geometry', () => {
@@ -35,5 +36,18 @@ describe('miniapp hotspot decoration', () => {
     });
 
     expect(config.home.modules[0].config.hotspots?.[0]).toMatchObject({ x: 96, y: 99, width: 4, height: 1, action: { type: 'NONE' } });
+  });
+});
+
+describe('merchant decoration chrome', () => {
+  it('keeps a supported navigation icon template and falls back safely', () => {
+    expect(normalizeDecoration({ navigation: { templateKey: 'warm' } }).navigation.templateKey).toBe('warm');
+    expect(normalizeDecoration({ navigation: { templateKey: 'CUSTOM_HTML' } }).navigation.templateKey).toBe('classic');
+  });
+
+  it('does not render an empty marketing popup', () => {
+    const base = { id: 1, name: '空弹窗', placement_code: 'HOME_POPUP', image_url: '', action_type: 'OPEN_MENU', frequency: 'EVERY_VISIT', priority: 1 } as const;
+    expect(hasMarketingPopupVisual(base)).toBe(false);
+    expect(hasMarketingPopupVisual({ ...base, title: '今日活动' })).toBe(true);
   });
 });

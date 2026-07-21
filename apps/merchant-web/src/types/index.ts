@@ -297,6 +297,7 @@ export interface DashboardData {
 }
 
 export interface MerchantSettings {
+  storeCode?: string;
   storeName: string;
   logo?: string;
   phone?: string;

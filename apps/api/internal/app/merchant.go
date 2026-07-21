@@ -259,11 +259,11 @@ func (s *Server) getMerchantSettings(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	var storeName, logo, phone, address, announcement, businessHours, trigger string
+	var storeCode, storeName, logo, phone, address, announcement, businessHours, trigger string
 	var autoAccept, voice, printReceipt, printLabel, pickup, latePayment bool
 	var timeout int
-	err = s.DB.QueryRowContext(r.Context(), `SELECT name,logo_url,phone,address,notice,business_hours,auto_accept_orders,voice_reminder,default_print_trigger,auto_print_receipt,auto_print_label,pickup_mode,allow_late_payment,payment_timeout_minutes FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, identity.TenantID).
-		Scan(&storeName, &logo, &phone, &address, &announcement, &businessHours, &autoAccept, &voice, &trigger, &printReceipt, &printLabel, &pickup, &latePayment, &timeout)
+	err = s.DB.QueryRowContext(r.Context(), `SELECT code,name,logo_url,phone,address,notice,business_hours,auto_accept_orders,voice_reminder,default_print_trigger,auto_print_receipt,auto_print_label,pickup_mode,allow_late_payment,payment_timeout_minutes FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, identity.TenantID).
+		Scan(&storeCode, &storeName, &logo, &phone, &address, &announcement, &businessHours, &autoAccept, &voice, &trigger, &printReceipt, &printLabel, &pickup, &latePayment, &timeout)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -272,7 +272,7 @@ func (s *Server) getMerchantSettings(w http.ResponseWriter, r *http.Request) {
 	if len(hours) != 2 {
 		hours = []string{}
 	}
-	writeData(w, http.StatusOK, map[string]any{"storeId": storeID, "storeName": storeName, "logo": logo, "phone": phone, "address": address, "announcement": announcement, "businessHours": hours, "autoAcceptOrder": autoAccept, "orderVoiceReminder": voice, "printTrigger": trigger, "autoPrintReceipt": printReceipt, "autoPrintLabel": printLabel, "pickupMode": pickup, "allowLatePayment": latePayment, "paymentTimeoutMinutes": timeout})
+	writeData(w, http.StatusOK, map[string]any{"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logo": logo, "phone": phone, "address": address, "announcement": announcement, "businessHours": hours, "autoAcceptOrder": autoAccept, "orderVoiceReminder": voice, "printTrigger": trigger, "autoPrintReceipt": printReceipt, "autoPrintLabel": printLabel, "pickupMode": pickup, "allowLatePayment": latePayment, "paymentTimeoutMinutes": timeout})
 }
 
 type merchantSettingsInput struct {

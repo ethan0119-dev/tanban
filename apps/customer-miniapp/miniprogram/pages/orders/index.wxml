@@ -1,4 +1,4 @@
-<view class="page orders-page">
+<view class="page orders-page" style="{{appearanceStyle}}">
   <view class="primary-tabs"><view class="{{primaryTab === 'CURRENT' ? 'active' : ''}}" data-tab="CURRENT" bindtap="choosePrimary">当前订单</view><view class="{{primaryTab === 'HISTORY' ? 'active' : ''}}" data-tab="HISTORY" bindtap="choosePrimary">历史订单</view></view>
   <scroll-view class="scene-tabs" scroll-x enhanced show-scrollbar="{{false}}"><view class="scene-tab {{sceneTab === item.key ? 'active' : ''}}" wx:for="{{sceneTabs}}" wx:key="key" data-tab="{{item.key}}" bindtap="chooseScene">{{item.text}}</view></scroll-view>
   <view class="order-list" wx:if="{{orders.length}}">

@@ -81,6 +81,10 @@ export interface Tenant {
   status: EntityStatus;
   storeCount?: number;
   orderCount?: number;
+  ownerUsername?: string;
+  ownerDisplayName?: string;
+  ownerStatus?: EntityStatus;
+  hasOwner?: boolean;
   paymentMerchantNo?: string;
   paymentProvider?: string;
   paymentSubAppId?: string;

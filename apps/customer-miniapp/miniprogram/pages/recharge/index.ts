@@ -1,5 +1,6 @@
 import type { TanbanAppOption } from "../../app";
 import { request } from "../../utils/request";
+import { loadPageAppearance } from "../../utils/page-appearance";
 
 interface StoredValueRule {
   id: number;
@@ -18,10 +19,12 @@ interface StoredValueView {
 }
 
 Page({
-  data: { loading: true, available: false, message: "", rules: [] as StoredValueRule[], selectedRuleId: 0 },
+  data: { loading: true, available: false, message: "", rules: [] as StoredValueRule[], selectedRuleId: 0, appearanceStyle: "" },
   onShow() { void this.loadRules(); },
   onPullDownRefresh() { this.loadRules().finally(() => wx.stopPullDownRefresh()); },
   async loadRules() {
+    const appearance = await loadPageAppearance();
+    this.setData({ appearanceStyle: appearance.appearanceStyle });
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     try {
       const result = await request<StoredValueView>({ url: `/public/stores/${encodeURIComponent(storeCode)}/stored-value`, method: "GET" });
