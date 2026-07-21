@@ -100,9 +100,9 @@ func TestUpdateProductConfigurationUsesOwningStore(t *testing.T) {
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM products").
 		WithArgs(int64(17), int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("SELECT id,name,kind,selection_mode").
+	mock.ExpectQuery("SELECT id,attribute_group_id,name,kind,selection_mode").
 		WithArgs(int64(17), int64(5), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "kind", "selection_mode", "min_select", "max_select", "sort_order", "status"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "attribute_group_id", "name", "kind", "selection_mode", "min_select", "max_select", "sort_order", "status"}))
 	mock.ExpectQuery("SELECT mg.id,mg.name,mg.min_select").
 		WithArgs(int64(17), int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "min_select", "max_select", "sort_order", "status"}))
@@ -114,6 +114,63 @@ func TestUpdateProductConfigurationUsesOwningStore(t *testing.T) {
 	router := chi.NewRouter()
 	router.Put("/products/{productID}/configuration", server.updateProductConfiguration)
 	request := httptest.NewRequest(http.MethodPut, "/products/17/configuration", bytes.NewBufferString(`{"option_groups":[],"modifier_group_ids":[],"resource_ids":[]}`))
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 7, TenantID: 5, Role: RoleMerchantManager}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateProductConfigurationMaterializesAttributeLibraryGroup(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT store_id FROM products").
+		WithArgs(int64(17), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"store_id"}).AddRow(9))
+	mock.ExpectExec("DELETE v FROM product_option_values").WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("DELETE FROM product_option_groups").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO product_option_groups.*SELECT").
+		WithArgs(int64(5), int64(9), int64(17), 0, int64(33), int64(5), int64(9)).
+		WillReturnResult(sqlmock.NewResult(88, 1))
+	mock.ExpectExec("INSERT INTO product_option_values.*SELECT").
+		WithArgs(int64(5), int64(9), int64(88), int64(33), int64(5), int64(9)).
+		WillReturnResult(sqlmock.NewResult(101, 3))
+	mock.ExpectExec("DELETE FROM product_modifier_groups").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("DELETE FROM product_resource_bindings").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM products").
+		WithArgs(int64(17), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("SELECT id,attribute_group_id,name,kind,selection_mode").
+		WithArgs(int64(17), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "attribute_group_id", "name", "kind", "selection_mode", "min_select", "max_select", "sort_order", "status"}).
+			AddRow(88, 33, "温度", "ATTRIBUTE", "SINGLE", 1, 1, 0, "ACTIVE"))
+	mock.ExpectQuery("SELECT id,name,price_delta_cents").
+		WithArgs(int64(88), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "price_delta_cents", "is_default", "sort_order", "status"}).
+			AddRow(101, "冰", 0, false, 0, "ACTIVE"))
+	mock.ExpectQuery("SELECT mg.id,mg.name,mg.min_select").
+		WithArgs(int64(17), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "min_select", "max_select", "sort_order", "status"}))
+	mock.ExpectQuery("SELECT resource_id FROM product_resource_bindings").
+		WithArgs(int64(17), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"resource_id"}))
+
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+	router := chi.NewRouter()
+	router.Put("/products/{productID}/configuration", server.updateProductConfiguration)
+	request := httptest.NewRequest(http.MethodPut, "/products/17/configuration", bytes.NewBufferString(`{"attribute_group_ids":[33],"option_groups":[],"modifier_group_ids":[],"resource_ids":[]}`))
 	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 7, TenantID: 5, Role: RoleMerchantManager}))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)

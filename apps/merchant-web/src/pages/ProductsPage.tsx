@@ -71,6 +71,7 @@ interface ProductFormValues {
     maxSelect: number;
     values: Array<{ name: string; price: number; isDefault?: boolean }>;
   }>;
+  attributeGroupIds: number[];
   modifierGroupIds: number[];
   resourceIds: number[];
 }
@@ -96,6 +97,16 @@ interface ModifierGroupOption {
   items: Array<{ modifier_item_id: number; name: string; price_cents: number }>;
 }
 
+interface AttributeGroupOption {
+  id: number;
+  name: string;
+  selection_mode: 'SINGLE' | 'MULTIPLE';
+  min_select: number;
+  max_select: number;
+  status: string;
+  values: Array<{ id: number; name: string; price_delta_cents: number; status: string }>;
+}
+
 interface CatalogResourceOption {
   id: number;
   resource_type: string;
@@ -105,6 +116,7 @@ interface CatalogResourceOption {
 
 interface ProductConfiguration {
   option_groups: Array<{
+    attribute_group_id?: number;
     name: string;
     selection_mode: 'SINGLE' | 'MULTIPLE';
     min_select: number;
@@ -226,6 +238,7 @@ export function ProductsPage() {
   const [restockProduct, setRestockProduct] = useState<Product>();
   const [restockStock, setRestockStock] = useState<number>(50);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupOption[]>([]);
+  const [attributeGroups, setAttributeGroups] = useState<AttributeGroupOption[]>([]);
   const [catalogResources, setCatalogResources] = useState<CatalogResourceOption[]>([]);
   const [form] = Form.useForm<ProductFormValues>();
   const [categoryForm] = Form.useForm<{ name: string; sort?: number; inStoreEnabled: boolean; deliveryEnabled: boolean }>();
@@ -237,16 +250,18 @@ export function ProductsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [categoryPayload, productResult, modifierResult, resourceResult] = await Promise.all([
+      const [categoryPayload, productResult, modifierResult, resourceResult, attributeResult] = await Promise.all([
         api.getList<Category>('/merchant/categories'),
         api.getList<Product>('/merchant/products', { keyword: keyword || undefined, page_size: 100 }),
         api.getList<ModifierGroupOption>('/merchant/modifier-groups'),
         api.getList<CatalogResourceOption>('/merchant/catalog-resources'),
+        api.getList<AttributeGroupOption>('/merchant/attribute-groups'),
       ]);
       setCategories(categoryPayload.items.map(normalizeCategory));
       setProducts(productResult.items.map(normalizeProduct));
       setModifierGroups(modifierResult.items);
       setCatalogResources(resourceResult.items);
+      setAttributeGroups(attributeResult.items);
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
@@ -284,6 +299,7 @@ export function ProductsPage() {
       dailyStock: product.dailyStock,
       skus: product.skus?.length ? product.skus : [{ name: '默认规格', price: product.price, stock: product.stock }],
       optionGroups: [],
+      attributeGroupIds: [],
       modifierGroupIds: [],
       resourceIds: [],
     } : {
@@ -295,6 +311,7 @@ export function ProductsPage() {
       images: [],
       skus: [{ name: '默认规格', price: 0, stock: 0 }],
       optionGroups: [],
+      attributeGroupIds: [],
       modifierGroupIds: [],
       resourceIds: [],
     });
@@ -304,7 +321,8 @@ export function ProductsPage() {
         const config = await api.get<ProductConfiguration>(`/merchant/products/${product.id}/configuration`);
         if (requestID !== configurationRequest.current) return;
         form.setFieldsValue({
-          optionGroups: config.option_groups.map((group) => ({
+          attributeGroupIds: config.option_groups.flatMap((group) => group.attribute_group_id ? [group.attribute_group_id] : []),
+          optionGroups: config.option_groups.filter((group) => !group.attribute_group_id).map((group) => ({
             name: group.name,
             selectionMode: group.selection_mode,
             minSelect: group.min_select,
@@ -364,23 +382,24 @@ export function ProductsPage() {
         : [normalized, ...current]);
       try {
         await api.put(`/merchant/products/${normalized.id}/configuration`, {
-        option_groups: (values.optionGroups || []).map((group, groupIndex) => ({
-          name: group.name,
-          kind: 'ATTRIBUTE',
-          selection_mode: group.selectionMode,
-          min_select: Number(group.minSelect || 0),
-          max_select: Number(group.maxSelect || 1),
-          sort_order: groupIndex,
-          status: 'ACTIVE',
-          values: (group.values || []).map((value, valueIndex) => ({
-            name: value.name,
-            price_delta_cents: Math.round(Number(value.price || 0) * 100),
-            is_default: Boolean(value.isDefault),
-            sort_order: valueIndex,
+          attribute_group_ids: values.attributeGroupIds || [],
+          option_groups: (values.optionGroups || []).map((group, groupIndex) => ({
+            name: group.name,
+            kind: 'ATTRIBUTE',
+            selection_mode: group.selectionMode,
+            min_select: Number(group.minSelect || 0),
+            max_select: Number(group.maxSelect || 1),
+            sort_order: groupIndex,
             status: 'ACTIVE',
+            values: (group.values || []).map((value, valueIndex) => ({
+              name: value.name,
+              price_delta_cents: Math.round(Number(value.price || 0) * 100),
+              is_default: Boolean(value.isDefault),
+              sort_order: valueIndex,
+              status: 'ACTIVE',
+            })),
           })),
-        })),
-        modifier_group_ids: values.modifierGroupIds || [],
+          modifier_group_ids: values.modifierGroupIds || [],
           resource_ids: values.resourceIds || [],
         });
         if (requestID !== saveRequest.current) return;
@@ -762,7 +781,19 @@ export function ProductsPage() {
             )}
           </Form.List>
           <Divider orientation="left">点单属性</Divider>
-          <Typography.Paragraph type="secondary">用于甜度、温度、是否去冰等不决定库存的点单选项；小程序会按必选和多选规则展示，保存订单时会重新核对加价。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">优先从属性库选择温度、甜度等通用选项；属性库后续调整会同步到所有关联商品。只有该商品独有的选项才需要在下方单独维护。</Typography.Paragraph>
+          <Form.Item label="从属性库选择" name="attributeGroupIds" extra="属性定义在“商品配置中心 → 属性库”统一维护；选择顺序即小程序展示顺序。">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="选择温度、甜度等属性"
+              options={attributeGroups.filter((item) => item.status === 'ACTIVE').map((item) => ({
+                value: item.id,
+                label: `${item.name}（${item.selection_mode === 'SINGLE' ? '单选' : `${item.min_select}–${item.max_select}项`}：${item.values.filter((value) => value.status === 'ACTIVE').map((value) => value.name).join('、')}）`,
+              }))}
+            />
+          </Form.Item>
+          <Typography.Text strong>商品专属属性（可选）</Typography.Text>
           <Form.List name="optionGroups">
             {(groupFields, { add: addGroup, remove: removeGroup }) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -787,7 +818,7 @@ export function ProductsPage() {
                     </Form.List>
                   </Card>
                 ))}
-                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => addGroup({ name: '', selectionMode: 'SINGLE', minSelect: 1, maxSelect: 1, values: [{ name: '', price: 0 }] })}>增加点单属性组</Button>
+                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => addGroup({ name: '', selectionMode: 'SINGLE', minSelect: 1, maxSelect: 1, values: [{ name: '', price: 0 }] })}>增加商品专属属性组</Button>
               </Space>
             )}
           </Form.List>

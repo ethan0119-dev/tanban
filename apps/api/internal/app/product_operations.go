@@ -269,26 +269,28 @@ func copyProduct(ctx context.Context, tx *sql.Tx, tenantID, storeID, productID i
 }
 
 type optionGroupClone struct {
-	ID            int64
-	Name          string
-	Kind          string
-	SelectionMode string
-	MinSelect     int
-	MaxSelect     int
-	SortOrder     int
-	Status        string
+	ID               int64
+	AttributeGroupID sql.NullInt64
+	Name             string
+	Kind             string
+	SelectionMode    string
+	MinSelect        int
+	MaxSelect        int
+	SortOrder        int
+	Status           string
 }
 
 type optionValueClone struct {
-	Name            string
-	PriceDeltaCents int64
-	IsDefault       bool
-	SortOrder       int
-	Status          string
+	AttributeValueID sql.NullInt64
+	Name             string
+	PriceDeltaCents  int64
+	IsDefault        bool
+	SortOrder        int
+	Status           string
 }
 
 func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID, sourceProductID, copyProductID int64) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id,name,kind,selection_mode,min_select,max_select,sort_order,status FROM product_option_groups
+	rows, err := tx.QueryContext(ctx, `SELECT id,attribute_group_id,name,kind,selection_mode,min_select,max_select,sort_order,status FROM product_option_groups
 		WHERE product_id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY id`, sourceProductID, tenantID, storeID)
 	if err != nil {
 		return err
@@ -296,7 +298,7 @@ func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID,
 	groups := []optionGroupClone{}
 	for rows.Next() {
 		var group optionGroupClone
-		if err = rows.Scan(&group.ID, &group.Name, &group.Kind, &group.SelectionMode, &group.MinSelect, &group.MaxSelect, &group.SortOrder, &group.Status); err != nil {
+		if err = rows.Scan(&group.ID, &group.AttributeGroupID, &group.Name, &group.Kind, &group.SelectionMode, &group.MinSelect, &group.MaxSelect, &group.SortOrder, &group.Status); err != nil {
 			rows.Close()
 			return err
 		}
@@ -308,7 +310,7 @@ func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID,
 	}
 	rows.Close()
 	for _, group := range groups {
-		valueRows, queryErr := tx.QueryContext(ctx, `SELECT name,price_delta_cents,is_default,sort_order,status FROM product_option_values
+		valueRows, queryErr := tx.QueryContext(ctx, `SELECT attribute_value_id,name,price_delta_cents,is_default,sort_order,status FROM product_option_values
 			WHERE group_id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY id`, group.ID, tenantID, storeID)
 		if queryErr != nil {
 			return queryErr
@@ -316,7 +318,7 @@ func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID,
 		values := []optionValueClone{}
 		for valueRows.Next() {
 			var value optionValueClone
-			if queryErr = valueRows.Scan(&value.Name, &value.PriceDeltaCents, &value.IsDefault, &value.SortOrder, &value.Status); queryErr != nil {
+			if queryErr = valueRows.Scan(&value.AttributeValueID, &value.Name, &value.PriceDeltaCents, &value.IsDefault, &value.SortOrder, &value.Status); queryErr != nil {
 				valueRows.Close()
 				return queryErr
 			}
@@ -327,7 +329,7 @@ func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID,
 			return queryErr
 		}
 		valueRows.Close()
-		result, insertErr := tx.ExecContext(ctx, `INSERT INTO product_option_groups(tenant_id,store_id,product_id,name,kind,selection_mode,min_select,max_select,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?,?)`, tenantID, storeID, copyProductID, group.Name, group.Kind, group.SelectionMode, group.MinSelect, group.MaxSelect, group.SortOrder, group.Status)
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO product_option_groups(tenant_id,store_id,product_id,attribute_group_id,name,kind,selection_mode,min_select,max_select,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, tenantID, storeID, copyProductID, group.AttributeGroupID, group.Name, group.Kind, group.SelectionMode, group.MinSelect, group.MaxSelect, group.SortOrder, group.Status)
 		if insertErr != nil {
 			return insertErr
 		}
@@ -336,7 +338,7 @@ func copyProductOptionGroups(ctx context.Context, tx *sql.Tx, tenantID, storeID,
 			return insertErr
 		}
 		for _, value := range values {
-			if _, insertErr = tx.ExecContext(ctx, `INSERT INTO product_option_values(tenant_id,store_id,group_id,name,price_delta_cents,is_default,sort_order,status) VALUES(?,?,?,?,?,?,?,?)`, tenantID, storeID, newGroupID, value.Name, value.PriceDeltaCents, value.IsDefault, value.SortOrder, value.Status); insertErr != nil {
+			if _, insertErr = tx.ExecContext(ctx, `INSERT INTO product_option_values(tenant_id,store_id,group_id,attribute_value_id,name,price_delta_cents,is_default,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?)`, tenantID, storeID, newGroupID, value.AttributeValueID, value.Name, value.PriceDeltaCents, value.IsDefault, value.SortOrder, value.Status); insertErr != nil {
 				return insertErr
 			}
 		}

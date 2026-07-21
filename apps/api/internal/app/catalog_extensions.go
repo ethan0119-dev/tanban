@@ -677,15 +677,16 @@ type productOptionValueDTO struct {
 }
 
 type productOptionGroupDTO struct {
-	ID            int64                   `json:"id"`
-	Name          string                  `json:"name"`
-	Kind          string                  `json:"kind"`
-	SelectionMode string                  `json:"selection_mode"`
-	MinSelect     int                     `json:"min_select"`
-	MaxSelect     int                     `json:"max_select"`
-	SortOrder     int                     `json:"sort_order"`
-	Status        string                  `json:"status"`
-	Values        []productOptionValueDTO `json:"values"`
+	ID               int64                   `json:"id"`
+	AttributeGroupID *int64                  `json:"attribute_group_id,omitempty"`
+	Name             string                  `json:"name"`
+	Kind             string                  `json:"kind"`
+	SelectionMode    string                  `json:"selection_mode"`
+	MinSelect        int                     `json:"min_select"`
+	MaxSelect        int                     `json:"max_select"`
+	SortOrder        int                     `json:"sort_order"`
+	Status           string                  `json:"status"`
+	Values           []productOptionValueDTO `json:"values"`
 }
 
 type productConfigurationDTO struct {
@@ -714,9 +715,10 @@ type productOptionGroupInput struct {
 }
 
 type productConfigurationInput struct {
-	OptionGroups     []productOptionGroupInput `json:"option_groups"`
-	ModifierGroupIDs []int64                   `json:"modifier_group_ids"`
-	ResourceIDs      []int64                   `json:"resource_ids"`
+	OptionGroups      []productOptionGroupInput `json:"option_groups"`
+	AttributeGroupIDs []int64                   `json:"attribute_group_ids"`
+	ModifierGroupIDs  []int64                   `json:"modifier_group_ids"`
+	ResourceIDs       []int64                   `json:"resource_ids"`
 }
 
 func validateProductConfiguration(input *productConfigurationInput) error {
@@ -837,8 +839,34 @@ func (s *Server) updateProductConfiguration(w http.ResponseWriter, r *http.Reque
 		handleSQLError(w, err)
 		return
 	}
+	seenAttributes := map[int64]bool{}
+	for index, attributeGroupID := range input.AttributeGroupIDs {
+		if attributeGroupID <= 0 || seenAttributes[attributeGroupID] {
+			writeError(w, http.StatusBadRequest, "INVALID_ATTRIBUTE_GROUP", "attribute groups must be unique")
+			return
+		}
+		seenAttributes[attributeGroupID] = true
+		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO product_option_groups(tenant_id,store_id,product_id,attribute_group_id,name,kind,selection_mode,min_select,max_select,sort_order,status)
+			SELECT ?,?,?,id,name,'ATTRIBUTE',selection_mode,min_select,max_select,?,status FROM attribute_groups
+			WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`, identity.TenantID, storeID, productID, index, attributeGroupID, identity.TenantID, storeID)
+		if insertErr != nil {
+			handleSQLError(w, insertErr)
+			return
+		}
+		if affected, _ := result.RowsAffected(); affected == 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_ATTRIBUTE_GROUP", "attribute group does not belong to this store")
+			return
+		}
+		productGroupID, _ := result.LastInsertId()
+		if _, err = tx.ExecContext(r.Context(), `INSERT INTO product_option_values(tenant_id,store_id,group_id,attribute_value_id,name,price_delta_cents,is_default,sort_order,status)
+			SELECT ?,?,?,id,name,price_delta_cents,is_default,sort_order,status FROM attribute_values
+			WHERE group_id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY sort_order,id`, identity.TenantID, storeID, productGroupID, attributeGroupID, identity.TenantID, storeID); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	}
 	for _, group := range input.OptionGroups {
-		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO product_option_groups(tenant_id,store_id,product_id,name,kind,selection_mode,min_select,max_select,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, productID, group.Name, group.Kind, group.SelectionMode, group.MinSelect, group.MaxSelect, group.SortOrder, group.Status)
+		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO product_option_groups(tenant_id,store_id,product_id,name,kind,selection_mode,min_select,max_select,sort_order,status) VALUES(?,?,?,?,?,?,?,?,?,?)`, identity.TenantID, storeID, productID, group.Name, group.Kind, group.SelectionMode, group.MinSelect, group.MaxSelect, len(input.AttributeGroupIDs)+group.SortOrder, group.Status)
 		if insertErr != nil {
 			handleSQLError(w, insertErr)
 			return
@@ -899,7 +927,7 @@ func (s *Server) updateProductConfiguration(w http.ResponseWriter, r *http.Reque
 		handleSQLError(w, err)
 		return
 	}
-	s.audit(r.Context(), identity, "product.configuration.update", "product", int64String(productID), map[string]any{"option_groups": len(input.OptionGroups), "modifier_groups": len(input.ModifierGroupIDs)}, r)
+	s.audit(r.Context(), identity, "product.configuration.update", "product", int64String(productID), map[string]any{"option_groups": len(input.OptionGroups), "attribute_groups": len(input.AttributeGroupIDs), "modifier_groups": len(input.ModifierGroupIDs)}, r)
 	config, err := s.loadProductConfiguration(r.Context(), identity.TenantID, storeID, productID, false)
 	if err != nil {
 		handleSQLError(w, err)
@@ -916,7 +944,7 @@ func (s *Server) loadProductConfiguration(ctx context.Context, tenantID, storeID
 	if productExists == 0 {
 		return productConfigurationDTO{}, sql.ErrNoRows
 	}
-	query := `SELECT id,name,kind,selection_mode,min_select,max_select,sort_order,status FROM product_option_groups WHERE product_id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`
+	query := `SELECT id,attribute_group_id,name,kind,selection_mode,min_select,max_select,sort_order,status FROM product_option_groups WHERE product_id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL`
 	if activeOnly {
 		query += " AND status='ACTIVE'"
 	}
@@ -928,9 +956,14 @@ func (s *Server) loadProductConfiguration(ctx context.Context, tenantID, storeID
 	config := productConfigurationDTO{OptionGroups: []productOptionGroupDTO{}, ModifierGroups: []modifierGroupDTO{}, ResourceBindings: []int64{}}
 	for rows.Next() {
 		var group productOptionGroupDTO
-		if err = rows.Scan(&group.ID, &group.Name, &group.Kind, &group.SelectionMode, &group.MinSelect, &group.MaxSelect, &group.SortOrder, &group.Status); err != nil {
+		var attributeGroupID sql.NullInt64
+		if err = rows.Scan(&group.ID, &attributeGroupID, &group.Name, &group.Kind, &group.SelectionMode, &group.MinSelect, &group.MaxSelect, &group.SortOrder, &group.Status); err != nil {
 			rows.Close()
 			return config, err
+		}
+		if attributeGroupID.Valid {
+			value := attributeGroupID.Int64
+			group.AttributeGroupID = &value
 		}
 		group.Values = []productOptionValueDTO{}
 		config.OptionGroups = append(config.OptionGroups, group)

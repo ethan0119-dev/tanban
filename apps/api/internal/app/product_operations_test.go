@@ -100,19 +100,19 @@ func TestCopyProductClonesOrderingConfigurationAndStartsDisabled(t *testing.T) {
 	mock.ExpectExec("INSERT INTO product_modifier_groups").
 		WithArgs(int64(81), int64(17), int64(5), int64(9)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT id,name,kind,selection_mode").
+	mock.ExpectQuery("SELECT id,attribute_group_id,name,kind,selection_mode").
 		WithArgs(int64(17), int64(5), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "kind", "selection_mode", "min_select", "max_select", "sort_order", "status"}).
-			AddRow(22, "温度", "ATTRIBUTE", "SINGLE", 1, 1, 0, "ACTIVE"))
-	mock.ExpectQuery("SELECT name,price_delta_cents,is_default").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "attribute_group_id", "name", "kind", "selection_mode", "min_select", "max_select", "sort_order", "status"}).
+			AddRow(22, nil, "温度", "ATTRIBUTE", "SINGLE", 1, 1, 0, "ACTIVE"))
+	mock.ExpectQuery("SELECT attribute_value_id,name,price_delta_cents,is_default").
 		WithArgs(int64(22), int64(5), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"name", "price_delta_cents", "is_default", "sort_order", "status"}).
-			AddRow("热", 0, true, 0, "ACTIVE"))
+		WillReturnRows(sqlmock.NewRows([]string{"attribute_value_id", "name", "price_delta_cents", "is_default", "sort_order", "status"}).
+			AddRow(nil, "热", 0, true, 0, "ACTIVE"))
 	mock.ExpectExec("INSERT INTO product_option_groups").
-		WithArgs(int64(5), int64(9), int64(81), "温度", "ATTRIBUTE", "SINGLE", 1, 1, 0, "ACTIVE").
+		WithArgs(int64(5), int64(9), int64(81), nil, "温度", "ATTRIBUTE", "SINGLE", 1, 1, 0, "ACTIVE").
 		WillReturnResult(sqlmock.NewResult(101, 1))
 	mock.ExpectExec("INSERT INTO product_option_values").
-		WithArgs(int64(5), int64(9), int64(101), "热", int64(0), true, 0, "ACTIVE").
+		WithArgs(int64(5), int64(9), int64(101), nil, "热", int64(0), true, 0, "ACTIVE").
 		WillReturnResult(sqlmock.NewResult(111, 1))
 	mock.ExpectRollback()
 
