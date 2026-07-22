@@ -7,6 +7,7 @@ import {
   tableOrderFields,
 } from '../miniprogram/utils/table-context';
 import { normalizeFastFoodResolution, readFastFoodContext, saveFastFoodContext } from '../miniprogram/utils/fast-food-context';
+import { env } from '../miniprogram/config/env';
 
 describe('miniapp ordering entry routes', () => {
   let storage: Map<string, unknown>;
@@ -18,6 +19,10 @@ describe('miniapp ordering entry routes', () => {
       setStorageSync: (key: string, value: unknown) => storage.set(key, value),
       removeStorageSync: (key: string) => storage.delete(key),
     });
+  });
+
+  it('opens the configured decorated store when launched without a store code', () => {
+    expect(env.defaultStoreCode).toBe('manong-coffee-gulou');
   });
 
   it('keeps ordinary store routes outside dine-in mode', () => {

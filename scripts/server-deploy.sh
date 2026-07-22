@@ -391,6 +391,15 @@ if [[ "$http_addr" != "127.0.0.1:18090" ]]; then
   exit 1
 fi
 
+seed_demo="$(read_env_value TB_SEED_DEMO | tr '[:upper:]' '[:lower:]')"
+case "$seed_demo" in
+  ""|0|false|no|off) ;;
+  *)
+    echo "TB_SEED_DEMO must be disabled for production deployment; demo seeding can create an unintended default store" >&2
+    exit 1
+    ;;
+esac
+
 compose config --quiet
 
 echo "creating a verified pre-deploy MySQL backup"
