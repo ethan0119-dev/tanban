@@ -131,6 +131,9 @@ func (s *Server) testPlatformXPYun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) printerProviderView(value printerProviderStored) printerProviderView {
+	if value.BaseURL == "" {
+		value.BaseURL = "https://open.xpyun.net/api/openapi/xprinter"
+	}
 	return printerProviderView{Provider: "xpyun", DisplayName: "芯烨云", Enabled: value.Enabled, DeveloperID: value.DeveloperID, SecretSet: value.SecretCipher != "", BaseURL: value.BaseURL, Configured: value.Enabled && value.DeveloperID != "" && value.SecretCipher != "", AutoRegister: true}
 }
 
