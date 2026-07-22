@@ -12,6 +12,8 @@ import type {
   QueryParams,
   Store,
   SystemSettings,
+  PrinterProviderSettings,
+  PrinterProviderTestResult,
   Tenant,
   TrendPoint,
 } from '../types';
@@ -358,4 +360,10 @@ export const settingsService = {
   getSystem: async () => (await http.get<SystemSettings>('/platform/settings/system')).data,
   updateSystem: async (values: SystemSettings) =>
     (await http.put<SystemSettings>('/platform/settings/system', values)).data,
+  getPrinterProviders: async () =>
+    (await http.get<PrinterProviderSettings[]>('/platform/settings/printer-providers')).data,
+  updateXPYun: async (values: { enabled: boolean; developerId: string; secret?: string; baseUrl: string }) =>
+    (await http.put<PrinterProviderSettings>('/platform/settings/printer-providers/xpyun', values)).data,
+  testXPYun: async () =>
+    (await http.post<PrinterProviderTestResult>('/platform/settings/printer-providers/xpyun/test')).data,
 };

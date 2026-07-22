@@ -7,6 +7,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   NotificationOutlined,
+  PrinterOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -35,6 +36,7 @@ const allMenuItems: NonNullable<MenuProps['items']> = [
     icon: <SettingOutlined />,
     children: [
       { key: '/settings/payment', label: <Link to="/settings/payment">支付服务商</Link>, icon: <BankOutlined /> },
+      { key: '/settings/printers', label: <Link to="/settings/printers">打印服务商</Link>, icon: <PrinterOutlined /> },
       { key: '/settings/system', label: <Link to="/settings/system">系统设置</Link>, icon: <SafetyCertificateOutlined /> },
     ],
   },

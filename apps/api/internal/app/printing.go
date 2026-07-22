@@ -107,6 +107,7 @@ func (s *Server) createPrinter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := result.LastInsertId()
+	_ = s.syncPrinterRegistration(r.Context(), input.Provider, input.Name, input.SN)
 	s.audit(r.Context(), identity, "printer.create", "printer", int64String(id), map[string]any{"sn": input.SN, "provider": input.Provider, "copy_roles": input.CopyRoles}, r)
 	s.getPrinterByID(w, r, identity.TenantID, id)
 }
@@ -253,6 +254,7 @@ func (s *Server) updatePrinter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	_ = s.syncPrinterRegistration(r.Context(), input.Provider, input.Name, input.SN)
 	s.audit(r.Context(), identity, "printer.update", "printer", int64String(id), map[string]any{"sn": input.SN, "copy_roles": input.CopyRoles}, r)
 	s.getPrinterByID(w, r, identity.TenantID, id)
 }

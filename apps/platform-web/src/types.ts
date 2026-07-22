@@ -148,6 +148,26 @@ export interface SystemSettings {
   sessionExpireMinutes?: number;
 }
 
+export interface PrinterProviderSettings {
+  provider: string;
+  displayName: string;
+  enabled: boolean;
+  developerId: string;
+  secretSet: boolean;
+  baseUrl: string;
+  configured: boolean;
+  autoRegister: boolean;
+  synced?: number;
+  syncFailed?: number;
+}
+
+export interface PrinterProviderTestResult {
+  deviceName: string;
+  status: 'ONLINE' | 'OFFLINE' | 'PAPER_OUT' | 'UNREACHABLE';
+  message: string;
+  checkedAt: string;
+}
+
 export type AnnouncementCategory = 'SYSTEM_UPDATE' | 'BUG_FIX' | 'NEW_FEATURE' | 'NOTICE' | 'ACTION_REQUIRED';
 export type AnnouncementSeverity = 'INFO' | 'IMPORTANT' | 'URGENT';
 export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN';

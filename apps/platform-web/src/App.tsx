@@ -13,6 +13,7 @@ const TenantsPage = lazy(() => import('./pages/TenantsPage').then((module) => ({
 const StoresPage = lazy(() => import('./pages/StoresPage').then((module) => ({ default: module.StoresPage })));
 const PaymentSettingsPage = lazy(() => import('./pages/PaymentSettingsPage').then((module) => ({ default: module.PaymentSettingsPage })));
 const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })));
+const PrinterProvidersPage = lazy(() => import('./pages/PrinterProvidersPage').then((module) => ({ default: module.PrinterProvidersPage })));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })));
 const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage').then((module) => ({ default: module.AnnouncementsPage })));
 
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/announcements" element={<AnnouncementsPage />} />
           <Route path="/settings/payment" element={<PaymentSettingsPage />} />
           <Route path="/settings/system" element={<SystemSettingsPage />} />
+          <Route path="/settings/printers" element={<PrinterProvidersPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

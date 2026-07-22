@@ -63,11 +63,13 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 		User:    cfg.XPYun.User,
 		UserKey: cfg.XPYun.UserKey,
 	}))
-	return &Server{
+	server := &Server{
 		DB: db, Config: cfg, Logger: logger, Cache: cache.NewMemory(),
 		Payment: payment, MockPayment: mockPayment, Printer: printer,
 		AllowMockConfirmation: cfg.AllowMockConfirmation,
 	}
+	server.loadPrinterProviderRuntime(context.Background())
+	return server
 }
 
 func (s *Server) Routes() http.Handler {
