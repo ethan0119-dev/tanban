@@ -12,7 +12,27 @@ API_READY_TIMEOUT="${API_READY_TIMEOUT:-180}"
 RELEASE_RETENTION_COUNT="${RELEASE_RETENTION_COUNT:-5}"
 MYSQL_BACKUP_DIR="${MYSQL_BACKUP_DIR:-/var/backups/tanban/mysql}"
 MYSQL_BACKUP_RETENTION_DAYS="${MYSQL_BACKUP_RETENTION_DAYS:-14}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lock/tanban-server-deploy.lock}"
+DEPLOY_LOCK_TIMEOUT="${DEPLOY_LOCK_TIMEOUT:-600}"
 COMPOSE_FILE="infra/deploy/docker-compose.prod.yml"
+
+if ! command -v flock >/dev/null 2>&1; then
+  echo "required command not found: flock" >&2
+  exit 1
+fi
+if [[ ! "$DEPLOY_LOCK_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "DEPLOY_LOCK_TIMEOUT must be a positive integer" >&2
+  exit 1
+fi
+if [[ "$DEPLOY_LOCK_FILE" != /* || "$DEPLOY_LOCK_FILE" == "/" || "$DEPLOY_LOCK_FILE" == *".."* ]]; then
+  echo "DEPLOY_LOCK_FILE must be a specific absolute path: $DEPLOY_LOCK_FILE" >&2
+  exit 1
+fi
+exec 9>"$DEPLOY_LOCK_FILE"
+if ! flock -w "$DEPLOY_LOCK_TIMEOUT" 9; then
+  echo "another Tanban deployment is still running after ${DEPLOY_LOCK_TIMEOUT}s" >&2
+  exit 1
+fi
 
 RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 DEPLOY_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tanban-deploy.XXXXXX")"
@@ -398,10 +418,10 @@ wait_for_api
 API_ROLLBACK_ALLOWED=0
 
 echo "building static frontends"
-npm ci \
-  --workspace @tanban/platform-web \
-  --workspace @tanban/merchant-web \
-  --include-workspace-root=true
+# npm's filtered workspace install can omit transitive packages needed by
+# Vite/Rollup on a clean production host. Install the lockfile as a whole so
+# both static builds see the same deterministic dependency tree.
+npm ci
 npm run build:platform
 npm run build:merchant
 
