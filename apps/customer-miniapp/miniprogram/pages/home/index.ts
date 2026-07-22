@@ -8,6 +8,7 @@ import {
   rememberSplash,
   runDecorationAction,
   shouldDisplaySplash,
+  splashImageMode,
 } from "../../utils/decoration";
 import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
@@ -30,6 +31,7 @@ Page({
     tableContext: null as TableOrderingContext | null,
     fastFoodContext: null as FastFoodOrderingContext | null,
     splashVisible: false,
+    splashImageMode: "aspectFit" as "aspectFill" | "aspectFit",
     marketingPopup: null as MarketingPlacement | null,
     marketingPopupVisible: false,
     error: "",
@@ -134,7 +136,7 @@ Page({
   },
   showSplashIfNeeded(storeCode: string, version: number, decoration: DecorationConfig) {
     if (!shouldDisplaySplash(decoration, storeCode, version)) return;
-    this.setData({ splashVisible: true });
+    this.setData({ splashVisible: true, splashImageMode: "aspectFit" });
     if (splashTimer) clearTimeout(splashTimer);
     if (decoration.splash.autoCloseSeconds > 0) {
       splashTimer = setTimeout(() => this.closeSplash(), decoration.splash.autoCloseSeconds * 1000);
@@ -156,6 +158,9 @@ Page({
     const action = this.data.decoration.splash.action;
     this.closeSplash();
     runDecorationAction(action);
+  },
+  onSplashImageLoad(event: WechatMiniprogram.CustomEvent<{ width: number; height: number }>) {
+    this.setData({ splashImageMode: splashImageMode(event.detail.width, event.detail.height) });
   },
   goMenu() { wx.switchTab({ url: "/pages/menu/index" }); },
   goOrders() { wx.switchTab({ url: "/pages/orders/index" }); },

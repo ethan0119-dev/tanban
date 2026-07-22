@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decorationStyle, defaultDecoration, normalizeDecoration } from '../miniprogram/utils/decoration';
+import { decorationStyle, defaultDecoration, normalizeDecoration, splashImageMode } from '../miniprogram/utils/decoration';
 import { hasMarketingPopupVisual } from '../miniprogram/utils/marketing';
 
 describe('miniapp hotspot decoration', () => {
@@ -40,6 +40,14 @@ describe('miniapp hotspot decoration', () => {
 });
 
 describe('merchant decoration chrome', () => {
+  it('centers logos and small images while preserving full-size portrait covers', () => {
+    expect(splashImageMode(750, 1334)).toBe('aspectFill');
+    expect(splashImageMode(1080, 1920)).toBe('aspectFill');
+    expect(splashImageMode(512, 512)).toBe('aspectFit');
+    expect(splashImageMode(320, 568)).toBe('aspectFit');
+    expect(splashImageMode(1200, 600)).toBe('aspectFit');
+  });
+
   it('keeps a supported navigation icon template and falls back safely', () => {
     expect(normalizeDecoration({ navigation: { templateKey: 'warm' } }).navigation.templateKey).toBe('warm');
     expect(normalizeDecoration({ navigation: { templateKey: 'CUSTOM_HTML' } }).navigation.templateKey).toBe('classic');

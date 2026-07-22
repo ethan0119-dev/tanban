@@ -6,7 +6,7 @@ import { loadPageAppearance } from "../../utils/page-appearance";
 import { showUnavailableFeature } from "../../utils/availability";
 
 Page({
-  data: { version: "v0.2.2", storeCode: "", store: null as Store | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
+  data: { version: "v0.2.3", storeCode: "", store: null as Store | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
   async onShow() {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     this.setData({ storeCode, couponCount: localCouponCount(storeCode), channelScope: tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT" });

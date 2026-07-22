@@ -27,6 +27,21 @@ const MODULE_TYPES: DecorationModuleType[] = [
 const NAV_KEYS: DecorationNavigationItem["key"][] = ["home", "menu", "orders", "profile"];
 const ACTIONS: DecorationAction["type"][] = ["NONE", "OPEN_MENU", "OPEN_DINE_IN", "OPEN_TAKEOUT", "OPEN_DELIVERY", "OPEN_ORDERS", "OPEN_PROFILE", "OPEN_RECHARGE", "OPEN_MY_COUPONS", "OPEN_COUPON_CENTER", "CALL_PHONE"];
 
+export type SplashImageMode = "aspectFill" | "aspectFit";
+
+/**
+ * Only treat a sufficiently large, phone-shaped portrait as a full splash
+ * background. Logos, square assets and small images stay fully visible and
+ * centered instead of being enlarged and cropped.
+ */
+export function splashImageMode(width: number, height: number): SplashImageMode {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "aspectFit";
+  const portraitRatio = height / width;
+  return width >= 600 && height >= 900 && portraitRatio >= 1.5 && portraitRatio <= 2.5
+    ? "aspectFill"
+    : "aspectFit";
+}
+
 function color(value: unknown, fallback: string): string {
   return typeof value === "string" && COLOR.test(value) ? value : fallback;
 }

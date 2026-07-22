@@ -6,7 +6,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { Image, Segmented } from 'antd';
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { HOME_MODULE_LABELS, type DecorationConfig, type NavigationKey, type PreviewPage } from '../../features/decoration/model';
 
 const navigationIcons: Record<NavigationKey, ReactNode> = {
@@ -175,12 +175,27 @@ function MenuPreview({ config }: { config: DecorationConfig }) {
 }
 
 function SplashPreview({ config }: { config: DecorationConfig }) {
+  const [imageMode, setImageMode] = useState<'cover' | 'contain'>('contain');
+  useEffect(() => setImageMode('contain'), [config.splash.imageUrl]);
   return (
-    <div className="mini-splash" style={backgroundImage(config.splash.imageUrl)}>
+    <div className={`mini-splash ${imageMode}`}>
+      {config.splash.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={config.splash.imageUrl}
+          alt="启动页预览"
+          onLoad={(event) => setImageMode(isFullSizePortrait(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight) ? 'cover' : 'contain')}
+        />
+      )}
       <button type="button">{config.splash.frequency === 'EVERY_VISIT' ? '每次展示' : config.splash.frequency === 'DAILY' ? '每日一次' : '本版本一次'} · {config.splash.autoCloseSeconds}s</button>
       <div><strong>{config.splash.title}</strong><span>{config.splash.subtitle}</span></div>
     </div>
   );
+}
+
+function isFullSizePortrait(width: number, height: number): boolean {
+  const ratio = height / width;
+  return width >= 600 && height >= 900 && ratio >= 1.5 && ratio <= 2.5;
 }
 
 function AssetCircle({ url, children }: { url: string; children: ReactNode }) {
