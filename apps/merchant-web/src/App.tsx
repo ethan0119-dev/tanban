@@ -10,6 +10,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DecorationPage } from './pages/DecorationPage';
 import { LoginPage } from './pages/LoginPage';
+import { StoreSelectionPage } from './pages/StoreSelectionPage';
 import { MembershipPage } from './pages/MembershipPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { PaymentsPage } from './pages/PaymentsPage';
@@ -46,6 +47,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/select-store" element={<StoreSelectionPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

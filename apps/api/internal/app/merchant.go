@@ -581,7 +581,9 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listStaff(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM users WHERE tenant_id=? AND deleted_at IS NULL ORDER BY id DESC`, identity.TenantID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT a.id,m.tenant_id,a.username,a.display_name,m.role,m.status,DATE_FORMAT(m.created_at,'%Y-%m-%d %H:%i:%s')
+		FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL
+		WHERE m.tenant_id=? AND m.deleted_at IS NULL ORDER BY m.id DESC`, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -631,12 +633,26 @@ func (s *Server) createStaff(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_PASSWORD", "password must not exceed 72 bytes")
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), "INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?)", identity.TenantID, input.Username, string(hash), input.DisplayName, input.Role, input.Status)
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO accounts(username,password_hash,display_name,status) VALUES(?,?,?,'ACTIVE')`, input.Username, string(hash), input.DisplayName)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	id, _ := result.LastInsertId()
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO tenant_memberships(tenant_id,account_id,role,status) VALUES(?,?,?,?)`, identity.TenantID, id, input.Role, input.Status); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	s.audit(r.Context(), identity, "staff.create", "user", int64String(id), map[string]any{"username": input.Username, "role": input.Role}, r)
 	s.getUserByScope(w, r, identity.TenantID, id, false)
 }
@@ -695,7 +711,7 @@ func (s *Server) updateStaff(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var targetRole, targetStatus string
-	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&targetRole, &targetStatus); err != nil {
+	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM tenant_memberships WHERE account_id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&targetRole, &targetStatus); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -708,7 +724,7 @@ func (s *Server) updateStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetRole == RoleMerchantOwner && targetStatus == "ACTIVE" && (input.Role != RoleMerchantOwner || input.Status != "ACTIVE") {
-		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM users WHERE tenant_id=? AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", identity.TenantID, RoleMerchantOwner)
+		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM tenant_memberships WHERE tenant_id=? AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", identity.TenantID, RoleMerchantOwner)
 		if countErr != nil {
 			handleSQLError(w, countErr)
 			return
@@ -725,16 +741,17 @@ func (s *Server) updateStaff(w http.ResponseWriter, r *http.Request) {
 	}
 	var result sql.Result
 	if passwordHash != "" {
-		result, err = tx.ExecContext(r.Context(), "UPDATE users SET username=?,password_hash=?,display_name=?,role=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL", input.Username, passwordHash, input.DisplayName, input.Role, input.Status, id, identity.TenantID)
+		result, err = tx.ExecContext(r.Context(), "UPDATE accounts SET username=?,password_hash=?,display_name=? WHERE id=? AND deleted_at IS NULL", input.Username, passwordHash, input.DisplayName, id)
 	} else {
-		result, err = tx.ExecContext(r.Context(), "UPDATE users SET username=?,display_name=?,role=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL", input.Username, input.DisplayName, input.Role, input.Status, id, identity.TenantID)
+		result, err = tx.ExecContext(r.Context(), "UPDATE accounts SET username=?,display_name=? WHERE id=? AND deleted_at IS NULL", input.Username, input.DisplayName, id)
 	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "staff not found")
+	_ = result
+	if _, err = tx.ExecContext(r.Context(), `UPDATE tenant_memberships SET role=?,status=? WHERE account_id=? AND tenant_id=? AND deleted_at IS NULL`, input.Role, input.Status, id, identity.TenantID); err != nil {
+		handleSQLError(w, err)
 		return
 	}
 	if err = tx.Commit(); err != nil {
@@ -762,7 +779,7 @@ func (s *Server) deleteStaff(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var targetRole, targetStatus string
-	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&targetRole, &targetStatus); err != nil {
+	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM tenant_memberships WHERE account_id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE", id, identity.TenantID).Scan(&targetRole, &targetStatus); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -771,7 +788,7 @@ func (s *Server) deleteStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetRole == RoleMerchantOwner && targetStatus == "ACTIVE" {
-		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM users WHERE tenant_id=? AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", identity.TenantID, RoleMerchantOwner)
+		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM tenant_memberships WHERE tenant_id=? AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", identity.TenantID, RoleMerchantOwner)
 		if countErr != nil {
 			handleSQLError(w, countErr)
 			return
@@ -786,7 +803,7 @@ func (s *Server) deleteStaff(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), "UPDATE users SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
+	result, err := tx.ExecContext(r.Context(), "UPDATE tenant_memberships SET status='DISABLED',deleted_at=NOW(3) WHERE account_id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -794,6 +811,17 @@ func (s *Server) deleteStaff(w http.ResponseWriter, r *http.Request) {
 	if n, _ := result.RowsAffected(); n == 0 {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "staff not found")
 		return
+	}
+	var remainingMemberships int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tenant_memberships WHERE account_id=? AND deleted_at IS NULL`, id).Scan(&remainingMemberships); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if remainingMemberships == 0 {
+		if _, err = tx.ExecContext(r.Context(), `UPDATE accounts SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND deleted_at IS NULL`, id); err != nil {
+			handleSQLError(w, err)
+			return
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)

@@ -7,7 +7,20 @@ export interface MerchantUser {
   avatar?: string;
   merchantName?: string;
   storeName?: string;
+  tenantId?: Id;
+  storeId?: Id;
+  tenantName?: string;
   roles?: string[];
+}
+
+export interface MerchantWorkspace {
+  membershipId: Id;
+  tenantId: Id;
+  tenantName: string;
+  storeId: Id;
+  storeName: string;
+  storeLogoUrl?: string;
+  role: string;
 }
 
 export type OrderStatus =

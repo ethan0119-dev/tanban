@@ -1,4 +1,4 @@
-import { EditOutlined, EnvironmentOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { EditOutlined, EnvironmentOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -65,13 +65,6 @@ export function StoresPage() {
       .catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openCreate = () => {
-    setEditing(undefined);
-    form.resetFields();
-    form.setFieldsValue({ status: 'active' });
-    setModalOpen(true);
-  };
-
   const openEdit = (record: Store) => {
     setEditing(record);
     form.setFieldsValue({
@@ -90,15 +83,11 @@ export function StoresPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      if (editing) {
-        await storeService.update(editing.tenantId || values.tenantId, editing.id, values);
-        messageApi.success('门店信息已更新');
-      } else {
-        await storeService.create(values);
-        messageApi.success('门店已创建');
-      }
+      if (!editing) return;
+      await storeService.update(editing.tenantId || values.tenantId, editing.id, values);
+      messageApi.success('店铺信息已更新');
       setModalOpen(false);
-      void load(editing ? meta.page : 1);
+      void load(meta.page);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '门店保存失败');
     } finally {
@@ -140,7 +129,7 @@ export function StoresPage() {
   return (
     <div>
       {contextHolder}
-      <PageHeader title="门店管理" description="统一查看与维护所有商户旗下的经营门店。" extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增门店</Button>} />
+      <PageHeader title="店铺总览" description="每个商户租户对应一家独立店铺；新店请在商户管理中开通新的租户。" />
       <Card bordered={false}>
         <Row gutter={[12, 12]} className="table-toolbar">
           <Col xs={24} md={8} lg={7}><Input allowClear prefix={<SearchOutlined />} placeholder="搜索门店名称、编号或地址" value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => void load(1)} /></Col>
@@ -158,7 +147,7 @@ export function StoresPage() {
         />
       </Card>
 
-      <Modal title={editing ? '编辑门店' : '新增门店'} width={640} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void saveStore()} okText="保存" confirmLoading={saving}>
+      <Modal title="编辑店铺" width={640} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void saveStore()} okText="保存" confirmLoading={saving}>
         <Form form={form} layout="vertical" requiredMark={false} className="modal-form">
           <Form.Item label="所属商户" name="tenantId" rules={[{ required: true, message: '请选择所属商户' }]}><Select showSearch optionFilterProp="label" disabled={Boolean(editing)} placeholder="选择商户" options={tenants.map((tenant) => ({ value: tenant.id, label: tenant.name }))} /></Form.Item>
           <Row gutter={12}>

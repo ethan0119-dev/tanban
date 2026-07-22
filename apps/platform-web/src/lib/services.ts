@@ -203,6 +203,7 @@ export type TenantCreateValues = Partial<Tenant> & {
   ownerDisplayName?: string;
   initialStoreCode?: string;
   initialStoreName?: string;
+  ownerAccountMode?: 'CREATE' | 'EXISTING';
 };
 
 function tenantPayload(values: TenantCreateValues): RawRecord {
@@ -219,8 +220,9 @@ function tenantPayload(values: TenantCreateValues): RawRecord {
     owner_username: item.ownerUsername || '',
     owner_password: item.ownerPassword || '',
     owner_display_name: item.ownerDisplayName || '',
+    owner_account_mode: item.ownerAccountMode || 'CREATE',
     initial_store_code: item.initialStoreCode || '',
-    initial_store_name: item.initialStoreName || '',
+    initial_store_name: item.initialStoreName || item.name || '',
   };
 }
 
@@ -301,11 +303,12 @@ export const tenantService = {
     tenantFromRaw((await http.post<RawRecord>('/platform/tenants', tenantPayload(values))).data),
   update: async (id: string, values: Partial<Tenant>) =>
     tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/`, tenantPayload(values))).data),
-  createOwner: async (id: string, values: { username: string; password: string; displayName: string }) => {
+  createOwner: async (id: string, values: { username: string; password?: string; displayName?: string; accountMode?: 'CREATE' | 'EXISTING' }) => {
     await http.post(`/platform/tenants/${id}/owner`, {
       username: values.username,
       password: values.password,
       display_name: values.displayName,
+      account_mode: values.accountMode || 'CREATE',
     });
   },
   uploadDocument: async (id: string, type: 'business-license' | 'food-business-license', file: File) => {

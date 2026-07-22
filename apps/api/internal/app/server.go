@@ -80,9 +80,12 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/readyz", s.ready)
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Post("/auth/login", s.login)
+		api.Post("/auth/select-tenant", s.selectTenant)
 		api.Group(func(protected chi.Router) {
 			protected.Use(s.authenticate)
 			protected.Get("/auth/me", s.me)
+			protected.Get("/auth/workspaces", s.listAuthWorkspaces)
+			protected.Post("/auth/switch-tenant", s.switchTenant)
 			protected.Route("/platform", s.platformRoutes)
 			protected.Route("/merchant", s.merchantRoutes)
 		})

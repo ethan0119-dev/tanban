@@ -42,6 +42,7 @@ type tenantInput struct {
 	OwnerUsername     string `json:"owner_username"`
 	OwnerPassword     string `json:"owner_password"`
 	OwnerDisplayName  string `json:"owner_display_name"`
+	OwnerAccountMode  string `json:"owner_account_mode"`
 	InitialStoreCode  string `json:"initial_store_code"`
 	InitialStoreName  string `json:"initial_store_name"`
 }
@@ -50,6 +51,7 @@ type tenantOwnerInput struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	AccountMode string `json:"account_mode"`
 }
 
 type storeDTO struct {
@@ -160,10 +162,10 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
-		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
+		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		COALESCE((SELECT m.status FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.deleted_at IS NULL AND (t.name LIKE ? OR t.code LIKE ?) AND (?='' OR t.status=?) ORDER BY t.id DESC LIMIT ? OFFSET ?`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, search, search, status, status, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
@@ -209,10 +211,18 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	input.OwnerUsername = strings.TrimSpace(input.OwnerUsername)
 	input.OwnerDisplayName = strings.TrimSpace(input.OwnerDisplayName)
+	input.OwnerAccountMode = strings.ToUpper(strings.TrimSpace(input.OwnerAccountMode))
+	if input.OwnerAccountMode == "" {
+		input.OwnerAccountMode = "CREATE"
+	}
 	input.InitialStoreCode = strings.TrimSpace(input.InitialStoreCode)
 	input.InitialStoreName = strings.TrimSpace(input.InitialStoreName)
-	if input.OwnerUsername == "" || len(input.OwnerUsername) > 64 || len([]byte(input.OwnerPassword)) < 8 || len([]byte(input.OwnerPassword)) > 72 || input.OwnerDisplayName == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username, owner_display_name and an owner_password of 8 to 72 bytes are required")
+	if input.OwnerUsername == "" || len(input.OwnerUsername) > 64 || !validStatus(input.OwnerAccountMode, "CREATE", "EXISTING") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "owner_username and owner_account_mode CREATE or EXISTING are required")
+		return
+	}
+	if input.OwnerAccountMode == "CREATE" && (len([]byte(input.OwnerPassword)) < 8 || len([]byte(input.OwnerPassword)) > 72 || input.OwnerDisplayName == "") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "a new owner requires owner_display_name and an owner_password of 8 to 72 bytes")
 		return
 	}
 	if input.InitialStoreCode == "" || input.InitialStoreName == "" {
@@ -242,12 +252,39 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcrypt.DefaultCost)
-	if hashErr != nil {
-		handleSQLError(w, hashErr)
-		return
+	var ownerAccountID int64
+	if input.OwnerAccountMode == "EXISTING" {
+		if err = tx.QueryRowContext(r.Context(), `SELECT id FROM accounts WHERE username=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, input.OwnerUsername).Scan(&ownerAccountID); err != nil {
+			if err == sql.ErrNoRows {
+				writeError(w, http.StatusNotFound, "OWNER_ACCOUNT_NOT_FOUND", "existing owner account not found")
+			} else {
+				handleSQLError(w, err)
+			}
+			return
+		}
+		var incompatible int
+		if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tenant_memberships WHERE account_id=? AND role<>? AND deleted_at IS NULL`, ownerAccountID, RoleMerchantOwner).Scan(&incompatible); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if incompatible > 0 {
+			writeError(w, http.StatusConflict, "OWNER_ACCOUNT_INCOMPATIBLE", "staff account cannot be linked as a multi-store owner")
+			return
+		}
+	} else {
+		hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcrypt.DefaultCost)
+		if hashErr != nil {
+			handleSQLError(w, hashErr)
+			return
+		}
+		ownerResult, insertErr := tx.ExecContext(r.Context(), `INSERT INTO accounts(username,password_hash,display_name,status) VALUES(?,?,?,'ACTIVE')`, input.OwnerUsername, string(hash), input.OwnerDisplayName)
+		if insertErr != nil {
+			handleSQLError(w, insertErr)
+			return
+		}
+		ownerAccountID, _ = ownerResult.LastInsertId()
 	}
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,'ACTIVE')`, id, input.OwnerUsername, string(hash), input.OwnerDisplayName, RoleMerchantOwner); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO tenant_memberships(tenant_id,account_id,role,status) VALUES(?,?,?,'ACTIVE')`, id, ownerAccountID, RoleMerchantOwner); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -257,7 +294,7 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.create", "tenant", int64String(id), map[string]any{
 		"code": input.Code, "name": input.Name, "payment_provider": input.PaymentProvider,
-		"owner_username": input.OwnerUsername, "initial_store_code": input.InitialStoreCode,
+		"owner_username": input.OwnerUsername, "owner_account_mode": input.OwnerAccountMode, "initial_store_code": input.InitialStoreCode,
 	}, r)
 	s.getTenantByID(w, r, id)
 }
@@ -276,10 +313,10 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
-		COALESCE((SELECT u.username FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		COALESCE((SELECT u.display_name FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		COALESCE((SELECT u.status FROM users u WHERE u.tenant_id=t.id AND u.role=? ORDER BY u.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM users u WHERE u.tenant_id=t.id AND u.role=?),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
+		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		COALESCE((SELECT m.status FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
+		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
 		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
 	if err != nil {
@@ -334,12 +371,26 @@ func (s *Server) createTenantOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Username = strings.TrimSpace(input.Username)
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if input.Username == "" || len(input.Username) > 64 || input.DisplayName == "" || len([]byte(input.Password)) < 8 || len([]byte(input.Password)) > 72 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username, display_name and a password of 8 to 72 bytes are required")
+	input.AccountMode = strings.ToUpper(strings.TrimSpace(input.AccountMode))
+	if input.AccountMode == "" {
+		input.AccountMode = "CREATE"
+	}
+	if input.Username == "" || len(input.Username) > 64 || !validStatus(input.AccountMode, "CREATE", "EXISTING") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "username and account_mode CREATE or EXISTING are required")
 		return
 	}
+	if input.AccountMode == "CREATE" && (input.DisplayName == "" || len([]byte(input.Password)) < 8 || len([]byte(input.Password)) > 72) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "a new owner requires display_name and a password of 8 to 72 bytes")
+		return
+	}
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
 	var tenantExists bool
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM tenants WHERE id=? AND deleted_at IS NULL)`, tenantID).Scan(&tenantExists); err != nil {
+	if err = tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM tenants WHERE id=? AND deleted_at IS NULL)`, tenantID).Scan(&tenantExists); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -348,7 +399,7 @@ func (s *Server) createTenantOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ownerExists bool
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id=? AND role=?)`, tenantID, RoleMerchantOwner).Scan(&ownerExists); err != nil {
+	if err = tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM tenant_memberships WHERE tenant_id=? AND role=? AND deleted_at IS NULL)`, tenantID, RoleMerchantOwner).Scan(&ownerExists); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -356,19 +407,48 @@ func (s *Server) createTenantOwner(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "OWNER_EXISTS", "tenant owner already exists")
 		return
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
+	var accountID int64
+	if input.AccountMode == "EXISTING" {
+		if err = tx.QueryRowContext(r.Context(), `SELECT id,display_name FROM accounts WHERE username=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, input.Username).Scan(&accountID, &input.DisplayName); err != nil {
+			if err == sql.ErrNoRows {
+				writeError(w, http.StatusNotFound, "OWNER_ACCOUNT_NOT_FOUND", "existing owner account not found")
+			} else {
+				handleSQLError(w, err)
+			}
+			return
+		}
+		var incompatible int
+		if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tenant_memberships WHERE account_id=? AND role<>? AND deleted_at IS NULL`, accountID, RoleMerchantOwner).Scan(&incompatible); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if incompatible > 0 {
+			writeError(w, http.StatusConflict, "OWNER_ACCOUNT_INCOMPATIBLE", "staff account cannot be linked as a multi-store owner")
+			return
+		}
+	} else {
+		hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if hashErr != nil {
+			handleSQLError(w, hashErr)
+			return
+		}
+		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO accounts(username,password_hash,display_name,status) VALUES(?,?,?,'ACTIVE')`, input.Username, string(hash), input.DisplayName)
+		if insertErr != nil {
+			handleSQLError(w, insertErr)
+			return
+		}
+		accountID, _ = result.LastInsertId()
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO tenant_memberships(tenant_id,account_id,role,status) VALUES(?,?,?,'ACTIVE')`, tenantID, accountID, RoleMerchantOwner); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,'ACTIVE')`, tenantID, input.Username, string(hash), input.DisplayName, RoleMerchantOwner)
-	if err != nil {
+	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	userID, _ := result.LastInsertId()
-	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.owner.create", "user", int64String(userID), map[string]any{"tenant_id": tenantID, "username": input.Username}, r)
-	writeData(w, http.StatusCreated, map[string]any{"id": userID, "tenant_id": tenantID, "username": input.Username, "display_name": input.DisplayName, "role": RoleMerchantOwner, "status": "ACTIVE"})
+	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.owner.create", "account", int64String(accountID), map[string]any{"tenant_id": tenantID, "username": input.Username, "account_mode": input.AccountMode}, r)
+	writeData(w, http.StatusCreated, map[string]any{"id": accountID, "tenant_id": tenantID, "username": input.Username, "display_name": input.DisplayName, "role": RoleMerchantOwner, "status": "ACTIVE"})
 }
 
 func (s *Server) deleteTenant(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +475,7 @@ func (s *Server) deleteTenant(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	if _, err = tx.ExecContext(r.Context(), "UPDATE users SET status='DISABLED' WHERE tenant_id=?", id); err != nil {
+	if _, err = tx.ExecContext(r.Context(), "UPDATE tenant_memberships SET status='DISABLED' WHERE tenant_id=? AND deleted_at IS NULL", id); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -453,6 +533,15 @@ func (s *Server) createPlatformStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var existingStoreCount int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM stores WHERE tenant_id=? AND deleted_at IS NULL FOR UPDATE`, tenantID).Scan(&existingStoreCount); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if existingStoreCount > 0 {
+		writeError(w, http.StatusConflict, "SINGLE_STORE_TENANT", "one tenant can contain only one store; create a new tenant for another store")
+		return
+	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status)
 		VALUES(?,?,?,?,?,?,?,?,?,?)`, tenantID, input.Code, input.Name, input.LogoURL, input.BannerURL, input.Address, input.Phone, input.BusinessHours, input.Notice, strings.ToUpper(input.Status))
 	if err != nil {
@@ -546,12 +635,12 @@ func scanStoreRow(row *sql.Row, item *storeDTO) error { return scanStore(row, it
 func (s *Server) listPlatformUsers(w http.ResponseWriter, r *http.Request) {
 	page, size, offset := pagination(r)
 	var total int
-	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM users WHERE tenant_id=0 AND deleted_at IS NULL").Scan(&total); err != nil {
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM accounts WHERE platform_role IS NOT NULL AND deleted_at IS NULL").Scan(&total); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
-		FROM users WHERE tenant_id=0 AND deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`, size, offset)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,0,username,display_name,platform_role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
+		FROM accounts WHERE platform_role IS NOT NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -599,7 +688,7 @@ func (s *Server) createPlatformUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_PASSWORD", "password must not exceed 72 bytes")
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?)`, input.TenantID, input.Username, string(hash), input.DisplayName, input.Role, input.Status)
+	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO accounts(username,password_hash,display_name,platform_role,status) VALUES(?,?,?,?,?)`, input.Username, string(hash), input.DisplayName, input.Role, input.Status)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -617,12 +706,15 @@ func (s *Server) getPlatformUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getUserByScope(w http.ResponseWriter, r *http.Request, tenantID, id int64, platform bool) {
-	query := `SELECT id,tenant_id,username,display_name,role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM users WHERE id=? AND deleted_at IS NULL`
+	query := `SELECT a.id,m.tenant_id,a.username,a.display_name,m.role,m.status,DATE_FORMAT(m.created_at,'%Y-%m-%d %H:%i:%s')
+		FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL
+		WHERE a.id=? AND m.deleted_at IS NULL`
 	args := []any{id}
 	if platform {
-		query += " AND tenant_id=0"
+		query = `SELECT id,0,username,display_name,platform_role,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s')
+			FROM accounts WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL`
 	} else {
-		query += " AND tenant_id=?"
+		query += " AND m.tenant_id=?"
 		args = append(args, tenantID)
 	}
 	var item userDTO
@@ -659,7 +751,7 @@ func (s *Server) updatePlatformUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var targetRole, targetStatus string
-	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM users WHERE id=? AND tenant_id=0 AND deleted_at IS NULL FOR UPDATE", id).Scan(&targetRole, &targetStatus); err != nil {
+	if err = tx.QueryRowContext(r.Context(), "SELECT platform_role,status FROM accounts WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL FOR UPDATE", id).Scan(&targetRole, &targetStatus); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -668,7 +760,7 @@ func (s *Server) updatePlatformUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetRole == RolePlatformAdmin && targetStatus == "ACTIVE" && (input.Role != RolePlatformAdmin || input.Status != "ACTIVE") {
-		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM users WHERE tenant_id=0 AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", RolePlatformAdmin)
+		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM accounts WHERE platform_role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", RolePlatformAdmin)
 		if countErr != nil {
 			handleSQLError(w, countErr)
 			return
@@ -694,9 +786,9 @@ func (s *Server) updatePlatformUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "INVALID_PASSWORD", "password must not exceed 72 bytes")
 			return
 		}
-		result, err = tx.ExecContext(r.Context(), `UPDATE users SET username=?,password_hash=?,display_name=?,role=?,status=? WHERE id=? AND tenant_id=0 AND deleted_at IS NULL`, input.Username, string(hash), input.DisplayName, input.Role, input.Status, id)
+		result, err = tx.ExecContext(r.Context(), `UPDATE accounts SET username=?,password_hash=?,display_name=?,platform_role=?,status=? WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL`, input.Username, string(hash), input.DisplayName, input.Role, input.Status, id)
 	} else {
-		result, err = tx.ExecContext(r.Context(), `UPDATE users SET username=?,display_name=?,role=?,status=? WHERE id=? AND tenant_id=0 AND deleted_at IS NULL`, input.Username, input.DisplayName, input.Role, input.Status, id)
+		result, err = tx.ExecContext(r.Context(), `UPDATE accounts SET username=?,display_name=?,platform_role=?,status=? WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL`, input.Username, input.DisplayName, input.Role, input.Status, id)
 	}
 	if err != nil {
 		handleSQLError(w, err)
@@ -731,12 +823,12 @@ func (s *Server) deletePlatformUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var targetRole, targetStatus string
-	if err = tx.QueryRowContext(r.Context(), "SELECT role,status FROM users WHERE id=? AND tenant_id=0 AND deleted_at IS NULL FOR UPDATE", id).Scan(&targetRole, &targetStatus); err != nil {
+	if err = tx.QueryRowContext(r.Context(), "SELECT platform_role,status FROM accounts WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL FOR UPDATE", id).Scan(&targetRole, &targetStatus); err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	if targetRole == RolePlatformAdmin && targetStatus == "ACTIVE" {
-		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM users WHERE tenant_id=0 AND role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", RolePlatformAdmin)
+		rows, countErr := tx.QueryContext(r.Context(), "SELECT id FROM accounts WHERE platform_role=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE", RolePlatformAdmin)
 		if countErr != nil {
 			handleSQLError(w, countErr)
 			return
@@ -751,7 +843,7 @@ func (s *Server) deletePlatformUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), "UPDATE users SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND tenant_id=0 AND deleted_at IS NULL", id)
+	result, err := tx.ExecContext(r.Context(), "UPDATE accounts SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND platform_role IS NOT NULL AND deleted_at IS NULL", id)
 	if err != nil {
 		handleSQLError(w, err)
 		return

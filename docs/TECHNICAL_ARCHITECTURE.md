@@ -287,6 +287,8 @@ type PrinterProvider interface {
 
 ### 6.2 三层租户隔离
 
+当前租户边界采用单店模型：`stores.tenant_id` 唯一，一个租户恰好承载一家店。老板身份拆为全局 `accounts` 与租户级 `tenant_memberships`；多店老板通过多个 OWNER 成员关系管理多个完全独立的租户，员工只允许一个成员关系。登录选择店铺后重新签发绑定目标租户的 JWT，不在同一个会话中混用多个租户上下文。
+
 1. **请求层**：令牌解析出 `tenant_id`，不接受前端任意指定租户。
 2. **Repository 层**：所有查询必须自动附加 `tenant_id`；越权测试覆盖所有接口。
 3. **数据库层**：MySQL 不提供 PostgreSQL 式 RLS，因此使用强制 `tenant_id` 查询模板、复合唯一索引、接口越权测试和平台运维独立角色作为纵深防御。
@@ -295,6 +297,7 @@ type PrinterProvider interface {
 
 ```text
 unique(tenant_id, order_no)
+unique(stores.tenant_id)
 unique(payment_provider, provider_trade_no)
 unique(tenant_id, idempotency_key, operation)
 unique(provider, device_sn)

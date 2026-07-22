@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -75,16 +76,28 @@ func (s *Server) SeedDemo(ctx context.Context) error {
 			}
 		}
 	}
-	var userCount int
-	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE username=? AND deleted_at IS NULL", s.Config.DemoMerchantUser).Scan(&userCount); err != nil {
+	var accountID int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM accounts WHERE username=? AND deleted_at IS NULL", s.Config.DemoMerchantUser).Scan(&accountID)
+	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	if userCount == 0 {
+	if err == sql.ErrNoRows {
 		hash, hashErr := bcrypt.GenerateFromPassword([]byte(s.Config.DemoMerchantPass), bcrypt.DefaultCost)
 		if hashErr != nil {
 			return hashErr
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO users(tenant_id,username,password_hash,display_name,role,status) VALUES(?,?,?,'码农咖啡店主','MERCHANT_OWNER','ACTIVE')`, tenantID, s.Config.DemoMerchantUser, string(hash)); err != nil {
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO accounts(username,password_hash,display_name,status) VALUES(?,?,'码农咖啡店主','ACTIVE')`, s.Config.DemoMerchantUser, string(hash))
+		if insertErr != nil {
+			return insertErr
+		}
+		accountID, _ = result.LastInsertId()
+	}
+	var membershipCount int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tenant_memberships WHERE tenant_id=? AND account_id=? AND deleted_at IS NULL`, tenantID, accountID).Scan(&membershipCount); err != nil {
+		return err
+	}
+	if membershipCount == 0 {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO tenant_memberships(tenant_id,account_id,role,status) VALUES(?,?,?,'ACTIVE')`, tenantID, accountID, RoleMerchantOwner); err != nil {
 			return err
 		}
 	}

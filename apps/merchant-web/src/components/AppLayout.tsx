@@ -4,6 +4,7 @@ import {
   BgColorsOutlined,
   BellOutlined,
   CarOutlined,
+  CheckOutlined,
   DashboardOutlined,
   LogoutOutlined,
   GiftOutlined,
@@ -18,7 +19,7 @@ import {
   TransactionOutlined,
   UsergroupAddOutlined,
 } from '@ant-design/icons';
-import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
+import { App as AntApp, Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import tanbanIcon from '../assets/brand/tanban-icon.png';
@@ -107,7 +108,8 @@ const staffNavigationItems: MenuProps['items'] = [
 ];
 
 export function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, workspaces, switchWorkspace, logout } = useAuth();
+  const { message } = AntApp.useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -148,11 +150,32 @@ export function AppLayout() {
     .sort((left, right) => right.length - left.length)
     .find((key) => location.pathname.startsWith(key)) ?? '/dashboard', [location.pathname, navigationItems]);
 
+  const workspaceMenuItems: MenuProps['items'] = workspaces.map((workspace) => ({
+    key: `workspace:${workspace.tenantId}`,
+    icon: String(workspace.tenantId) === String(user?.tenantId) ? <CheckOutlined /> : <ShopOutlined />,
+    label: workspace.storeName || workspace.tenantName,
+    disabled: String(workspace.tenantId) === String(user?.tenantId),
+  }));
   const accountMenu: MenuProps['items'] = [
-    { key: 'store', icon: <ShopOutlined />, label: user?.storeName || user?.merchantName || '当前门店', disabled: true },
+    { key: 'store-heading', icon: <ShopOutlined />, label: workspaces.length > 1 ? '切换店铺' : (user?.storeName || user?.merchantName || '当前门店'), disabled: true },
+    ...(workspaces.length > 1 ? workspaceMenuItems : []),
     { type: 'divider' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ];
+
+  const accountMenuClick: NonNullable<MenuProps['onClick']> = ({ key }) => {
+    if (key === 'logout') {
+      logout();
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (key.startsWith('workspace:')) {
+      const tenantId = key.slice('workspace:'.length);
+      void switchWorkspace(tenantId)
+        .then(() => window.location.assign('/dashboard'))
+        .catch((reason: unknown) => void message.error(reason instanceof Error ? reason.message : '切换店铺失败'));
+    }
+  };
 
   return (
     <Layout className="merchant-layout">
@@ -181,7 +204,11 @@ export function AppLayout() {
           defaultOpenKeys={['dine-in-domain', 'catalog-domain', 'customer-domain', 'marketing-domain', 'settings-domain']}
           onClick={({ key }) => navigate(key)}
         />
-        {!collapsed && <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>}
+        {!collapsed && (workspaces.length > 1 ? (
+          <Dropdown menu={{ items: workspaceMenuItems, onClick: accountMenuClick }} trigger={['click']} placement="topLeft">
+            <button type="button" className="sider-store-card is-switchable"><ShopOutlined /><div><small>当前门店 · 点击切换</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></button>
+          </Dropdown>
+        ) : <div className="sider-store-card"><ShopOutlined /><div><small>当前门店</small><strong>{user?.storeName || user?.merchantName || '我的门店'}</strong></div></div>)}
       </Sider>
       {mobile && !collapsed && <button className="sider-mask" type="button" aria-label="关闭菜单" onClick={() => setCollapsed(true)} />}
       <Layout className="merchant-main-layout">
@@ -200,12 +227,7 @@ export function AppLayout() {
           <Dropdown
             menu={{
               items: accountMenu,
-              onClick: ({ key }) => {
-                if (key === 'logout') {
-                  logout();
-                  navigate('/login', { replace: true });
-                }
-              },
+              onClick: accountMenuClick,
             }}
           >
             <button type="button" className="account-trigger">

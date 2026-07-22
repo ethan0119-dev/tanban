@@ -14,18 +14,23 @@ interface LoginValues {
 }
 
 export function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, selectionRequired, login } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   if (user) return <Navigate to="/dashboard" replace />;
+  if (selectionRequired) return <Navigate to="/select-store" replace />;
 
   const submit = async (values: LoginValues) => {
     setSubmitting(true);
     setError('');
     try {
-      await login(values.account.trim(), values.password);
+      const result = await login(values.account.trim(), values.password);
+      if (result === 'selection-required') {
+        navigate('/select-store', { replace: true });
+        return;
+      }
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from || '/dashboard', { replace: true });
     } catch (reason) {

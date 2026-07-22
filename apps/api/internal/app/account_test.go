@@ -41,9 +41,12 @@ func TestCreateTenantProvisionsFirstStoreAndOwner(t *testing.T) {
 	mock.ExpectExec("INSERT IGNORE INTO store_business_periods").
 		WithArgs(int64(31), int64(41), 0, 0).
 		WillReturnResult(sqlmock.NewResult(0, 7))
-	mock.ExpectExec("INSERT INTO users").
-		WithArgs(int64(31), "13800138000", bcryptHashOf("Safe-pass-2026!"), "王大鹏", RoleMerchantOwner).
+	mock.ExpectExec("INSERT INTO accounts").
+		WithArgs("13800138000", bcryptHashOf("Safe-pass-2026!"), "王大鹏").
 		WillReturnResult(sqlmock.NewResult(51, 1))
+	mock.ExpectExec("INSERT INTO tenant_memberships").
+		WithArgs(int64(31), int64(51), RoleMerchantOwner).
+		WillReturnResult(sqlmock.NewResult(61, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectQuery("SELECT t.id,t.code,t.name").
@@ -78,15 +81,20 @@ func TestCreateFirstOwnerForExistingTenant(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM tenants").
 		WithArgs(int64(31)).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM users").
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM tenant_memberships").
 		WithArgs(int64(31), RoleMerchantOwner).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectExec("INSERT INTO users").
-		WithArgs(int64(31), "wangdapeng", bcryptHashOf("Owner-pass-2026!"), "王大鹏", RoleMerchantOwner).
+	mock.ExpectExec("INSERT INTO accounts").
+		WithArgs("wangdapeng", bcryptHashOf("Owner-pass-2026!"), "王大鹏").
 		WillReturnResult(sqlmock.NewResult(51, 1))
+	mock.ExpectExec("INSERT INTO tenant_memberships").
+		WithArgs(int64(31), int64(51), RoleMerchantOwner).
+		WillReturnResult(sqlmock.NewResult(61, 1))
+	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
@@ -118,10 +126,10 @@ func TestMerchantCanChangeOwnPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT password_hash FROM users WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE")).
-		WithArgs(int64(21), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow(string(currentHash)))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET password_hash=?,updated_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL")).
-		WithArgs(sqlmock.AnyArg(), int64(21), int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT a.password_hash FROM accounts a").
+		WithArgs(int64(7), int64(21)).WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow(string(currentHash)))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE accounts SET password_hash=?,updated_at=NOW(3) WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL")).
+		WithArgs(sqlmock.AnyArg(), int64(21)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO audit_logs(tenant_id,actor_user_id,action,resource_type,resource_id,request_id,ip,details_text) VALUES(?,?,?,?,?,?,?,?)")).
 		WithArgs(int64(7), int64(21), "account.password.change", "user", "21", "", sqlmock.AnyArg(), "null").
@@ -150,7 +158,7 @@ func TestMerchantPasswordChangeRejectsWrongCurrentPassword(t *testing.T) {
 	defer db.Close()
 	currentHash, _ := bcrypt.GenerateFromPassword([]byte("actual-pass"), bcrypt.MinCost)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT password_hash FROM users").WithArgs(int64(21), int64(7)).
+	mock.ExpectQuery("SELECT a.password_hash FROM accounts a").WithArgs(int64(7), int64(21)).
 		WillReturnRows(sqlmock.NewRows([]string{"password_hash"}).AddRow(string(currentHash)))
 	mock.ExpectRollback()
 

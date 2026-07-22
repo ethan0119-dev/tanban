@@ -43,11 +43,11 @@ interface TenantFormValues {
   paymentMerchantNo?: string;
   paymentSubAppId?: string;
   initialStoreCode: string;
-  initialStoreName: string;
   ownerUsername: string;
   ownerPassword: string;
   ownerDisplayName: string;
   ownerUsernameMode: OwnerUsernameMode;
+  ownerAccountMode: 'CREATE' | 'EXISTING';
 }
 
 interface OwnerFormValues {
@@ -55,12 +55,13 @@ interface OwnerFormValues {
   displayName: string;
   password: string;
   usernameMode: OwnerUsernameMode;
+  accountMode: 'CREATE' | 'EXISTING';
 }
 
 interface ProvisioningResult {
   tenant: Tenant;
   username: string;
-  password: string;
+  password?: string;
   storeName?: string;
   storeCode?: string;
 }
@@ -117,8 +118,8 @@ export function TenantsPage() {
     setSaving(true);
     try {
       const tenant = await tenantService.create(values);
-      setProvisioningResult({ tenant, username: values.ownerUsername, password: values.ownerPassword, storeName: values.initialStoreName, storeCode: values.initialStoreCode });
-      messageApi.success('商户、首门店和老板账号已一并创建');
+      setProvisioningResult({ tenant, username: values.ownerUsername, password: values.ownerAccountMode === 'CREATE' ? values.ownerPassword : undefined, storeName: values.name, storeCode: values.initialStoreCode });
+      messageApi.success(values.ownerAccountMode === 'EXISTING' ? '新店已开通，并关联到已有老板账号' : '商户、店铺和老板账号已一并创建');
       setCreateOpen(false);
       form.resetFields();
       void load(1);
@@ -133,12 +134,12 @@ export function TenantsPage() {
     form.setFieldValue('ownerUsernameMode', mode);
     if (mode === 'CUSTOM') return;
     const values = form.getFieldsValue();
-    form.setFieldValue('ownerUsername', generatedOwnerUsername(mode, values.initialStoreName || values.name || '', values.contactPhone || '', values.code || 'shop'));
+    form.setFieldValue('ownerUsername', generatedOwnerUsername(mode, values.name || '', values.contactPhone || '', values.code || 'shop'));
   };
 
   const openCreateTenant = () => {
     form.resetFields();
-    form.setFieldsValue({ status: 'active', paymentProvider: 'mock', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword() });
+    form.setFieldsValue({ status: 'active', paymentProvider: 'mock', ownerAccountMode: 'CREATE', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword() });
     setCreateOpen(true);
   };
 
@@ -151,6 +152,7 @@ export function TenantsPage() {
       username: generatedOwnerUsername(mode, selected.name, selected.contactPhone || '', selected.code || 'shop'),
       displayName: selected.contactName || '',
       password: generateInitialPassword(),
+      accountMode: 'CREATE',
     });
     setOwnerOpen(true);
   };
@@ -174,11 +176,11 @@ export function TenantsPage() {
     try {
       await tenantService.createOwner(selected.id, values);
       const updatedTenant = { ...selected, hasOwner: true, ownerUsername: values.username, ownerDisplayName: values.displayName, ownerStatus: 'active' as const };
-      messageApi.success('老板账号已创建，请立即保存初始凭据');
+      messageApi.success(values.accountMode === 'EXISTING' ? '已有老板账号已关联' : '老板账号已创建，请立即保存初始凭据');
       setOwnerOpen(false);
       ownerForm.resetFields();
       setSelected(updatedTenant);
-      setProvisioningResult({ tenant: updatedTenant, username: values.username, password: values.password });
+      setProvisioningResult({ tenant: updatedTenant, username: values.username, password: values.accountMode === 'CREATE' ? values.password : undefined });
       void load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '老板账号创建失败');
@@ -260,7 +262,7 @@ export function TenantsPage() {
   return (
     <div>
       {contextHolder}
-      <PageHeader title="商户管理" description="管理 SaaS 租户、经营状态及支付接入关系。" extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateTenant}>新增商户</Button>} />
+      <PageHeader title="商户管理" description="一个商户租户对应一家独立店铺；同一老板账号可以关联多个店铺。" extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateTenant}>新增商户 / 开通店铺</Button>} />
       <Card bordered={false}>
         <Row gutter={[12, 12]} className="table-toolbar">
           <Col xs={24} md={10} lg={8}><Input allowClear prefix={<SearchOutlined />} placeholder="搜索商户名称、编号或联系人" value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => void load(1)} /></Col>
@@ -277,28 +279,32 @@ export function TenantsPage() {
         />
       </Card>
 
-      <Modal title="新增商户并开通账号" open={createOpen} width={760} okText="创建商户" onCancel={() => setCreateOpen(false)} onOk={() => void createTenant()} confirmLoading={saving}>
+      <Modal title="新增商户并开通独立店铺" open={createOpen} width={760} okText="创建并开通" onCancel={() => setCreateOpen(false)} onOk={() => void createTenant()} confirmLoading={saving}>
         <Form form={form} layout="vertical" requiredMark={false} className="modal-form">
           <Row gutter={12}>
-            <Col span={15}><Form.Item label="商户名称" name="name" rules={[{ required: true, message: '请输入商户名称' }]}><Input placeholder="例如：码农咖啡" /></Form.Item></Col>
+            <Col span={15}><Form.Item label="店铺 / 商户名称" name="name" rules={[{ required: true, message: '请输入店铺名称' }]}><Input placeholder="例如：码农咖啡鼓楼店" onChange={(event) => { if (form.getFieldValue('ownerUsernameMode') === 'PINYIN') form.setFieldValue('ownerUsername', generatedOwnerUsername('PINYIN', event.target.value, '', form.getFieldValue('code') || 'shop')); }} /></Form.Item></Col>
             <Col span={9}><Form.Item label="商户编号" name="code" rules={[{ required: true, message: '请输入商户编号' }, { pattern: /^[A-Za-z0-9_-]+$/, message: '仅支持字母、数字、下划线和短横线' }]}><Input placeholder="例如：MNKF001" /></Form.Item></Col>
           </Row>
           <Row gutter={12}>
             <Col span={12}><Form.Item label="联系人" name="contactName" rules={[{ required: true, message: '请输入联系人' }]}><Input onChange={(event) => form.setFieldValue('ownerDisplayName', event.target.value)} /></Form.Item></Col>
             <Col span={12}><Form.Item label="联系电话" name="contactPhone" rules={[{ required: true, message: '请输入联系电话' }, { pattern: /^1\d{10}$/, message: '请输入有效手机号' }]}><Input onChange={(event) => { if (form.getFieldValue('ownerUsernameMode') === 'PHONE') form.setFieldValue('ownerUsername', event.target.value.replace(/\D/g, '')); }} /></Form.Item></Col>
           </Row>
-          <Row gutter={12}>
-            <Col span={12}><Form.Item label="首店名称" name="initialStoreName" rules={[{ required: true, message: '请输入首店名称' }]}><Input placeholder="例如：码农咖啡主门店" onChange={(event) => { if (form.getFieldValue('ownerUsernameMode') === 'PINYIN') form.setFieldValue('ownerUsername', generatedOwnerUsername('PINYIN', event.target.value, '', form.getFieldValue('code') || 'shop')); }} /></Form.Item></Col>
-            <Col span={12}><Form.Item label="首店点单码" name="initialStoreCode" rules={[{ required: true, message: '请输入点单码' }, { pattern: /^[A-Za-z0-9_-]+$/, message: '仅支持字母、数字、下划线和短横线' }]}><Input placeholder="例如：manong-coffee" /></Form.Item></Col>
-          </Row>
-          <Form.Item label="老板账号生成方式" name="ownerUsernameMode" rules={[{ required: true }]}>
-            <Radio.Group optionType="button" buttonStyle="solid" onChange={(event) => syncCreateUsername(event.target.value)} options={[{ value: 'PHONE', label: '联系人手机号' }, { value: 'PINYIN', label: '店铺名称拼音' }, { value: 'CUSTOM', label: '自定义' }]} />
+          <Form.Item label="店铺点单码" name="initialStoreCode" rules={[{ required: true, message: '请输入点单码' }, { pattern: /^[A-Za-z0-9_-]+$/, message: '仅支持字母、数字、下划线和短横线' }]}><Input placeholder="例如：manong-coffee-gulou" /></Form.Item>
+          <Form.Item label="老板账号" name="ownerAccountMode" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={[{ value: 'CREATE', label: '创建新老板账号' }, { value: 'EXISTING', label: '关联已有老板账号' }]} />
           </Form.Item>
-          <Row gutter={12}>
-            <Col span={8}><Form.Item label="老板登录账号" name="ownerUsername" rules={[{ required: true, message: '请输入老板账号' }, { pattern: /^[A-Za-z0-9_.@-]+$/, message: '仅支持字母、数字及 . _ @ -' }]}><Input autoComplete="off" onChange={() => { if (form.getFieldValue('ownerUsernameMode') !== 'CUSTOM') form.setFieldValue('ownerUsernameMode', 'CUSTOM'); }} /></Form.Item></Col>
-            <Col span={8}><Form.Item label="老板姓名" name="ownerDisplayName" rules={[{ required: true, message: '请输入老板姓名' }]}><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item label="初始密码" name="ownerPassword" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, max: 72, message: '须为 8 至 72 位' }]}><Input.Password autoComplete="new-password" addonAfter={<Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => form.setFieldValue('ownerPassword', generateInitialPassword())}>随机</Button>} /></Form.Item></Col>
-          </Row>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.ownerAccountMode !== current.ownerAccountMode}>
+            {({ getFieldValue }) => getFieldValue('ownerAccountMode') === 'EXISTING' ? (
+              <><Alert type="info" showIcon style={{ marginBottom: 16 }} message="已有老板登录后可在多个独立店铺之间切换；员工仍只进入所属店铺。" /><Form.Item label="已有老板登录账号" name="ownerUsername" rules={[{ required: true, message: '请输入已有老板账号' }]}><Input prefix={<UserOutlined />} autoComplete="off" /></Form.Item></>
+            ) : (<>
+              <Form.Item label="老板账号生成方式" name="ownerUsernameMode" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" onChange={(event) => syncCreateUsername(event.target.value)} options={[{ value: 'PHONE', label: '联系人手机号' }, { value: 'PINYIN', label: '店铺名称拼音' }, { value: 'CUSTOM', label: '自定义' }]} /></Form.Item>
+              <Row gutter={12}>
+                <Col span={8}><Form.Item label="老板登录账号" name="ownerUsername" rules={[{ required: true, message: '请输入老板账号' }, { pattern: /^[A-Za-z0-9_.@-]+$/, message: '仅支持字母、数字及 . _ @ -' }]}><Input autoComplete="off" onChange={() => { if (form.getFieldValue('ownerUsernameMode') !== 'CUSTOM') form.setFieldValue('ownerUsernameMode', 'CUSTOM'); }} /></Form.Item></Col>
+                <Col span={8}><Form.Item label="老板姓名" name="ownerDisplayName" rules={[{ required: true, message: '请输入老板姓名' }]}><Input /></Form.Item></Col>
+                <Col span={8}><Form.Item label="初始密码" name="ownerPassword" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, max: 72, message: '须为 8 至 72 位' }]}><Input.Password autoComplete="new-password" addonAfter={<Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => form.setFieldValue('ownerPassword', generateInitialPassword())}>随机</Button>} /></Form.Item></Col>
+              </Row>
+            </>)}
+          </Form.Item>
           <Row gutter={12}>
             <Col span={8}><Form.Item label="初始状态" name="status" rules={[{ required: true }]}><Select options={[{ value: 'active', label: '正常运营' }, { value: 'pending', label: '待完善资料' }]} /></Form.Item></Col>
             <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }]} /></Form.Item></Col>
@@ -351,10 +357,17 @@ export function TenantsPage() {
 
       <Modal title="创建首个老板账号" open={ownerOpen} okText="创建账号" onCancel={() => setOwnerOpen(false)} onOk={() => void createOwner()} confirmLoading={saving}>
         <Form form={ownerForm} layout="vertical" requiredMark={false}>
-          <Form.Item label="账号生成方式" name="usernameMode" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" onChange={(event) => syncOwnerUsername(event.target.value)} options={[{ value: 'PHONE', label: '联系人手机号' }, { value: 'PINYIN', label: '商户名称拼音' }, { value: 'CUSTOM', label: '自定义' }]} /></Form.Item>
-          <Form.Item label="登录账号" name="username" rules={[{ required: true, message: '请输入登录账号' }]}><Input prefix={<UserOutlined />} autoComplete="off" /></Form.Item>
-          <Form.Item label="老板姓名" name="displayName" rules={[{ required: true, message: '请输入老板姓名' }]}><Input /></Form.Item>
-          <Form.Item label="初始密码" name="password" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, max: 72, message: '须为 8 至 72 位' }]}><Input.Password prefix={<KeyOutlined />} autoComplete="new-password" addonAfter={<Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => ownerForm.setFieldValue('password', generateInitialPassword())}>随机</Button>} /></Form.Item>
+          <Form.Item label="老板账号" name="accountMode" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" options={[{ value: 'CREATE', label: '创建新账号' }, { value: 'EXISTING', label: '关联已有账号' }]} /></Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.accountMode !== current.accountMode}>
+            {({ getFieldValue }) => getFieldValue('accountMode') === 'EXISTING' ? (
+              <><Alert type="info" showIcon style={{ marginBottom: 16 }} message="请输入已有老板的登录账号，关联后可使用同一账号管理本店。" /><Form.Item label="已有老板登录账号" name="username" rules={[{ required: true, message: '请输入登录账号' }]}><Input prefix={<UserOutlined />} autoComplete="off" /></Form.Item></>
+            ) : (<>
+              <Form.Item label="账号生成方式" name="usernameMode" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" onChange={(event) => syncOwnerUsername(event.target.value)} options={[{ value: 'PHONE', label: '联系人手机号' }, { value: 'PINYIN', label: '商户名称拼音' }, { value: 'CUSTOM', label: '自定义' }]} /></Form.Item>
+              <Form.Item label="登录账号" name="username" rules={[{ required: true, message: '请输入登录账号' }]}><Input prefix={<UserOutlined />} autoComplete="off" /></Form.Item>
+              <Form.Item label="老板姓名" name="displayName" rules={[{ required: true, message: '请输入老板姓名' }]}><Input /></Form.Item>
+              <Form.Item label="初始密码" name="password" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, max: 72, message: '须为 8 至 72 位' }]}><Input.Password prefix={<KeyOutlined />} autoComplete="new-password" addonAfter={<Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => ownerForm.setFieldValue('password', generateInitialPassword())}>随机</Button>} /></Form.Item>
+            </>)}
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -364,10 +377,10 @@ export function TenantsPage() {
           <Descriptions column={1} bordered size="small" className="detail-descriptions">
             <Descriptions.Item label="运营后台"><Space>{merchantPortalUrl}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(merchantPortalUrl, '登录地址')}>复制</Button></Space></Descriptions.Item>
             <Descriptions.Item label="登录账号"><Space>{provisioningResult.username}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(provisioningResult.username, '账号')}>复制</Button></Space></Descriptions.Item>
-            <Descriptions.Item label="初始密码"><Space><Typography.Text code>{provisioningResult.password}</Typography.Text><Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(provisioningResult.password, '初始密码')}>复制</Button></Space></Descriptions.Item>
+            {provisioningResult.password && <Descriptions.Item label="初始密码"><Space><Typography.Text code>{provisioningResult.password}</Typography.Text><Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(provisioningResult.password || '', '初始密码')}>复制</Button></Space></Descriptions.Item>}
             {provisioningResult.storeName && <Descriptions.Item label="首门店">{provisioningResult.storeName}{provisioningResult.storeCode ? `（${provisioningResult.storeCode}）` : ''}</Descriptions.Item>}
           </Descriptions>
-          <Alert style={{ marginTop: 16 }} type="warning" showIcon message="初始密码仅在此处展示一次" description="请现在复制并安全交付给商户；系统只保存密码哈希，关闭后无法查看原密码。" />
+          {provisioningResult.password ? <Alert style={{ marginTop: 16 }} type="warning" showIcon message="初始密码仅在此处展示一次" description="请现在复制并安全交付给商户；系统只保存密码哈希，关闭后无法查看原密码。" /> : <Alert style={{ marginTop: 16 }} type="success" showIcon message="已关联已有老板账号" description="老板使用原账号和原密码登录，进入后可选择要管理的店铺。" />}
         </>}
       </Modal>
     </div>
