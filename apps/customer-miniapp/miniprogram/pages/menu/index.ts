@@ -10,6 +10,7 @@ import { clearFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
+import { orderingEntryOptionsFromScan, parseOrderingEntry } from "../../utils/store-route";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -32,6 +33,12 @@ function decorateProducts(products: Product[], cart: CartItem[]): MenuProduct[] 
       selectedItems,
     };
   });
+}
+
+function nextOpenLabel(value?: string): string {
+  if (!value) return "";
+  const time = value.match(/(?:^|\s)(\d{2}:\d{2})(?::\d{2})?$/)?.[1];
+  return time ? `${time} 恢复营业` : `下次营业 ${value}`;
 }
 
 Page({
@@ -57,6 +64,9 @@ Page({
     tableContext: null as TableOrderingContext | null,
     fastFoodContext: null as FastFoodOrderingContext | null,
     orderMode: "TAKEOUT" as "DINE_IN" | "TAKEOUT",
+    nextOpenLabel: "",
+    dineInScanPromptVisible: false,
+    scanInProgress: false,
     routeError: "",
   },
   async onShow() {
@@ -84,6 +94,7 @@ Page({
       const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);
       this.setData({
         store: catalog.store || null,
+        nextOpenLabel: nextOpenLabel(catalog.store?.nextOpenAt),
         categories: catalog.categories || [],
         products: decorateProducts(visibleProducts, this.data.cart),
         activeCategoryId: decoration.menu.loadMode === "ALL" ? 0 : catalog.categories?.[0]?.id || 0,
@@ -114,7 +125,7 @@ Page({
     if (mode === "DINE_IN") {
       const tableContext = tableContextForStore(storeCode);
       if (!tableContext) {
-        wx.showModal({ title: "请先扫描桌码", content: "堂食点餐需要绑定桌台，请扫描桌面上的点餐二维码。", showCancel: false });
+        this.setData({ orderMode: "DINE_IN", dineInScanPromptVisible: true });
         return;
       }
       this.setData({ orderMode: "DINE_IN", tableContext, fastFoodContext: null });
@@ -126,6 +137,60 @@ Page({
     app.globalData.fastFoodContext = null;
     app.globalData.routeError = "";
     this.setData({ orderMode: "TAKEOUT", tableContext: null, fastFoodContext: null });
+  },
+  closeDineInScanPrompt() {
+    if (this.data.scanInProgress) return;
+    this.setData({ dineInScanPromptVisible: false, orderMode: this.data.tableContext ? "DINE_IN" : "TAKEOUT" });
+  },
+  showTableScanHelp() {
+    wx.showModal({
+      title: "怎样扫描桌码",
+      content: "请找到桌面或桌牌上的点餐二维码，点击“打开扫一扫”后对准二维码。识别成功会显示桌号，再进入堂食菜单。",
+      confirmText: "知道了",
+      showCancel: false,
+    });
+  },
+  startDineInScan() {
+    if (this.data.scanInProgress) return;
+    this.setData({ scanInProgress: true });
+    wx.scanCode({
+      onlyFromCamera: false,
+      scanType: ["wxCode", "qrCode"],
+      success: async (result) => {
+        const options = orderingEntryOptionsFromScan(result.path || result.result);
+        if (!options || parseOrderingEntry(options).kind !== "TABLE") {
+          wx.showToast({ title: "这不是本店桌码，请扫描桌面上的点餐码", icon: "none" });
+          return;
+        }
+        const app = getApp<TanbanAppOption>();
+        const previousStoreCode = app.globalData.storeCode;
+        await app.prepareOrderingEntry(options, false);
+        if (app.globalData.routeError) return;
+        const storeCode = app.globalData.storeCode;
+        const tableContext = tableContextForStore(storeCode);
+        if (!tableContext) {
+          wx.showToast({ title: "桌码暂时无法使用，请联系店员", icon: "none" });
+          return;
+        }
+        this.setData({
+          storeCode,
+          orderMode: "DINE_IN",
+          tableContext,
+          fastFoodContext: null,
+          dineInScanPromptVisible: false,
+          routeError: "",
+        });
+        this.setCart(readCart(storeCode));
+        if (storeCode !== previousStoreCode) await this.loadCatalog();
+        wx.showToast({ title: `已绑定${tableContext.tableName}`, icon: "success" });
+      },
+      fail: (error) => {
+        if (!String(error.errMsg || "").includes("cancel")) {
+          wx.showToast({ title: "未能打开扫一扫，请稍后重试", icon: "none" });
+        }
+      },
+      complete: () => this.setData({ scanInProgress: false }),
+    });
   },
   addProduct(event: WechatMiniprogram.BaseEvent) {
     if (this.data.store?.businessStatus !== "OPEN") {

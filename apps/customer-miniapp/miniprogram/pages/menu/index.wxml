@@ -1,6 +1,6 @@
 <view class="page menu-page {{menuLayoutClass}} {{store && store.businessStatus !== 'OPEN' ? 'store-closed' : ''}}" style="{{appearanceStyle}}" wx:if="{{!loading && !routeError}}">
   <view class="order-mode-bar"><view class="{{orderMode === 'DINE_IN' ? 'active' : ''}}" data-mode="DINE_IN" bindtap="chooseMode">堂食</view><view class="{{orderMode === 'TAKEOUT' ? 'active' : ''}}" data-mode="TAKEOUT" bindtap="chooseMode">自取</view><view class="disabled" data-mode="DELIVERY" bindtap="chooseMode">外卖</view></view>
-  <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间'}}</text></view><text wx:if="{{store.nextOpenAt}}">下次营业 {{store.nextOpenAt}}</text></view>
+  <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view class="closed-summary"><text class="closed-label">暂停接单</text><text>门店休息中</text></view><text class="closed-next" wx:if="{{nextOpenLabel}}">{{nextOpenLabel}}</text></view>
   <scroll-view class="categories" scroll-y="{{decoration.menu.categoryLayout === 'LEFT'}}" scroll-x="{{decoration.menu.categoryLayout === 'TOP'}}" enhanced>
     <view wx:if="{{decoration.menu.loadMode === 'ALL'}}" class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
     <view wx:for="{{categories}}" wx:key="id" class="category {{activeCategoryId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
@@ -26,17 +26,34 @@
           </view>
           <view class="product-purchase">
             <text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text>
-            <view class="product-action" wx:if="{{!item.soldOut}}"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选规格/口味' : '＋'}}</button></view>
+            <view class="product-action" wx:if="{{!item.soldOut}}"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration || (store && store.businessStatus !== 'OPEN') ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct"><icon wx:if="{{store && store.businessStatus !== 'OPEN'}}" type="cancel" size="14" color="#77736e"/><text>{{store && store.businessStatus !== 'OPEN' ? '暂停' : (item.requiresConfiguration ? '选规格/口味' : '＋')}}</text></button></view>
             <text wx:else class="sold-out">售罄</text>
           </view>
         </view>
       </view>
     </view>
   </scroll-view>
-  <view class="cart-bar"><view><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">{{store && store.businessStatus !== 'OPEN' ? '休息中' : '去结算'}}</button></view>
+  <view class="cart-bar"><view class="cart-summary"><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><view class="cart-action"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">去结算</button><text wx:if="{{store && store.businessStatus !== 'OPEN'}}">门店休息中，暂不可下单</text></view></view>
 </view>
 <view class="empty" wx:elif="{{routeError}}"><text>{{routeError}}</text><text>请重新扫描有效二维码</text></view>
 <view class="empty" wx:else>正在准备菜单…</view>
+<view class="dine-in-scan-mask" style="{{appearanceStyle}}" wx:if="{{dineInScanPromptVisible}}" bindtap="closeDineInScanPrompt">
+  <view class="dine-in-scan-sheet" catchtap="noop">
+    <view class="sheet-handle" />
+    <view class="scan-sheet-heading"><text>先确认桌号</text><view role="button" aria-label="关闭堂食扫码" bindtap="closeDineInScanPrompt"><icon type="clear" size="24" color="#77736e" /></view></view>
+    <view class="scan-sheet-main">
+      <view class="scan-visual"><image src="/assets/icons/qr-scan-2-line.svg" mode="aspectFit" /></view>
+      <view class="scan-copy">
+        <text class="scan-title">请扫描桌上的桌码</text>
+        <text class="scan-description">识别成功后会显示桌号，再进入堂食菜单</text>
+        <button class="scan-primary" loading="{{scanInProgress}}" disabled="{{scanInProgress}}" bindtap="startDineInScan">打开扫一扫</button>
+        <button class="scan-secondary" bindtap="showTableScanHelp">查看扫码示例</button>
+      </view>
+    </view>
+    <text class="scan-steps">扫码　·　确认桌号　·　开始点单</text>
+    <button class="scan-back" bindtap="closeDineInScanPrompt">没有桌码？返回自取</button>
+  </view>
+</view>
 <view class="sku-mask" style="{{appearanceStyle}}" wx:if="{{selectingProduct}}" bindtap="closeSkuPicker">
   <view class="sku-picker" catchtap="noop">
     <view class="sku-picker-title"><view><text>选择规格与口味</text><text>{{selectingProduct.name}}</text></view><button bindtap="closeSkuPicker">×</button></view>

@@ -291,10 +291,10 @@ export function decorationStyle(config: DecorationConfig): string {
       ? { caption: 24, body: 28, subtitle: 32, title: 40, display: 48 }
       : { caption: 22, body: 26, subtitle: 30, title: 36, display: 44 };
   const surface = config.theme.surfaceStyle === "FLAT"
-    ? { border: "transparent", shadow: "none" }
+    ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.08), shadow: "none" }
     : config.theme.surfaceStyle === "BORDERED"
-      ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.13), shadow: "none" }
-      : { border: "transparent", shadow: `0 10rpx 28rpx ${withAlpha(config.theme.textColor, 0.10)}` };
+      ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.15), shadow: "none" }
+      : { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.08), shadow: `0 8rpx 24rpx ${withAlpha(config.theme.textColor, 0.08)}` };
   return [
     `--ink:${config.theme.textColor}`,
     `--green:${config.theme.primaryColor}`,
@@ -314,6 +314,11 @@ export function decorationStyle(config: DecorationConfig): string {
     `--button-radius:${buttonRadius}rpx`,
     `--card-border:${surface.border}`,
     `--card-shadow:${surface.shadow}`,
+    `--line:${withAlpha(config.theme.textColor, 0.13)}`,
+    `--soft-primary:${mixHex(config.theme.primaryColor, config.theme.surfaceColor, 0.08)}`,
+    `--disabled-bg:${mixHex(config.theme.mutedColor, config.theme.surfaceColor, 0.12)}`,
+    `--disabled-border:${mixHex(config.theme.mutedColor, config.theme.surfaceColor, 0.32)}`,
+    `--disabled-text:${mixHex(config.theme.mutedColor, config.theme.textColor, 0.72)}`,
     `--font-caption:${type.caption}rpx`,
     `--font-body:${type.body}rpx`,
     `--font-subtitle:${type.subtitle}rpx`,

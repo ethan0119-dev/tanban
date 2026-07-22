@@ -1,8 +1,8 @@
 .decorated-page { min-height: 100vh; padding-top: 28rpx; box-sizing: border-box; }
-.store-closed-card { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border-radius: var(--radius, 24rpx); color: var(--on-primary); background: var(--green); box-shadow: var(--card-shadow); }
+.store-closed-card { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-left: 7rpx solid var(--green); border-radius: calc(var(--radius, 24rpx) * .55); color: var(--ink); background: var(--surface); box-shadow: var(--card-shadow); }
 .store-closed-card > view { display: flex; flex-direction: column; gap: 7rpx; }
 .store-closed-card > view text:first-child { font-size: 29rpx; font-weight: 900; }
-.store-closed-card > view text:last-child, .store-closed-card > text { color: rgba(255,255,255,.72); font-size: 20rpx; }
+.store-closed-card > view text:last-child, .store-closed-card > text { color: var(--muted); font-size: 20rpx; }
 .decor-module { box-sizing: border-box; }
 .table-context-card { display: flex; flex-direction: column; gap: 10rpx; margin: 0 28rpx 24rpx; padding: 22rpx 24rpx; border: 2rpx solid rgba(33, 77, 63, .18); border-radius: var(--radius, 24rpx); background: linear-gradient(135deg, #edf4ee, var(--surface, #fffefa)); box-shadow: 0 12rpx 34rpx rgba(33, 77, 63, .08); }
 .table-context-card > view { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }

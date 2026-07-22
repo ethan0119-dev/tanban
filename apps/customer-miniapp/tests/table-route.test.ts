@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseOrderingEntry } from '../miniprogram/utils/store-route';
+import { orderingEntryOptionsFromScan, parseOrderingEntry } from '../miniprogram/utils/store-route';
 import {
   normalizeTableCodeResolution,
   readTableOrderingContext,
@@ -42,6 +42,14 @@ describe('miniapp ordering entry routes', () => {
     expect(parseOrderingEntry({ query: { table_code: token } })).toEqual({ kind: 'TABLE', publicScene: token });
     expect(parseOrderingEntry({ query: { scene: encodeURIComponent(`tc=${token}`) } })).toEqual({ kind: 'TABLE', publicScene: token });
     expect(parseOrderingEntry({ query: { scene: token } })).toEqual({ kind: 'TABLE', publicScene: token });
+  });
+
+  it('converts an in-app scan result into a table ordering entry', () => {
+    const token = '0123456789abcdef0123456789ab';
+    const options = orderingEntryOptionsFromScan(`pages/home/index?scene=tc%3D${token}`);
+    expect(options).toEqual({ query: { scene: `tc=${token}` } });
+    expect(parseOrderingEntry(options!)).toEqual({ kind: 'TABLE', publicScene: token });
+    expect(orderingEntryOptionsFromScan('https://example.com/no-ordering-route')).toBeNull();
   });
 
   it('fails closed for malformed and conflicting route parameters', () => {

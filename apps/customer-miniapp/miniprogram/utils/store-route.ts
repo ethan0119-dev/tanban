@@ -9,6 +9,8 @@ export interface OrderingEntryOptions {
   scene?: number | string;
 }
 
+const ROUTE_QUERY_KEYS = new Set(["scene", "storeCode", "store", "s", "tableCode", "table_code", "tc", "fastFoodPlate", "fast_food_plate", "fp"]);
+
 export type OrderingEntryRoute =
   | { kind: "NONE" }
   | { kind: "STORE"; storeCode: string }
@@ -27,6 +29,29 @@ function decode(value: string): string {
   } catch {
     return value;
   }
+}
+
+/** Converts the path returned by wx.scanCode into the same route shape used on app launch. */
+export function orderingEntryOptionsFromScan(pathOrResult: string): OrderingEntryOptions | null {
+  const raw = String(pathOrResult || "").trim();
+  if (!raw) return null;
+  const queryIndex = raw.indexOf("?");
+  let queryText = queryIndex >= 0 ? raw.slice(queryIndex + 1) : raw;
+  const hashIndex = queryText.indexOf("#");
+  if (hashIndex >= 0) queryText = queryText.slice(0, hashIndex);
+  queryText = queryText.replace(/^\?/, "").trim();
+  if (!queryText || (queryIndex < 0 && (/^(?:https?:\/\/|pages\/)/i.test(raw)))) return null;
+
+  if (!queryText.includes("=")) return { query: { scene: decode(queryText) } };
+  const query = queryText.split("&").reduce<StoreRouteQuery>((result, field) => {
+    const separator = field.indexOf("=");
+    if (separator < 0) return result;
+    const key = decode(field.slice(0, separator));
+    if (!ROUTE_QUERY_KEYS.has(key)) return result;
+    result[key] = decode(field.slice(separator + 1));
+    return result;
+  }, {});
+  return Object.keys(query).length ? { query } : null;
 }
 
 function validStoreCode(value: string | undefined): string {
