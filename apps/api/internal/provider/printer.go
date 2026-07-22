@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -42,10 +43,17 @@ type PrinterStatusResult struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
+type PrinterRegistrationRequest struct {
+	Provider string
+	DeviceSN string
+	Name     string
+}
+
 type PrinterProvider interface {
 	Name() string
 	Print(context.Context, PrintRequest) (PrintResult, error)
 	Status(context.Context, PrinterStatusRequest) PrinterStatusResult
+	Register(context.Context, PrinterRegistrationRequest) error
 }
 
 type MockPrinter struct{ Logger *slog.Logger }
@@ -60,6 +68,7 @@ func (m MockPrinter) Print(_ context.Context, req PrintRequest) (PrintResult, er
 func (MockPrinter) Status(_ context.Context, _ PrinterStatusRequest) PrinterStatusResult {
 	return PrinterStatusResult{Status: "SIMULATED", Message: "模拟设备仅记录任务，不代表实体设备在线", CheckedAt: time.Now()}
 }
+func (MockPrinter) Register(context.Context, PrinterRegistrationRequest) error { return nil }
 
 type XPrinterConfig struct {
 	BaseURL string
@@ -145,6 +154,24 @@ func (x *XPrinter) Status(ctx context.Context, req PrinterStatusRequest) Printer
 	default:
 		return PrinterStatusResult{Status: "UNREACHABLE", Message: fmt.Sprintf("芯烨云返回未知状态 %d", status), CheckedAt: checkedAt}
 	}
+}
+
+func (x *XPrinter) Register(ctx context.Context, req PrinterRegistrationRequest) error {
+	if !x.configured() {
+		return fmt.Errorf("%w: 芯烨云缺少开发者ID或UserKEY", ErrNotConfigured)
+	}
+	var response xPrinterResponse
+	if err := x.call(ctx, "addPrinters", map[string]any{"items": []map[string]string{{"sn": req.DeviceSN, "name": req.Name}}}, &response); err != nil {
+		return err
+	}
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if failures, ok := data["fail"].([]any); ok && len(failures) > 0 {
+		return fmt.Errorf("芯烨云设备注册失败: %v", failures)
+	}
+	return nil
 }
 
 type xPrinterResponse struct {
@@ -237,6 +264,7 @@ func truncateProviderMessage(value string) string {
 }
 
 type PrinterRouter struct {
+	mu          sync.RWMutex
 	defaultName string
 	mock        MockPrinter
 	xpyun       *XPrinter
@@ -264,7 +292,23 @@ func (r *PrinterRouter) Status(ctx context.Context, req PrinterStatusRequest) Pr
 	return selected.Status(ctx, req)
 }
 
+func (r *PrinterRouter) Register(ctx context.Context, req PrinterRegistrationRequest) error {
+	selected, err := r.provider(req.Provider)
+	if err != nil {
+		return err
+	}
+	return selected.Register(ctx, req)
+}
+
+func (r *PrinterRouter) ConfigureXPYun(cfg XPrinterConfig) {
+	r.mu.Lock()
+	r.xpyun = NewXPrinter(cfg)
+	r.mu.Unlock()
+}
+
 func (r *PrinterRouter) provider(name string) (PrinterProvider, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	name = normalizePrinterProvider(name)
 	if name == "" {
 		name = r.defaultName
