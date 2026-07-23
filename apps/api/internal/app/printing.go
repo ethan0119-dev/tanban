@@ -946,10 +946,11 @@ func appendReceiptProminentLine(output *[]string, value string, paperWidth int, 
 }
 
 func appendReceiptMarkup(output *[]string, value, align string, large, bold bool) {
-	value = escapePrintMarkup(printableText(value))
-	if value == "" {
+	value = printableMarkupLine(value)
+	if strings.TrimSpace(value) == "" {
 		return
 	}
+	value = escapePrintMarkup(value)
 	if bold {
 		value = "<BOLD>" + value + "</BOLD>"
 	}
@@ -965,6 +966,11 @@ func appendReceiptMarkup(output *[]string, value, align string, large, bold bool
 	default:
 		*output = append(*output, "<L>"+value+"<BR></L>")
 	}
+}
+
+func printableMarkupLine(value string) string {
+	value = strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value)
+	return strings.TrimRightFunc(value, unicode.IsSpace)
 }
 
 func escapePrintMarkup(value string) string {
