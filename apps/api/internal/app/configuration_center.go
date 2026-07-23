@@ -114,6 +114,12 @@ func validateOperationSettings(input storeOperationSettings) error {
 	return nil
 }
 
+func applyOperationSettingsDefaults(input *storeOperationSettings) {
+	if !input.DistanceCheckEnabled && input.DistanceLimitM == 0 {
+		input.DistanceLimitM = 5000
+	}
+}
+
 func (s *Server) getMerchantOperationSettings(w http.ResponseWriter, r *http.Request) {
 	actor := currentIdentity(r.Context())
 	storeID, err := s.tenantStoreID(r, actor.TenantID)
@@ -154,6 +160,7 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 	input.StoreID = storeID
+	applyOperationSettingsDefaults(&input)
 	input.SettlementMode = strings.ToUpper(strings.TrimSpace(input.SettlementMode))
 	input.OrderingMode = strings.ToUpper(strings.TrimSpace(input.OrderingMode))
 	if err = validateOperationSettings(input); err != nil {

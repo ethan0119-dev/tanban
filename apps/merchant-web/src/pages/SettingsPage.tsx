@@ -189,7 +189,8 @@ export function SettingsPage() {
   const save = async () => {
     let values: SettingsFormValues;
     try {
-      values = await form.validateFields();
+      await form.validateFields();
+      values = form.getFieldsValue(true);
     } catch {
       messageApi.warning('请先补全必填信息');
       return;

@@ -39,6 +39,7 @@ import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import { merchantFeatureCopy } from '../features/availability/copy';
+import { merchantSettingsWritePayload, operationSettingsWritePayload } from '../features/settings/payloads';
 import type { MerchantOperationSettings, MerchantOperationSettingsResponse, MerchantPaymentSettings, MerchantSettings } from '../types';
 
 export type SettingsSection = 'ORDER' | 'PAYMENT' | 'NOTIFICATION' | 'PRIVACY' | 'PRINT';
@@ -100,7 +101,8 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
 
   const save = async () => {
     if (!operation) return;
-    const values = await form.validateFields();
+    await form.validateFields();
+    const values = form.getFieldsValue(true);
     setSaving(true);
     try {
       if (section !== 'PRINT') {
@@ -127,21 +129,19 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
           privacyPolicyText: values.privacyPolicyText,
           userAgreementText: values.userAgreementText,
         };
-        await api.put('/merchant/operation-settings', { ...operation, ...operationPatch });
+        await api.put('/merchant/operation-settings', operationSettingsWritePayload(operation, operationPatch));
       }
       if (section === 'ORDER' && merchantSettings) {
-        await api.put('/merchant/settings', {
-          ...merchantSettings,
+        await api.put('/merchant/settings', merchantSettingsWritePayload(merchantSettings, {
           allowLatePayment: values.allowLatePayment,
           paymentTimeoutMinutes: values.paymentTimeoutMinutes,
-        });
+        }));
       } else if (section === 'PRINT' && merchantSettings) {
-        await api.put('/merchant/settings', {
-          ...merchantSettings,
+        await api.put('/merchant/settings', merchantSettingsWritePayload(merchantSettings, {
           printTrigger: values.printTrigger,
           autoPrintReceipt: values.autoPrintReceipt,
           autoPrintLabel: values.autoPrintLabel,
-        });
+        }));
       }
       messageApi.success('设置已保存');
       await load();

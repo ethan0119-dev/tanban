@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -344,13 +345,9 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_STORE", "source store does not belong to this tenant")
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE customers SET source_store_id=?,name=?,avatar_url=?,phone=?,source=?,status=?,remark=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, nullableID(input.StoreID), input.Name, input.Avatar, input.Phone, input.Source, input.Status, input.Remark, id, actor.TenantID)
+	_, err := s.DB.ExecContext(r.Context(), `UPDATE customers SET source_store_id=?,name=?,avatar_url=?,phone=?,source=?,status=?,remark=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, nullableID(input.StoreID), input.Name, input.Avatar, input.Phone, input.Source, input.Status, input.Remark, id, actor.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
-		return
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		handleSQLError(w, sql.ErrNoRows)
 		return
 	}
 	s.audit(r.Context(), actor, "customer.update", "customer", int64String(id), map[string]any{"status": input.Status}, r)
@@ -972,12 +969,30 @@ func (s *Server) listMemberCardIssuances(w http.ResponseWriter, r *http.Request)
 }
 
 type levelOrderInput struct {
-	CustomerID    int64  `json:"customer_id"`
-	LevelID       int64  `json:"level_id"`
-	AmountCents   int64  `json:"amount_cents"`
-	PaymentMethod string `json:"payment_method"`
-	Status        string `json:"status"`
-	Remark        string `json:"remark"`
+	CustomerID    int64    `json:"customer_id"`
+	LevelID       int64    `json:"level_id"`
+	AmountCents   int64    `json:"amount_cents"`
+	LegacyAmount  *float64 `json:"amount"`
+	PaymentMethod string   `json:"payment_method"`
+	Status        string   `json:"status"`
+	Remark        string   `json:"remark"`
+}
+
+func applyLegacyLevelOrderAmount(input *levelOrderInput) error {
+	if input.LegacyAmount == nil {
+		return nil
+	}
+	amount := *input.LegacyAmount
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount < 0 || amount > float64(maxBusinessAmountCents)/100 {
+		return errors.New("amount must be a supported non-negative value")
+	}
+	legacyCents := int64(math.Round(amount * 100))
+	if input.AmountCents != 0 && input.AmountCents != legacyCents {
+		return errors.New("amount and amount_cents do not match")
+	}
+	input.AmountCents = legacyCents
+	input.LegacyAmount = nil
+	return nil
 }
 
 func (s *Server) createMemberLevelOrder(w http.ResponseWriter, r *http.Request) {
@@ -988,6 +1003,10 @@ func (s *Server) createMemberLevelOrder(w http.ResponseWriter, r *http.Request) 
 	}
 	var input levelOrderInput
 	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if err := applyLegacyLevelOrderAmount(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 	if input.CustomerID <= 0 || input.LevelID <= 0 || input.AmountCents < 0 || input.AmountCents > maxBusinessAmountCents {

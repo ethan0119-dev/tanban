@@ -436,6 +436,8 @@ func TestDeleteUnreferencedMediaAssetStillSucceeds(t *testing.T) {
 		int64(5), int64(9), int64(44), assetURL,
 		int64(5), int64(9), assetURL,
 		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
 		int64(5), int64(9), assetURL, assetURL,
 		int64(5), assetURL,
 		int64(5), int64(9), assetURL,
@@ -478,6 +480,8 @@ func TestDeleteMediaAssetRejectsActiveProductImageReference(t *testing.T) {
 		int64(5), int64(9), int64(44), assetURL,
 		int64(5), int64(9), assetURL,
 		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
 		int64(5), int64(9), assetURL, assetURL,
 		int64(5), assetURL,
 		int64(5), int64(9), assetURL,
@@ -493,6 +497,38 @@ func TestDeleteMediaAssetRejectsActiveProductImageReference(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusConflict || !bytes.Contains(recorder.Body.Bytes(), []byte("MEDIA_ASSET_IN_USE")) {
 		t.Fatalf("expected product in-use conflict, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCurrentMediaAssetReferenceIncludesCustomerServiceQRCode(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	assetURL := "https://cdn.example.com/customer-service.png"
+	mock.ExpectQuery("SELECT CASE").WithArgs(
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL,
+	).WillReturnRows(sqlmock.NewRows([]string{"reference_kind"}).AddRow("customer service QR code"))
+
+	referenceKind, err := currentMediaAssetReference(context.Background(), db, 5, 9, 44, assetURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if referenceKind != "customer service QR code" {
+		t.Fatalf("unexpected reference kind %q", referenceKind)
 	}
 	if err = mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

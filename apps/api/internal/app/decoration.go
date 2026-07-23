@@ -1538,6 +1538,8 @@ func currentMediaAssetReference(ctx context.Context, queryer queryRower, tenantI
 		WHEN EXISTS(SELECT 1 FROM product_images pi JOIN products p ON p.id=pi.product_id AND p.tenant_id=pi.tenant_id AND p.store_id=pi.store_id WHERE pi.tenant_id=? AND pi.store_id=? AND (pi.media_asset_id=? OR pi.url=?) AND pi.deleted_at IS NULL AND p.deleted_at IS NULL) THEN 'product images'
 		WHEN EXISTS(SELECT 1 FROM products p WHERE p.tenant_id=? AND p.store_id=? AND p.image_url=? AND p.deleted_at IS NULL) THEN 'product images'
 		WHEN EXISTS(SELECT 1 FROM marketing_placements p WHERE p.tenant_id=? AND p.store_id=? AND (p.image_asset_id=? OR p.image_url=?) AND p.deleted_at IS NULL) THEN 'marketing placements'
+		WHEN EXISTS(SELECT 1 FROM store_operation_settings os WHERE os.tenant_id=? AND os.store_id=? AND os.customer_service_qr_url=?) THEN 'customer service QR code'
+		WHEN EXISTS(SELECT 1 FROM store_profiles sp WHERE sp.tenant_id=? AND sp.store_id=? AND (JSON_CONTAINS(sp.environment_image_urls_json,JSON_QUOTE(?)) OR JSON_CONTAINS(sp.food_safety_image_urls_json,JSON_QUOTE(?)))) THEN 'store profile images'
 		WHEN EXISTS(SELECT 1 FROM stores st WHERE st.tenant_id=? AND st.id=? AND (st.logo_url=? OR st.banner_url=?) AND st.deleted_at IS NULL) THEN 'store branding'
 		WHEN EXISTS(SELECT 1 FROM membership_settings ms WHERE ms.tenant_id=? AND ms.card_image_url=?) THEN 'membership settings'
 		WHEN EXISTS(SELECT 1 FROM modifier_items mi WHERE mi.tenant_id=? AND mi.store_id=? AND mi.image_url=? AND mi.deleted_at IS NULL) THEN 'modifier items'
@@ -1546,6 +1548,8 @@ func currentMediaAssetReference(ctx context.Context, queryer queryRower, tenantI
 		tenantID, storeID, assetID, assetURL,
 		tenantID, storeID, assetURL,
 		tenantID, storeID, assetID, assetURL,
+		tenantID, storeID, assetURL,
+		tenantID, storeID, assetURL, assetURL,
 		tenantID, storeID, assetURL, assetURL,
 		tenantID, assetURL,
 		tenantID, storeID, assetURL,

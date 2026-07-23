@@ -26,6 +26,7 @@ import { PageHeading } from '../components/PageHeading';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import type { CardIssuance, Customer, MemberLevel, MemberLevelOrder, MembershipSettings } from '../member/types';
+import { memberLevelOrderWritePayload } from '../features/settings/payloads';
 import '../member/member.css';
 import { dateTime, yuan } from '../utils/format';
 
@@ -181,7 +182,7 @@ export function MembershipPage() {
     setSaving(true);
     try {
       if (!levelOrderKey.current) levelOrderKey.current = idempotency('level_order');
-      await api.postIdempotent('/merchant/member-level-orders', { ...values, amount_cents: Math.round(values.amount * 100) }, levelOrderKey.current);
+      await api.postIdempotent('/merchant/member-level-orders', memberLevelOrderWritePayload(values), levelOrderKey.current);
       setOrderOpen(false);
       levelOrderKey.current = '';
       orderForm.resetFields();

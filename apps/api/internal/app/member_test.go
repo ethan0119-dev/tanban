@@ -153,6 +153,88 @@ func TestMaskPhone(t *testing.T) {
 	}
 }
 
+func TestUpdateCustomerAllowsNoopUpdate(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT source_store_id,avatar_url FROM customers WHERE id=? AND tenant_id=? AND deleted_at IS NULL")).
+		WithArgs(int64(3), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"source_store_id", "avatar_url"}).AddRow(nil, ""))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE customers SET source_store_id=?,name=?,avatar_url=?,phone=?,source=?,status=?,remark=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL")).
+		WithArgs(nil, "张三", "", "13800138000", "MANUAL", "ACTIVE", "", int64(3), int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("SELECT c.id,c.public_id,c.name").
+		WithArgs(int64(3), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "public_id", "name", "phone", "avatar_url", "source", "status", "remark", "source_store_id", "store_name",
+			"member_id", "member_no", "member_status", "growth_value", "level_id", "level_name", "principal_cents", "bonus_cents",
+			"order_count", "net_spent_cents", "refunded_cents", "registered_at", "last_seen_at", "joined_at", "expires_at",
+		}).AddRow(3, "CU-3", "张三", "13800138000", "", "MANUAL", "ACTIVE", "", nil, "", 0, "", "", 0, 0, "", 0, 0, 0, 0, 0, "2026-07-23 20:00:00", nil, nil, nil))
+	mock.ExpectQuery("SELECT t.id,t.name,t.color FROM customer_tag_assignments").
+		WithArgs(int64(9), int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "color"}))
+
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+	router := chi.NewRouter()
+	router.Put("/customers/{customerID}", server.updateCustomer)
+	request := httptest.NewRequest(http.MethodPut, "/customers/3", bytes.NewBufferString(`{"name":"张三","phone":"13800138000","source":"MANUAL","status":"ACTIVE","remark":""}`))
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 2, TenantID: 9, Role: RoleMerchantManager}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateMemberLevelOrderAcceptsLegacyAmountField(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id,request_fingerprint FROM member_level_orders").
+		WithArgs(int64(9), "level-order-legacy").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT id FROM customers").
+		WithArgs(int64(3), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(3))
+	mock.ExpectQuery("SELECT name,price_cents FROM member_levels").
+		WithArgs(int64(4), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"name", "price_cents"}).AddRow("金卡", 1234))
+	mock.ExpectQuery("SELECT id FROM members").
+		WithArgs(int64(9), int64(3)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec("INSERT INTO member_level_orders").
+		WithArgs(int64(9), sqlmock.AnyArg(), int64(3), nil, int64(4), sqlmock.AnyArg(), int64(1234), "MANUAL", "RECORDED", "COMPLETED", "", "level-order-legacy", sqlmock.AnyArg(), int64(2), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(21, 1))
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+	router := chi.NewRouter()
+	router.Post("/member-level-orders", server.createMemberLevelOrder)
+	request := httptest.NewRequest(http.MethodPost, "/member-level-orders", bytes.NewBufferString(`{"customer_id":3,"level_id":4,"amount":12.34,"amount_cents":1234,"payment_method":"MANUAL","status":"COMPLETED"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "level-order-legacy")
+	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 2, TenantID: 9, Role: RoleMerchantManager}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMemberSummaryUsesTenantWideAggregates(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

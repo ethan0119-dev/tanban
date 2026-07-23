@@ -32,6 +32,20 @@ func TestValidateOperationSettingsRejectsPayAfterMealUntilWorkflowExists(t *test
 	}
 }
 
+func TestApplyOperationSettingsDefaultsRestoresDistanceWhenDisabled(t *testing.T) {
+	input := storeOperationSettings{DistanceCheckEnabled: false}
+	applyOperationSettingsDefaults(&input)
+	if input.DistanceLimitM != 5000 {
+		t.Fatalf("expected disabled distance check to retain a safe value, got %d", input.DistanceLimitM)
+	}
+
+	input.DistanceLimitM = -1
+	applyOperationSettingsDefaults(&input)
+	if input.DistanceLimitM != -1 {
+		t.Fatal("explicit invalid values must still reach validation")
+	}
+}
+
 func TestDistanceMeters(t *testing.T) {
 	distance := distanceMeters(39.9042, 116.4074, 39.9051, 116.4074)
 	if distance < 95 || distance > 105 {
