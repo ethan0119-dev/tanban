@@ -26,13 +26,18 @@ func plainPrintLine(value string) string {
 	return strings.TrimSpace(printMarkupPattern.ReplaceAllString(value, ""))
 }
 
+func printContentLines(value string) []string {
+	value = strings.ReplaceAll(value, "<BR>", "\n")
+	return strings.Split(value, "\n")
+}
+
 func (matcher fixedWidthPrintContent) Match(value driver.Value) bool {
 	content, ok := value.(string)
 	if !ok {
 		return false
 	}
 	foundSeparator := false
-	for _, line := range strings.Split(content, "\n") {
+	for _, line := range printContentLines(content) {
 		line = plainPrintLine(line)
 		if line == "" {
 			continue
@@ -238,12 +243,21 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	layout["customFooter"] = "谢谢惠顾 {{order_no}}"
 	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, Layout: layout}
 	content := renderStructuredReceipt(template, order, "", false)
-	for _, expected := range []string{"<CB>", "（商）取餐码：0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "拿铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "—— #0023 完 ——", "<BR>"} {
+	for _, expected := range []string{"<CB>", "(商)取餐码:0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "--#0023完--", "<BR>"} {
 		if !strings.Contains(content, expected) {
 			t.Fatalf("structured receipt missing %q:\n%s", expected, content)
 		}
 	}
-	for _, line := range strings.Split(content, "\n") {
+	if strings.ContainsAny(content, "\r\n") {
+		t.Fatalf("structured receipt must use only explicit <BR> line feeds:\n%s", content)
+	}
+	if strings.ContainsAny(content, "¥￥") {
+		t.Fatalf("structured receipt must omit unsupported currency glyphs:\n%s", content)
+	}
+	if headline := "(商)取餐码:0023"; printDisplayWidth(headline) > printableColumns(58, "LARGE") {
+		t.Fatalf("58mm pickup headline would wrap at large size: %q", headline)
+	}
+	for _, line := range printContentLines(content) {
 		line = plainPrintLine(line)
 		if line == "" {
 			continue
@@ -256,14 +270,25 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 		t.Fatalf("58mm receipt must use a 32-column separator:\n%s", content)
 	}
 
+	layout["endMarkerText"] = "这是一个很长但不应该被打印机自动换行的结束标识"
+	customEnd := renderStructuredReceipt(template, order, "", false)
+	if !strings.Contains(customEnd, "<C><BOLD>") {
+		t.Fatalf("long custom end marker must fall back to centered normal size:\n%s", customEnd)
+	}
+	for _, line := range printContentLines(customEnd) {
+		if got := printDisplayWidth(plainPrintLine(line)); got > 32 {
+			t.Fatalf("custom 58mm line exceeds 32 display columns (%d): %q", got, plainPrintLine(line))
+		}
+	}
+
 	template.CopyRole = "KITCHEN"
 	template.PaperWidth = 80
 	template.Layout = defaultStructuredPrintLayout("KITCHEN")
 	kitchen := renderStructuredReceipt(template, order, "", false)
-	if !strings.Contains(kitchen, "（厨）取餐码：0023") || strings.Contains(kitchen, "¥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
+	if !strings.Contains(kitchen, "(厨)取餐码:0023") || strings.ContainsAny(kitchen, "¥￥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
 		t.Fatalf("kitchen copy must emphasize production data without prices:\n%s", kitchen)
 	}
-	for _, line := range strings.Split(kitchen, "\n") {
+	for _, line := range printContentLines(kitchen) {
 		line = plainPrintLine(line)
 		if line == "" {
 			continue

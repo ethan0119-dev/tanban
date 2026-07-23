@@ -644,9 +644,11 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	pickupCode := printablePickupCode(order)
 	copyTitle := layoutString(template.Layout, "copyTitle", copyRoleShortTitle(template.CopyRole))
 	if layoutBool(template.Layout, "showPickupNo", true) && pickupCode != "" {
-		appendReceiptMarkup(&output, fmt.Sprintf("（%s）取餐码：%s", copyTitle, pickupCode), "CENTER", true, true)
+		headline := fmt.Sprintf("(%s)取餐码:%s", fitPrintText(copyTitle, 2), pickupCode)
+		appendReceiptProminentLine(&output, headline, template.PaperWidth)
 	} else {
-		appendReceiptMarkup(&output, "（"+copyTitle+"）"+copyRoleTitle(template.CopyRole), "CENTER", true, true)
+		headline := "(" + fitPrintText(copyTitle, 2) + ")" + copyRoleTitle(template.CopyRole)
+		appendReceiptProminentLine(&output, headline, template.PaperWidth)
 	}
 	appendReceiptMarkup(&output, separator, "LEFT", false, false)
 	if layoutBool(template.Layout, "showOrderType", true) {
@@ -683,7 +685,7 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 			name := printableText(strings.TrimSpace(item.ProductName + " " + item.SKUName))
 			right := "x" + strconv.Itoa(item.Quantity)
 			if showPrices {
-				right += "  ¥" + formatPrintAmount(item.SubtotalCents)
+				right += "  " + formatPrintAmount(item.SubtotalCents)
 			}
 			for _, line := range printTwoColumnsWrapped(name, right, width) {
 				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
@@ -703,10 +705,10 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	}
 	if layoutBool(template.Layout, "showPrices", template.CopyRole != "KITCHEN") {
 		appendReceiptMarkup(&output, separator, "LEFT", false, false)
-		appendReceiptBodyLines(&output, []string{printTwoColumns("合计", "¥"+formatPrintAmount(order.TotalCents), width)}, fontSize)
+		appendReceiptBodyLines(&output, []string{printTwoColumns("合计", formatPrintAmount(order.TotalCents), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showPayment", template.CopyRole != "KITCHEN") {
-		appendReceiptBodyLines(&output, []string{printTwoColumns("实付", "¥"+formatPrintAmount(order.PaidCents), width)}, fontSize)
+		appendReceiptBodyLines(&output, []string{printTwoColumns("实付", formatPrintAmount(order.PaidCents), width)}, fontSize)
 		if method := printablePaymentMethod(order.Payment); method != "" {
 			appendReceiptBodyLines(&output, []string{printKeyValue("支付", method, width)}, fontSize)
 		}
@@ -726,16 +728,19 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		if endText != "" {
 			endText = renderOrderTemplate(endText, order, "", "", false)
 		} else if pickupCode != "" {
-			endText = "—— #" + pickupCode + " 完 ——"
+			endText = "--#" + pickupCode + "完--"
 		} else {
-			endText = "—— " + copyTitle + "联打印结束 ——"
+			endText = "--" + fitPrintText(copyTitle, 2) + "联打印结束--"
 		}
-		appendReceiptMarkup(&output, endText, "CENTER", true, true)
+		appendReceiptProminentLine(&output, endText, template.PaperWidth)
 	}
 	for feedLine := 0; feedLine < layoutInteger(template.Layout, "feedLines", 3); feedLine++ {
 		output = append(output, "<BR>")
 	}
-	return strings.Join(output, "\n")
+	// Every rendered row already ends in an explicit <BR>. Sending literal
+	// newlines as separators makes XPrinter advance twice and produces the
+	// oversized line spacing seen on physical receipts.
+	return strings.Join(output, "")
 }
 
 func renderStructuredLabel(template activePrintTemplate, order orderDTO, item orderItemDTO, itemIndex, itemTotal int, extra string, reprint bool) string {
@@ -921,6 +926,11 @@ func appendReceiptCustomText(output *[]string, custom string, order orderDTO, wi
 	lines := []string{}
 	appendCustomPrintText(&lines, custom, order, width)
 	appendReceiptBodyLines(output, lines, fontSize)
+}
+
+func appendReceiptProminentLine(output *[]string, value string, paperWidth int) {
+	value = fitPrintText(value, printableColumns(paperWidth, "NORMAL"))
+	appendReceiptMarkup(output, value, "CENTER", printDisplayWidth(value) <= printableColumns(paperWidth, "LARGE"), true)
 }
 
 func appendReceiptMarkup(output *[]string, value, align string, large, bold bool) {

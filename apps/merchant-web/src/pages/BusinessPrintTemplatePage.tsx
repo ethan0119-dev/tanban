@@ -107,7 +107,7 @@ const labelPaperSizes = [
 ];
 
 function cents(value: number): string {
-  return `¥${(value / 100).toFixed(2)}`;
+  return (value / 100).toFixed(2);
 }
 
 function applyLayoutPreset(section: PrintTemplateSection, preset: PrintLayoutPreset): PrintTemplateLayout {
@@ -205,14 +205,14 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
   }
 
   const pickupCode = 'A002';
-  const endText = layout.endMarkerText || `—— #${pickupCode} 完 ——`;
+  const endText = layout.endMarkerText || `--#${pickupCode}完--`;
   return (
     <div className={`thermal-paper paper-${section.paperWidth} font-${layout.fontSize.toLowerCase()}`}>
       {layout.customHeader && <div className="thermal-custom">{layout.customHeader}</div>}
       {layout.showStoreName && <div className={`thermal-store header-${layout.headerStyle.toLowerCase()}`}>码农咖啡</div>}
       {layout.showPickupNo
-        ? <div className="thermal-pickup">（{layout.copyTitle}）取餐码：{pickupCode}</div>
-        : <div className="thermal-pickup">（{layout.copyTitle}）{roleMeta[section.copyRole].label}</div>}
+        ? <div className="thermal-pickup">({layout.copyTitle})取餐码:{pickupCode}</div>
+        : <div className="thermal-pickup">({layout.copyTitle}){roleMeta[section.copyRole].label}</div>}
       <div className="thermal-rule" />
       {layout.showOrderType && <div className="thermal-pair"><span>类型</span><b>{scene}</b></div>}
       {layout.showOrderNo && <div className="thermal-pair"><span>订单编号</span><b>TB202607200001</b></div>}
@@ -239,8 +239,8 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
       {layout.showPayment && (
         <>
           <div className="thermal-rule" />
-          <div className="thermal-pair"><span>商品金额</span><b>¥37.00</b></div>
-          <div className="thermal-total"><span>实付</span><strong>¥37.00</strong></div>
+          <div className="thermal-pair"><span>商品金额</span><b>37.00</b></div>
+          <div className="thermal-total"><span>实付</span><strong>37.00</strong></div>
           <div className="thermal-pair"><span>支付方式</span><b>会生活聚合支付</b></div>
         </>
       )}
@@ -485,7 +485,7 @@ export function BusinessPrintTemplatePage({
               {activeRole !== 'ITEM' && (
                 <>
                   <Col xs={24} md={8}><label className="field-label">显示结束标识</label><Switch checked={section.layout.showEndMarker} checkedChildren="显示" unCheckedChildren="隐藏" onChange={(checked) => customizeLayout('showEndMarker', checked)} /></Col>
-                  <Col xs={24} md={8}><label className="field-label">结束文案</label><Input value={section.layout.endMarkerText} maxLength={40} placeholder="默认：—— #取餐码 完 ——" onChange={(event) => customizeLayout('endMarkerText', event.target.value)} /></Col>
+                  <Col xs={24} md={8}><label className="field-label">结束文案</label><Input value={section.layout.endMarkerText} maxLength={40} placeholder="默认：--#取餐码完--" onChange={(event) => customizeLayout('endMarkerText', event.target.value)} /></Col>
                   <Col xs={24} md={8}><label className="field-label">打印后走纸</label><InputNumber min={0} max={8} precision={0} value={section.layout.feedLines} addonAfter="行" style={{ width: '100%' }} onChange={(value) => customizeLayout('feedLines', Number(value ?? 0))} /></Col>
                 </>
               )}
