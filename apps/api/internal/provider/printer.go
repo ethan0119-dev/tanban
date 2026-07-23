@@ -18,13 +18,15 @@ import (
 const defaultXPYunBaseURL = "https://open.xpyun.net/api/openapi/xprinter"
 
 type PrintRequest struct {
-	JobID      int64
-	Provider   string
-	DeviceSN   string
-	DeviceType string
-	OutputType string
-	Content    string
-	Reprint    bool
+	JobID         int64
+	Provider      string
+	DeviceSN      string
+	DeviceType    string
+	OutputType    string
+	LabelWidthMM  int
+	LabelHeightMM int
+	Content       string
+	Reprint       bool
 }
 
 type PrintResult struct {
@@ -109,9 +111,10 @@ func (x *XPrinter) Print(ctx context.Context, req PrintRequest) (PrintResult, er
 	endpoint := "print"
 	if strings.EqualFold(req.OutputType, "LABEL") {
 		endpoint = "printLabel"
-		if !strings.Contains(strings.ToUpper(req.Content), "<SIZE>") {
+		if req.LabelWidthMM <= 0 || req.LabelHeightMM <= 0 {
 			return PrintResult{}, errors.New("芯烨标签打印内容缺少标签尺寸；请先配置标签宽度和高度")
 		}
+		req.Content = xPrinterLabelContent(req.LabelWidthMM, req.LabelHeightMM, req.Content)
 	}
 	payload := map[string]any{
 		"sn": req.DeviceSN, "content": req.Content, "copies": 1,
@@ -129,6 +132,94 @@ func (x *XPrinter) Print(ctx context.Context, req PrintRequest) (PrintResult, er
 		return PrintResult{}, errors.New("芯烨云未返回打印订单号")
 	}
 	return PrintResult{ProviderJobNo: jobNo, Status: "SUCCESS"}, nil
+}
+
+func xPrinterLabelContent(widthMM, heightMM int, content string) string {
+	upper := strings.ToUpper(content)
+	if strings.Contains(upper, "<SIZE>") && strings.Contains(upper, "<PAGE") {
+		return content
+	}
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(content), "\r\n", "\n"), "\n")
+	const (
+		marginDots = 8
+		fontDots   = 24
+		lineDots   = 27
+	)
+	maxLines := (heightMM*8 - marginDots*2) / lineDots
+	if maxLines < 1 {
+		maxLines = 1
+	}
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+		if len(lines) > 0 {
+			lines[len(lines)-1] = truncateLabelText(lines[len(lines)-1], widthMM, true)
+		}
+	}
+	var output strings.Builder
+	output.WriteString("<PAGE><SIZE>")
+	fmt.Fprintf(&output, "%d,%d", widthMM, heightMM)
+	output.WriteString("</SIZE>")
+	for index, line := range lines {
+		line = truncateLabelText(strings.TrimSpace(line), widthMM, false)
+		if line == "" {
+			continue
+		}
+		fmt.Fprintf(&output, `<TEXT x="%d" y="%d" font="9" w="1" h="1" r="0">%s</TEXT>`,
+			marginDots, marginDots+index*lineDots, escapeXPrinterLabelText(line))
+	}
+	output.WriteString("</PAGE>")
+	return output.String()
+}
+
+func truncateLabelText(value string, widthMM int, forceEllipsis bool) string {
+	maxUnits := (widthMM*8 - 16) / 12
+	if maxUnits < 1 {
+		maxUnits = 1
+	}
+	runes := []rune(value)
+	units := 0
+	end := len(runes)
+	for index, valueRune := range runes {
+		next := 1
+		if valueRune > 127 {
+			next = 2
+		}
+		if units+next > maxUnits {
+			end = index
+			forceEllipsis = true
+			break
+		}
+		units += next
+	}
+	result := strings.TrimSpace(string(runes[:end]))
+	if forceEllipsis && result != "" {
+		for labelTextUnits(result)+2 > maxUnits {
+			resultRunes := []rune(result)
+			if len(resultRunes) == 0 {
+				break
+			}
+			result = strings.TrimSpace(string(resultRunes[:len(resultRunes)-1]))
+		}
+		result += "…"
+	}
+	return result
+}
+
+func labelTextUnits(value string) int {
+	units := 0
+	for _, valueRune := range value {
+		if valueRune > 127 {
+			units += 2
+		} else {
+			units++
+		}
+	}
+	return units
+}
+
+func escapeXPrinterLabelText(value string) string {
+	replacer := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+	return replacer.Replace(value)
 }
 
 func (x *XPrinter) Status(ctx context.Context, req PrinterStatusRequest) PrinterStatusResult {

@@ -19,11 +19,11 @@ func TestNormalizePrintTemplateInput(t *testing.T) {
 		t.Fatalf("unexpected normalized template: %+v", input)
 	}
 	itemLayout := defaultStructuredPrintLayout("ITEM")
-	if itemLayout["headerStyle"] != "SIMPLE" || itemLayout["fontSize"] != "LARGE" || itemLayout["showStoreName"] != false || itemLayout["showOrderType"] != false {
+	if itemLayout["headerStyle"] != "SIMPLE" || itemLayout["fontSize"] != "LARGE" || itemLayout["preset"] != "LARGE" || itemLayout["showStoreName"] != false || itemLayout["showOrderType"] != true || itemLayout["showOrderNo"] != false || itemLayout["showItemSequence"] != true || itemLayout["labelWidthMM"] != 40 || itemLayout["labelHeightMM"] != 30 {
 		t.Fatalf("item labels must default to SIMPLE/LARGE: %+v", itemLayout)
 	}
 	customerLayout := defaultStructuredPrintLayout("CUSTOMER")
-	if customerLayout["showCustomer"] != true || customerLayout["showAddress"] != true || customerLayout["showQrCode"] != true || customerLayout["customFooter"] == "" {
+	if customerLayout["showCustomer"] != true || customerLayout["showAddress"] != true || customerLayout["showQrCode"] != true || customerLayout["customFooter"] == "" || customerLayout["copyTitle"] != "客" || customerLayout["showEndMarker"] != true || customerLayout["feedLines"] != 3 {
 		t.Fatalf("customer copies must default to customer, address and pickup-code fields: %+v", customerLayout)
 	}
 	input.Copies = 6
@@ -37,12 +37,12 @@ func TestNormalizeStructuredPrintLayoutAndCopyRoles(t *testing.T) {
 	input := printTemplateInput{
 		BusinessType: orderTypeDineIn, TemplateType: "RECEIPT", CopyRole: "customer", Name: "顾客联",
 		PaperWidth: 80, TriggerEvent: "PAYMENT_SUCCESS", Copies: 1,
-		Layout: map[string]any{"schemaVersion": float64(1), "headerStyle": "simple", "fontSize": "normal", "showStoreName": false, "showItemOptions": false},
+		Layout: map[string]any{"schemaVersion": float64(1), "preset": "custom", "headerStyle": "simple", "fontSize": "normal", "copyTitle": "客", "showStoreName": false, "showItemOptions": false, "feedLines": float64(4), "labelWidthMM": float64(40), "labelHeightMM": float64(30)},
 	}
 	if err := normalizePrintTemplateInput(&input); err != nil {
 		t.Fatal(err)
 	}
-	if input.CopyRole != "CUSTOMER" || input.PaperWidth != 80 || input.Layout["headerStyle"] != "SIMPLE" || input.Layout["showStoreName"] != false || input.Layout["showItemOptions"] != false || input.LayoutJSON == "" {
+	if input.CopyRole != "CUSTOMER" || input.PaperWidth != 80 || input.Layout["preset"] != "CUSTOM" || input.Layout["headerStyle"] != "SIMPLE" || input.Layout["showStoreName"] != false || input.Layout["showItemOptions"] != false || input.Layout["feedLines"] != 4 || input.LayoutJSON == "" {
 		t.Fatalf("unexpected structured template normalization: %+v", input)
 	}
 	input.CopyRole = "ITEM"
@@ -53,6 +53,10 @@ func TestNormalizeStructuredPrintLayoutAndCopyRoles(t *testing.T) {
 	input.Layout = map[string]any{"schemaVersion": 1, "headerStyle": "CENTER"}
 	if err := normalizePrintTemplateInput(&input); err == nil {
 		t.Fatal("legacy header styles must not bypass the SIMPLE/PROMINENT contract")
+	}
+	input.Layout = map[string]any{"schemaVersion": 1, "feedLines": 9}
+	if err := normalizePrintTemplateInput(&input); err == nil {
+		t.Fatal("receipt feed lines outside the supported range must be rejected")
 	}
 }
 

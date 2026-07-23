@@ -18,6 +18,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
@@ -62,6 +63,8 @@ interface PrinterFormValues {
   outputType: NonNullable<Printer['outputType']>;
   copyRoles: PrintCopyRole[];
   paperWidth: 58 | 80;
+  labelWidthMM?: number;
+  labelHeightMM?: number;
   enabled: boolean;
 }
 
@@ -83,7 +86,7 @@ function normalizePrinter(value: Printer): Printer {
     ...value,
     vendor: value.vendor ?? provider,
     provider,
-    type: value.type ?? (provider === 'mock' ? 'VIRTUAL' : String(raw.model ?? '').toLowerCase().includes('label') ? 'LABEL' : 'RECEIPT'),
+    type: value.type ?? (provider === 'mock' ? 'VIRTUAL' : outputType === 'LABEL' ? 'LABEL' : 'RECEIPT'),
     enabled: value.enabled ?? configuredStatus === 'ACTIVE',
     status: configuredStatus === 'DISABLED' ? 'DISABLED' : connectionStatus as Printer['status'],
     connectionStatus: connectionStatus as Printer['connectionStatus'],
@@ -91,6 +94,8 @@ function normalizePrinter(value: Printer): Printer {
     statusCheckedAt: String(raw.status_checked_at ?? value.statusCheckedAt ?? ''),
     lastSeenAt: String(raw.last_seen_at ?? value.lastSeenAt ?? ''),
     paperWidth: Number(value.paperWidth ?? raw.paper_width ?? 58) === 80 ? 80 : 58,
+    labelWidthMM: Number(value.labelWidthMM ?? raw.label_width_mm ?? 0) || undefined,
+    labelHeightMM: Number(value.labelHeightMM ?? raw.label_height_mm ?? 0) || undefined,
     printTrigger: value.printTrigger ?? (raw.print_trigger as Printer['printTrigger']) ?? 'PAYMENT_SUCCESS',
     outputType,
     copyRoles: normalizedPrinterCopyRoles(value.copyRoles ?? raw.copyRoles ?? raw.copy_roles, outputType),
@@ -125,6 +130,8 @@ function printerPayload(values: PrinterFormValues | Printer, enabled = values.en
     model: values.model ?? (type === 'VIRTUAL' ? 'Mock Printer' : ''),
     sn: values.sn,
     paper_width: values.paperWidth === 80 ? 80 : 58,
+    label_width_mm: outputType === 'LABEL' ? Number(values.labelWidthMM ?? 0) : null,
+    label_height_mm: outputType === 'LABEL' ? Number(values.labelHeightMM ?? 0) : null,
     print_trigger: 'printTrigger' in values ? values.printTrigger ?? 'PAYMENT_SUCCESS' : 'PAYMENT_SUCCESS',
     output_type: outputType,
     copyRoles,
@@ -184,9 +191,13 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
     if (!binding || !formOutputType) return;
     const current = form.getFieldValue('copyRoles') ?? [];
     if (formOutputType === 'LABEL') {
+      form.setFieldValue('type', 'LABEL');
+      if (!form.getFieldValue('labelWidthMM')) form.setFieldValue('labelWidthMM', 40);
+      if (!form.getFieldValue('labelHeightMM')) form.setFieldValue('labelHeightMM', 30);
       if (current.length !== 1 || current[0] !== 'ITEM') form.setFieldValue('copyRoles', ['ITEM']);
       return;
     }
+    if (form.getFieldValue('type') === 'LABEL') form.setFieldValue('type', 'RECEIPT');
     if (!current.length || current.includes('ITEM')) form.setFieldValue('copyRoles', ['MERCHANT']);
   }, [binding, form, formOutputType]);
 
@@ -195,7 +206,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
     form.resetFields();
     form.setFieldsValue(virtual ? {
       name: '模拟打印机（测试）', vendor: 'TANBAN', model: 'Test Printer', sn: `MOCK-${Date.now()}`, type: 'VIRTUAL', outputType: 'RECEIPT', copyRoles: ['MERCHANT'], paperWidth: 58, enabled: true,
-    } : { vendor: '芯烨', model: 'T58H', type: 'LABEL', outputType: 'LABEL', copyRoles: ['ITEM'], paperWidth: 58, enabled: true, name: '出单打印机', sn: '' });
+    } : { vendor: '芯烨', model: 'XP-T271U', type: 'LABEL', outputType: 'LABEL', copyRoles: ['ITEM'], paperWidth: 58, labelWidthMM: 40, labelHeightMM: 30, enabled: true, name: '杯贴打印机', sn: '' });
     setBinding(true);
   };
 
@@ -211,6 +222,8 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
       outputType: printer.outputType ?? (printer.type === 'LABEL' ? 'LABEL' : 'RECEIPT'),
       copyRoles: normalizedPrinterCopyRoles(printer.copyRoles, printer.outputType ?? (printer.type === 'LABEL' ? 'LABEL' : 'RECEIPT')),
       paperWidth: printer.paperWidth === 80 ? 80 : 58,
+      labelWidthMM: printer.labelWidthMM,
+      labelHeightMM: printer.labelHeightMM,
       enabled: printer.enabled,
     });
     setBinding(true);
@@ -352,7 +365,7 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
                             <div><Typography.Title level={5}>{printer.name}</Typography.Title><Badge status={state.status} text={state.text} /></div>
                             <Switch checked={printer.enabled} onChange={(checked) => void togglePrinter(printer, checked)} />
                           </div>
-                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? '模拟设备（测试）' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>纸张宽度</span><strong>{printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>状态说明</span><strong>{printer.connectionMessage || '--'}</strong><span>状态检查</span><strong>{dateTime(printer.statusCheckedAt)}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
+                          <div className="printer-info"><span>品牌型号</span><strong>{printer.vendor || '--'} {printer.model || ''}</strong><span>设备 SN</span><code>{printer.sn}</code><span>接入类型</span><strong>{printer.type === 'VIRTUAL' ? '模拟设备（测试）' : '云打印机'}</strong><span>输出类型</span><strong>{printer.outputType === 'LABEL' ? '商品标签' : '订单小票'}</strong><span>{printer.outputType === 'LABEL' ? '标签尺寸' : '纸张宽度'}</span><strong>{printer.outputType === 'LABEL' ? `${printer.labelWidthMM || '--'} × ${printer.labelHeightMM || '--'}mm` : printer.paperWidth === 80 ? '80mm' : '58mm'}</strong><span>打印联次</span><strong>{(printer.copyRoles ?? []).map((role) => printCopyRoleName[role]).join(' / ') || '--'}</strong><span>状态说明</span><strong>{printer.connectionMessage || '--'}</strong><span>状态检查</span><strong>{dateTime(printer.statusCheckedAt)}</strong><span>最后在线</span><strong>{dateTime(printer.lastSeenAt)}</strong></div>
                           <Row gutter={8}>
                             <Col span={10}><Button block icon={<EditOutlined />} onClick={() => openEdit(printer)}>编辑配置</Button></Col>
                             <Col span={14}><Button block icon={<PrinterOutlined />} disabled={!printer.enabled} onClick={() => void testPrint(printer)}>测试打印</Button></Col>
@@ -382,7 +395,23 @@ export function PrintersPage({ jobsOnly = false }: { jobsOnly?: boolean }) {
           <Form.Item label="设备 SN" name="sn" rules={[{ required: true, message: '请输入打印机底部的 SN' }]}><Input placeholder="打印机底部标签中的序列号" /></Form.Item>
           <Form.Item label="设备类型" name="type" rules={[{ required: true }]}><Select options={[...(import.meta.env.DEV ? [{ label: '模拟打印机（测试）', value: 'VIRTUAL' as const }] : []), { label: '标签打印机', value: 'LABEL' }, { label: '小票打印机', value: 'RECEIPT' }]} /></Form.Item>
           <Form.Item label="输出类型" name="outputType" rules={[{ required: true, message: '请选择输出类型' }]}><Select options={[{ label: '订单小票', value: 'RECEIPT' }, { label: '商品标签 / 杯贴', value: 'LABEL' }]} /></Form.Item>
-          <Form.Item label="纸张宽度" name="paperWidth" rules={[{ required: true, message: '请选择打印机实际纸宽' }]} extra="任务会按这台设备的实际宽度重新排版，避免 80mm 模板发送到 58mm 设备后截断。"><Select options={[{ label: '58mm 热敏纸', value: 58 }, { label: '80mm 热敏纸', value: 80 }]} /></Form.Item>
+          {formOutputType === 'LABEL' ? (
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item label="标签宽度（mm）" name="labelWidthMM" rules={[{ required: true, message: '请输入标签宽度' }, { type: 'number', min: 20, max: 110, message: '请输入 20–110mm' }]}>
+                  <InputNumber min={20} max={110} precision={0} style={{ width: '100%' }} placeholder="40" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="标签高度（mm）" name="labelHeightMM" rules={[{ required: true, message: '请输入标签高度' }, { type: 'number', min: 20, max: 200, message: '请输入 20–200mm' }]}>
+                  <InputNumber min={20} max={200} precision={0} style={{ width: '100%' }} placeholder="30" />
+                </Form.Item>
+              </Col>
+              <Col span={24}><Typography.Text type="secondary">XP-T271U 当前使用 40 × 30mm 标签；尺寸按单张标签面材填写，不包含背纸。</Typography.Text></Col>
+            </Row>
+          ) : (
+            <Form.Item label="纸张宽度" name="paperWidth" rules={[{ required: true, message: '请选择打印机实际纸宽' }]} extra="任务会按这台设备的实际宽度重新排版，避免 80mm 模板发送到 58mm 设备后截断。"><Select options={[{ label: '58mm 热敏纸', value: 58 }, { label: '80mm 热敏纸', value: 80 }]} /></Form.Item>
+          )}
           <Form.Item label="打印联次" name="copyRoles" rules={[{ required: true, type: 'array', min: 1, message: '请至少选择一个打印联次' }]}>
             <Select
               mode="multiple"

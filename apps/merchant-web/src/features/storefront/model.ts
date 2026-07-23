@@ -134,11 +134,11 @@ export function normalizeTableArea(value: TableArea): TableArea {
 }
 
 const DINE_IN_RECEIPT = `【桌码堂食】\n桌台：{{table_area}} {{table_name}}（{{table_code}}）\n订单号：{{order_no}}\n----------------\n{{items}}\n----------------\n合计：{{total_cents}} 分\n备注：{{remark}}`;
-const DINE_IN_LABEL = `【桌码堂食】{{table_name}} #{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
+const DINE_IN_LABEL = `【桌码堂食】{{table_name}} #{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
 const TAKEOUT_RECEIPT = `【快餐 / 到店自取】\n订单号：{{order_no}}\n----------------\n{{items}}\n----------------\n合计：{{total_cents}} 分\n备注：{{remark}}`;
-const TAKEOUT_LABEL = `【到店自取】#{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
+const TAKEOUT_LABEL = `【到店自取】#{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
 const DELIVERY_RECEIPT = `【外卖单】\n订单号：{{order_no}}\n----------------\n{{items}}\n----------------\n合计：{{total_cents}} 分\n备注：{{remark}}`;
-const DELIVERY_LABEL = `【外卖】#{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
+const DELIVERY_LABEL = `【外卖】#{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}`;
 
 export const PRINT_COPY_ROLES: PrintCopyRole[] = ['MERCHANT', 'CUSTOMER', 'KITCHEN', 'ITEM'];
 
@@ -153,16 +153,21 @@ function defaultLayout(copyRole: PrintCopyRole): PrintTemplateLayout {
   const kitchen = copyRole === 'KITCHEN';
   const item = copyRole === 'ITEM';
   const customer = copyRole === 'CUSTOMER';
+  const copyTitle = { MERCHANT: '商', CUSTOMER: '客', KITCHEN: '厨', ITEM: '签' }[copyRole];
   return {
     schemaVersion: 1,
+    preset: item || kitchen ? 'LARGE' : 'DETAILED',
     headerStyle: item ? 'SIMPLE' : 'PROMINENT',
     fontSize: kitchen || item ? 'LARGE' : 'NORMAL',
+    copyTitle,
     showStoreName: !item,
-    showOrderType: !item,
-    showOrderNo: true,
+    showOrderType: true,
+    showOrderNo: !item,
+    showOrderTime: true,
     showPickupNo: true,
     showTable: true,
     showItems: true,
+    showItemSequence: item,
     showItemOptions: true,
     showPrices: !kitchen && !item,
     showPayment: !kitchen && !item,
@@ -170,6 +175,11 @@ function defaultLayout(copyRole: PrintCopyRole): PrintTemplateLayout {
     showCustomer: customer,
     showAddress: customer,
     showQrCode: customer,
+    showEndMarker: !item,
+    endMarkerText: '',
+    feedLines: item ? 0 : 3,
+    labelWidthMM: 40,
+    labelHeightMM: 30,
     customHeader: '',
     customFooter: customer ? '感谢光临，欢迎再次惠顾' : '',
   };
@@ -214,6 +224,7 @@ function normalizePrintTemplateSection(value: PrintTemplateRecord | undefined, f
   if (typeof rawLayout === 'string') {
     try { layout = record(JSON.parse(rawLayout)); } catch { layout = {}; }
   }
+  const legacyStructuredLayout = Object.keys(layout).length > 0 && !layout.preset;
   const width = numberValue(value.paperWidth, raw.paper_width, fallback.paperWidth);
   return {
     id: value.id ?? raw.id as PrintTemplateSection['id'],
@@ -225,7 +236,7 @@ function normalizePrintTemplateSection(value: PrintTemplateRecord | undefined, f
     copies: Math.min(5, Math.max(1, numberValue(value.copies, raw.copies, 1))),
     paperWidth: width === 80 ? 80 : 58,
     templateText: stringValue(value.content, raw.content, raw.content_text, fallback.templateText),
-    layout: { ...fallback.layout, ...layout, schemaVersion: 1 } as PrintTemplateLayout,
+    layout: { ...fallback.layout, ...layout, preset: legacyStructuredLayout ? 'CUSTOM' : layout.preset ?? fallback.layout.preset, schemaVersion: 1 } as PrintTemplateLayout,
     updatedAt: stringValue(value.updatedAt, raw.updated_at) || undefined,
   };
 }

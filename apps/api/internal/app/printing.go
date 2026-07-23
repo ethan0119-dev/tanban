@@ -22,6 +22,8 @@ type printerDTO struct {
 	Model             string     `json:"model"`
 	SN                string     `json:"sn"`
 	PaperWidth        int        `json:"paper_width"`
+	LabelWidthMM      int        `json:"label_width_mm"`
+	LabelHeightMM     int        `json:"label_height_mm"`
 	PrintTrigger      string     `json:"print_trigger"`
 	OutputType        string     `json:"output_type"`
 	CopyRoles         []string   `json:"copyRoles"`
@@ -41,6 +43,8 @@ type printerInput struct {
 	Model             string   `json:"model"`
 	SN                string   `json:"sn"`
 	PaperWidth        int      `json:"paper_width"`
+	LabelWidthMM      int      `json:"label_width_mm"`
+	LabelHeightMM     int      `json:"label_height_mm"`
 	PrintTrigger      string   `json:"print_trigger"`
 	OutputType        string   `json:"output_type"`
 	OutputTypeUI      string   `json:"outputType"`
@@ -51,6 +55,13 @@ type printerInput struct {
 	Status            string   `json:"status"`
 }
 
+func nullablePositiveInt(value int) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
+}
+
 func (s *Server) listPrinters(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
 	storeID, err := s.tenantStoreID(r, identity.TenantID)
@@ -58,7 +69,7 @@ func (s *Server) listPrinters(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY id DESC`, identity.TenantID, storeID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL ORDER BY id DESC`, identity.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -100,8 +111,8 @@ func (s *Server) createPrinter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO printer_devices(tenant_id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status)
-		SELECT ?,id,?,?,?,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, identity.TenantID, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, storeID, identity.TenantID)
+	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO printer_devices(tenant_id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status)
+		SELECT ?,id,?,?,?,?,?,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, identity.TenantID, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, nullablePositiveInt(input.LabelWidthMM), nullablePositiveInt(input.LabelHeightMM), input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, storeID, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -140,6 +151,17 @@ func normalizePrinterInput(input *printerInput) error {
 	input.Status = strings.ToUpper(input.Status)
 	if !validStatus(input.OutputType, "RECEIPT", "LABEL") {
 		return errors.New("output_type must be RECEIPT or LABEL")
+	}
+	if input.OutputType == "LABEL" {
+		if input.LabelWidthMM < 20 || input.LabelWidthMM > 110 {
+			return errors.New("label_width_mm must be between 20 and 110")
+		}
+		if input.LabelHeightMM < 20 || input.LabelHeightMM > 200 {
+			return errors.New("label_height_mm must be between 20 and 200")
+		}
+	} else {
+		input.LabelWidthMM = 0
+		input.LabelHeightMM = 0
 	}
 	if input.PaperWidth != 58 && input.PaperWidth != 80 {
 		return errors.New("paper_width must be 58 or 80")
@@ -210,7 +232,7 @@ func (s *Server) getPrinter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getPrinterByID(w http.ResponseWriter, r *http.Request, tenantID, id int64) {
 	var item printerDTO
-	if err := scanPrinter(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, tenantID), &item); err != nil {
+	if err := scanPrinter(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, tenantID), &item); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -232,7 +254,7 @@ func (s *Server) updatePrinter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE printer_devices SET name=?,provider=?,model=?,sn=?,paper_width=?,print_trigger=?,output_type=?,copy_roles=?,template_text=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, id, identity.TenantID)
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE printer_devices SET name=?,provider=?,model=?,sn=?,paper_width=?,label_width_mm=?,label_height_mm=?,print_trigger=?,output_type=?,copy_roles=?,template_text=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, nullablePositiveInt(input.LabelWidthMM), nullablePositiveInt(input.LabelHeightMM), input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -285,11 +307,11 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 	}
 	identity := currentIdentity(r.Context())
 	var device printerDTO
-	if err := scanPrinter(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, identity.TenantID), &device); err != nil {
+	if err := scanPrinter(s.DB.QueryRowContext(r.Context(), `SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, id, identity.TenantID), &device); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	result, err := s.Printer.Print(r.Context(), provider.PrintRequest{Provider: device.Provider, DeviceSN: device.SN, DeviceType: device.Model, OutputType: device.OutputType, Content: "摊伴打印机测试\n设备：" + device.Name})
+	result, err := s.Printer.Print(r.Context(), provider.PrintRequest{Provider: device.Provider, DeviceSN: device.SN, DeviceType: device.Model, OutputType: device.OutputType, LabelWidthMM: device.LabelWidthMM, LabelHeightMM: device.LabelHeightMM, Content: "摊伴打印机测试\n设备：" + device.Name})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "PRINTER_PROVIDER_ERROR", err.Error())
 		return
@@ -300,9 +322,12 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 
 func scanPrinter(row scanner, item *printerDTO) error {
 	var copyRoles sql.NullString
-	if err := row.Scan(&item.ID, &item.StoreID, &item.Name, &item.Provider, &item.Model, &item.SN, &item.PaperWidth, &item.PrintTrigger, &item.OutputType, &copyRoles, &item.TemplateText, &item.Status); err != nil {
+	var labelWidth, labelHeight sql.NullInt64
+	if err := row.Scan(&item.ID, &item.StoreID, &item.Name, &item.Provider, &item.Model, &item.SN, &item.PaperWidth, &labelWidth, &labelHeight, &item.PrintTrigger, &item.OutputType, &copyRoles, &item.TemplateText, &item.Status); err != nil {
 		return err
 	}
+	item.LabelWidthMM = int(labelWidth.Int64)
+	item.LabelHeightMM = int(labelHeight.Int64)
 	roles := []string{}
 	if copyRoles.Valid {
 		roles = strings.Split(copyRoles.String, ",")
@@ -395,7 +420,7 @@ func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQ
 	if err != nil {
 		return err
 	}
-	rows, err := executor.QueryContext(ctx, `SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND deleted_at IS NULL`, tenantID, storeID)
+	rows, err := executor.QueryContext(ctx, `SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices WHERE tenant_id=? AND store_id=? AND status='ACTIVE' AND deleted_at IS NULL`, tenantID, storeID)
 	if err != nil {
 		return err
 	}
@@ -444,6 +469,8 @@ func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQ
 			}
 			renderTemplate := template
 			renderTemplate.PaperWidth = paperWidth
+			renderTemplate.LabelWidthMM = device.LabelWidthMM
+			renderTemplate.LabelHeightMM = device.LabelHeightMM
 			contents := renderTemplateContents(device.OutputType, contentTemplate, renderTemplate, order, extra, reprint)
 			for _, content := range contents {
 				for copyNo := 0; copyNo < copies; copyNo++ {
@@ -536,14 +563,15 @@ func (s *Server) dispatchPrintJob(ctx context.Context, id int64) error {
 		return nil
 	}
 	var providerName, sn, model, outputType, content string
+	var labelWidthMM, labelHeightMM sql.NullInt64
 	var reprint bool
-	if err = s.DB.QueryRowContext(ctx, `SELECT d.provider,d.sn,d.model,d.output_type,j.content_text,j.is_reprint FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id WHERE j.id=?`, id).Scan(&providerName, &sn, &model, &outputType, &content, &reprint); err != nil {
+	if err = s.DB.QueryRowContext(ctx, `SELECT d.provider,d.sn,d.model,d.output_type,d.label_width_mm,d.label_height_mm,j.content_text,j.is_reprint FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id WHERE j.id=?`, id).Scan(&providerName, &sn, &model, &outputType, &labelWidthMM, &labelHeightMM, &content, &reprint); err != nil {
 		_, _ = s.DB.ExecContext(ctx, "UPDATE print_jobs SET status='FAILED',error_message=? WHERE id=?", err.Error(), id)
 		return err
 	}
 	printCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	result, printErr := s.Printer.Print(printCtx, provider.PrintRequest{JobID: id, Provider: providerName, DeviceSN: sn, DeviceType: model, OutputType: outputType, Content: content, Reprint: reprint})
+	result, printErr := s.Printer.Print(printCtx, provider.PrintRequest{JobID: id, Provider: providerName, DeviceSN: sn, DeviceType: model, OutputType: outputType, LabelWidthMM: int(labelWidthMM.Int64), LabelHeightMM: int(labelHeightMM.Int64), Content: content, Reprint: reprint})
 	if printErr != nil {
 		status := "FAILED"
 		if errors.Is(printErr, context.DeadlineExceeded) || errors.Is(printCtx.Err(), context.DeadlineExceeded) {
@@ -571,9 +599,12 @@ func renderPrintContents(outputType, template string, order orderDTO, extra stri
 		return []string{renderTicket(template, order, extra, reprint)}
 	}
 	contents := []string{}
+	total := printableLabelCount(order.Items)
+	index := 0
 	for _, item := range order.Items {
 		for unit := 0; unit < item.Quantity; unit++ {
-			contents = append(contents, renderLabel(template, order, item, extra, reprint))
+			index++
+			contents = append(contents, renderLabel(template, order, item, index, total, extra, reprint))
 		}
 	}
 	return contents
@@ -585,9 +616,12 @@ func renderTemplateContents(outputType, legacyContent string, template activePri
 	}
 	if outputType == "LABEL" {
 		contents := []string{}
+		total := printableLabelCount(order.Items)
+		index := 0
 		for _, item := range order.Items {
 			for unit := 0; unit < item.Quantity; unit++ {
-				contents = append(contents, renderStructuredLabel(template, order, item, extra, reprint))
+				index++
+				contents = append(contents, renderStructuredLabel(template, order, item, index, total, extra, reprint))
 			}
 		}
 		return contents
@@ -596,52 +630,53 @@ func renderTemplateContents(outputType, legacyContent string, template activePri
 }
 
 func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra string, reprint bool) string {
-	width := printableColumns(template.PaperWidth, layoutString(template.Layout, "fontSize", "NORMAL"))
+	fontSize := layoutString(template.Layout, "fontSize", "NORMAL")
+	width := printableColumns(template.PaperWidth, fontSize)
 	separator := strings.Repeat("-", width)
-	lines := []string{}
-	appendCustomPrintText(&lines, layoutString(template.Layout, "customHeader", ""), order, width)
-	title := copyRoleTitle(template.CopyRole)
+	output := []string{}
+	appendReceiptCustomText(&output, layoutString(template.Layout, "customHeader", ""), order, width, fontSize)
 	if reprint {
-		title = "补打 " + title
+		appendReceiptMarkup(&output, "【补打】", "CENTER", true, true)
 	}
-	lines = append(lines, printHeader(title, width, layoutString(template.Layout, "headerStyle", "PROMINENT")))
 	if layoutBool(template.Layout, "showStoreName", true) && order.StoreName != "" {
-		lines = append(lines, centerPrintText(order.StoreName, width))
+		appendReceiptMarkup(&output, order.StoreName, "CENTER", false, true)
 	}
-	lines = append(lines, separator)
+	pickupCode := printablePickupCode(order)
+	copyTitle := layoutString(template.Layout, "copyTitle", copyRoleShortTitle(template.CopyRole))
+	if layoutBool(template.Layout, "showPickupNo", true) && pickupCode != "" {
+		appendReceiptMarkup(&output, fmt.Sprintf("（%s）取餐码：%s", copyTitle, pickupCode), "CENTER", true, true)
+	} else {
+		appendReceiptMarkup(&output, "（"+copyTitle+"）"+copyRoleTitle(template.CopyRole), "CENTER", true, true)
+	}
+	appendReceiptMarkup(&output, separator, "LEFT", false, false)
 	if layoutBool(template.Layout, "showOrderType", true) {
-		lines = append(lines, printKeyValue("类型", orderTypeTitle(order.OrderType), width))
+		appendReceiptBodyLines(&output, []string{printKeyValue("类型", orderTypeTitle(order.OrderType), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showOrderNo", true) {
-		lines = append(lines, printKeyValue("订单", order.OrderNo, width))
-	}
-	if layoutBool(template.Layout, "showPickupNo", true) {
-		if pickupCode := printablePickupCode(order); pickupCode != "" {
-			lines = append(lines, printKeyValue("取餐号", pickupCode, width))
-		}
+		appendReceiptBodyLines(&output, []string{printKeyValue("订单", order.OrderNo, width)}, fontSize)
 	}
 	if order.FastFoodPlate != nil {
-		lines = append(lines, printKeyValue("码牌", strings.TrimSpace(order.FastFoodPlate.Name+" "+order.FastFoodPlate.PlateCode), width))
+		appendReceiptBodyLines(&output, []string{printKeyValue("码牌", strings.TrimSpace(order.FastFoodPlate.Name+" "+order.FastFoodPlate.PlateCode), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showTable", true) && order.Table != nil {
-		lines = append(lines, printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name+" "+order.Table.TableCode), width))
+		appendReceiptBodyLines(&output, []string{printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name+" "+order.Table.TableCode), width)}, fontSize)
 	}
-	if createdAt := printableOrderTime(order.CreatedAt); createdAt != "" {
-		lines = append(lines, printKeyValue("下单时间", createdAt, width))
+	if createdAt := printableOrderTime(order.CreatedAt); layoutBool(template.Layout, "showOrderTime", true) && createdAt != "" {
+		appendReceiptBodyLines(&output, []string{printKeyValue("下单时间", createdAt, width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showCustomer", false) {
 		customer := strings.TrimSpace(order.CustomerName + " " + order.CustomerPhone)
 		if customer != "" {
-			lines = append(lines, printKeyValue("顾客", customer, width))
+			appendReceiptBodyLines(&output, []string{printKeyValue("顾客", customer, width)}, fontSize)
 		}
 	}
 	if layoutBool(template.Layout, "showAddress", false) && order.OrderType == orderTypeDelivery {
 		// Delivery addresses are intentionally omitted until the delivery-order
 		// aggregate stores an immutable address snapshot.
-		lines = append(lines, printKeyValue("地址", "待配送能力启用", width))
+		appendReceiptBodyLines(&output, []string{printKeyValue("地址", "待配送能力启用", width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showItems", true) {
-		lines = append(lines, separator)
+		appendReceiptMarkup(&output, separator, "LEFT", false, false)
 		showPrices := layoutBool(template.Layout, "showPrices", template.CopyRole != "KITCHEN")
 		showOptions := layoutBool(template.Layout, "showItemOptions", true)
 		for _, item := range order.Items {
@@ -650,116 +685,151 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 			if showPrices {
 				right += "  ¥" + formatPrintAmount(item.SubtotalCents)
 			}
-			lines = append(lines, printTwoColumnsWrapped(name, right, width)...)
+			for _, line := range printTwoColumnsWrapped(name, right, width) {
+				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
+			}
 			if showOptions {
 				for _, option := range printableItemOptions(item) {
-					lines = append(lines, wrapPrintText("  "+option, width)...)
+					appendReceiptBodyLines(&output, wrapPrintText("  "+option, width), fontSize)
 				}
 				if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
-					lines = append(lines, wrapPrintText("  加料："+strings.Join(modifiers, "、"), width)...)
+					appendReceiptBodyLines(&output, wrapPrintText("  加料："+strings.Join(modifiers, "、"), width), fontSize)
 				}
 			}
 			if remark := printableText(item.ItemRemark); layoutBool(template.Layout, "showRemark", true) && remark != "" {
-				lines = append(lines, wrapPrintText("  备注："+remark, width)...)
+				appendReceiptBodyLines(&output, wrapPrintText("  备注："+remark, width), fontSize)
 			}
 		}
 	}
 	if layoutBool(template.Layout, "showPrices", template.CopyRole != "KITCHEN") {
-		lines = append(lines, separator, printTwoColumns("合计", "¥"+formatPrintAmount(order.TotalCents), width))
+		appendReceiptMarkup(&output, separator, "LEFT", false, false)
+		appendReceiptBodyLines(&output, []string{printTwoColumns("合计", "¥"+formatPrintAmount(order.TotalCents), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showPayment", template.CopyRole != "KITCHEN") {
-		lines = append(lines, printTwoColumns("实付", "¥"+formatPrintAmount(order.PaidCents), width))
+		appendReceiptBodyLines(&output, []string{printTwoColumns("实付", "¥"+formatPrintAmount(order.PaidCents), width)}, fontSize)
 		if method := printablePaymentMethod(order.Payment); method != "" {
-			lines = append(lines, printKeyValue("支付", method, width))
+			appendReceiptBodyLines(&output, []string{printKeyValue("支付", method, width)}, fontSize)
 		}
 	}
 	if layoutBool(template.Layout, "showRemark", true) && printableText(order.Remark) != "" {
-		lines = append(lines, wrapPrintText("订单备注："+printableText(order.Remark), width)...)
+		appendReceiptBodyLines(&output, wrapPrintText("订单备注："+printableText(order.Remark), width), fontSize)
 	}
 	if layoutBool(template.Layout, "showQrCode", false) {
-		lines = append(lines, printKeyValue("订单码", order.OrderNo, width))
+		appendReceiptBodyLines(&output, []string{printKeyValue("订单码", order.OrderNo, width)}, fontSize)
 	}
 	if extra != "" {
-		lines = append(lines, wrapPrintText(printableText(extra), width)...)
+		appendReceiptBodyLines(&output, wrapPrintText(printableText(extra), width), fontSize)
 	}
-	appendCustomPrintText(&lines, layoutString(template.Layout, "customFooter", ""), order, width)
-	return strings.Join(nonEmptyPrintLines(lines), "\n")
+	appendReceiptCustomText(&output, layoutString(template.Layout, "customFooter", ""), order, width, fontSize)
+	if layoutBool(template.Layout, "showEndMarker", true) {
+		endText := strings.TrimSpace(layoutString(template.Layout, "endMarkerText", ""))
+		if endText != "" {
+			endText = renderOrderTemplate(endText, order, "", "", false)
+		} else if pickupCode != "" {
+			endText = "—— #" + pickupCode + " 完 ——"
+		} else {
+			endText = "—— " + copyTitle + "联打印结束 ——"
+		}
+		appendReceiptMarkup(&output, endText, "CENTER", true, true)
+	}
+	for feedLine := 0; feedLine < layoutInteger(template.Layout, "feedLines", 3); feedLine++ {
+		output = append(output, "<BR>")
+	}
+	return strings.Join(output, "\n")
 }
 
-func renderStructuredLabel(template activePrintTemplate, order orderDTO, item orderItemDTO, extra string, reprint bool) string {
-	width := printableColumns(template.PaperWidth, layoutString(template.Layout, "fontSize", "NORMAL"))
-	separator := strings.Repeat("-", width)
-	lines := []string{}
-	appendCustomPrintText(&lines, layoutString(template.Layout, "customHeader", ""), order, width)
-	title := copyRoleTitle("ITEM")
-	if reprint {
-		title = "补打 " + title
+func renderStructuredLabel(template activePrintTemplate, order orderDTO, item orderItemDTO, itemIndex, itemTotal int, extra string, reprint bool) string {
+	widthMM := layoutInteger(template.Layout, "labelWidthMM", template.LabelWidthMM)
+	heightMM := layoutInteger(template.Layout, "labelHeightMM", template.LabelHeightMM)
+	if widthMM <= 0 {
+		widthMM = 40
 	}
-	lines = append(lines, printHeader(title, width, layoutString(template.Layout, "headerStyle", "PROMINENT")))
-	if layoutBool(template.Layout, "showStoreName", true) && order.StoreName != "" {
-		lines = append(lines, centerPrintText(order.StoreName, width))
+	if heightMM <= 0 {
+		heightMM = 30
 	}
-	if layoutBool(template.Layout, "showOrderType", true) {
-		lines = append(lines, printKeyValue("类型", orderTypeTitle(order.OrderType), width))
-	}
-	if layoutBool(template.Layout, "showPickupNo", true) {
-		if pickupCode := printablePickupCode(order); pickupCode != "" {
-			lines = append(lines, printKeyValue("取餐号", pickupCode, width))
-		}
-	}
-	if order.FastFoodPlate != nil {
-		lines = append(lines, printKeyValue("码牌", strings.TrimSpace(order.FastFoodPlate.Name+" "+order.FastFoodPlate.PlateCode), width))
-	}
+	widthDots, heightDots := widthMM*8, heightMM*8
+	margin, y := 8, 8
+	bottomY := heightDots - 28
+	var output strings.Builder
+	fmt.Fprintf(&output, `<PAGE l="2"><SIZE>%d,%d</SIZE>`, widthMM, heightMM)
+
+	contextText := orderTypeShortTitle(order.OrderType)
 	if layoutBool(template.Layout, "showTable", true) && order.Table != nil {
-		lines = append(lines, printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name), width))
+		contextText = "桌号：" + strings.TrimSpace(order.Table.TableCode+" "+order.Table.Name)
+	} else if layoutBool(template.Layout, "showPickupNo", true) && printablePickupCode(order) != "" {
+		contextText = "取餐：" + printablePickupCode(order)
 	}
-	lines = append(lines, separator)
+	if reprint {
+		contextText = "补打 " + contextText
+	}
+	contextWidth := widthDots - margin*2
+	if layoutBool(template.Layout, "showItemSequence", true) && itemTotal > 0 {
+		sequence := fmt.Sprintf("数量：%d/%d", itemIndex, itemTotal)
+		contextWidth -= labelTextDots(sequence, 1) + 8
+		appendLabelRightText(&output, widthDots-margin, y, 1, 1, sequence)
+	}
+	appendLabelText(&output, margin, y, contextWidth, 1, 1, contextText)
+	y += 32
+
+	if customHeader := strings.TrimSpace(layoutString(template.Layout, "customHeader", "")); customHeader != "" && y+24 < bottomY {
+		customHeader = renderOrderTemplate(customHeader, order, "", "", false)
+		appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, customHeader)
+		y += 28
+	}
 	if layoutBool(template.Layout, "showItems", true) {
-		lines = append(lines, wrapPrintText("商品："+printableText(item.ProductName), width)...)
-		if sku := printableText(item.SKUName); sku != "" {
-			lines = append(lines, wrapPrintText("规格："+sku, width)...)
+		productHeight := 1
+		if strings.EqualFold(layoutString(template.Layout, "fontSize", "NORMAL"), "LARGE") {
+			productHeight = 2
 		}
-		if layoutBool(template.Layout, "showItemOptions", true) {
+		appendLabelText(&output, margin, y, widthDots-margin*2, 1, productHeight, printableText(item.ProductName))
+		y += 28*productHeight + 4
+		if sku := printableText(item.SKUName); sku != "" && y+24 < bottomY {
+			appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, "规格："+sku)
+			y += 28
+		}
+		if layoutBool(template.Layout, "showItemOptions", true) && y+24 < bottomY {
+			details := []string{}
 			if options := printableItemOptions(item); len(options) > 0 {
-				lines = append(lines, wrapPrintText("选项："+strings.Join(options, "、"), width)...)
+				details = append(details, strings.Join(options, "、"))
 			}
 			if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
-				lines = append(lines, wrapPrintText("加料："+strings.Join(modifiers, "、"), width)...)
+				details = append(details, "加料："+strings.Join(modifiers, "、"))
+			}
+			if len(details) > 0 {
+				appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, "属性："+strings.Join(details, "；"))
+				y += 28
 			}
 		}
-		if layoutBool(template.Layout, "showPrices", false) {
-			lines = append(lines, printKeyValue("价格", "¥"+formatPrintAmount(item.UnitPriceCents), width))
-		}
-		if remark := printableText(item.ItemRemark); layoutBool(template.Layout, "showRemark", true) && remark != "" {
-			lines = append(lines, wrapPrintText("备注："+remark, width)...)
+		if remark := printableText(item.ItemRemark); layoutBool(template.Layout, "showRemark", true) && remark != "" && y+24 < bottomY {
+			appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, "备注："+remark)
+			y += 28
 		}
 	}
-	if layoutBool(template.Layout, "showOrderNo", true) {
-		lines = append(lines, separator, printKeyValue("订单", order.OrderNo, width))
+	if layoutBool(template.Layout, "showOrderNo", true) && y+24 < bottomY {
+		appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, "订单："+order.OrderNo)
+		y += 28
 	}
-	if layoutBool(template.Layout, "showPayment", false) {
-		lines = append(lines, printKeyValue("实付", "¥"+formatPrintAmount(order.PaidCents), width))
+	if extra != "" && y+24 < bottomY {
+		appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, printableText(extra))
+		y += 28
 	}
-	if layoutBool(template.Layout, "showCustomer", false) {
-		customer := strings.TrimSpace(order.CustomerName + " " + order.CustomerPhone)
-		if customer != "" {
-			lines = append(lines, printKeyValue("顾客", customer, width))
+	if customFooter := strings.TrimSpace(layoutString(template.Layout, "customFooter", "")); customFooter != "" && y+24 < bottomY {
+		customFooter = renderOrderTemplate(customFooter, order, "", "", false)
+		appendLabelText(&output, margin, y, widthDots-margin*2, 1, 1, customFooter)
+	}
+
+	if layoutBool(template.Layout, "showOrderTime", true) {
+		timeText := printableOrderTime(order.CreatedAt)
+		if len(timeText) >= 16 {
+			timeText = timeText[5:16]
 		}
+		appendLabelText(&output, margin, bottomY, widthDots/2-margin, 1, 1, timeText)
 	}
-	if layoutBool(template.Layout, "showAddress", false) && order.OrderType == orderTypeDelivery {
-		lines = append(lines, printKeyValue("地址", "待配送能力启用", width))
+	if layoutBool(template.Layout, "showOrderType", true) {
+		appendLabelRightText(&output, widthDots-margin, bottomY, 1, 1, orderTypeShortTitle(order.OrderType))
 	}
-	if layoutBool(template.Layout, "showRemark", true) && printableText(order.Remark) != "" {
-		lines = append(lines, wrapPrintText("订单备注："+printableText(order.Remark), width)...)
-	}
-	if layoutBool(template.Layout, "showQrCode", false) {
-		lines = append(lines, printKeyValue("订单码", order.OrderNo, width))
-	}
-	if extra != "" {
-		lines = append(lines, wrapPrintText(printableText(extra), width)...)
-	}
-	appendCustomPrintText(&lines, layoutString(template.Layout, "customFooter", ""), order, width)
-	return strings.Join(nonEmptyPrintLines(lines), "\n")
+	output.WriteString("</PAGE>")
+	return output.String()
 }
 
 func printableColumns(paperWidth int, fontSize string) int {
@@ -777,8 +847,16 @@ func copyRoleTitle(copyRole string) string {
 	return map[string]string{"MERCHANT": "商家联", "CUSTOMER": "顾客联", "KITCHEN": "后厨联", "ITEM": "商品标签"}[copyRole]
 }
 
+func copyRoleShortTitle(copyRole string) string {
+	return map[string]string{"MERCHANT": "商", "CUSTOMER": "客", "KITCHEN": "厨", "ITEM": "签"}[copyRole]
+}
+
 func orderTypeTitle(orderType string) string {
 	return map[string]string{orderTypeDineIn: "店内堂食", orderTypeTakeout: "到店自取", orderTypeDelivery: "外卖配送"}[orderType]
+}
+
+func orderTypeShortTitle(orderType string) string {
+	return map[string]string{orderTypeDineIn: "堂食", orderTypeTakeout: "自提", orderTypeDelivery: "外卖"}[orderType]
 }
 
 func printableOrderTime(value string) string {
@@ -822,6 +900,104 @@ func layoutString(layout map[string]any, key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func layoutInteger(layout map[string]any, key string, fallback int) int {
+	value, ok := layoutInt(layout[key])
+	if !ok {
+		return fallback
+	}
+	return value
+}
+
+func appendReceiptBodyLines(output *[]string, lines []string, fontSize string) {
+	large := strings.EqualFold(fontSize, "LARGE")
+	for _, line := range nonEmptyPrintLines(lines) {
+		appendReceiptMarkup(output, line, "LEFT", large, false)
+	}
+}
+
+func appendReceiptCustomText(output *[]string, custom string, order orderDTO, width int, fontSize string) {
+	lines := []string{}
+	appendCustomPrintText(&lines, custom, order, width)
+	appendReceiptBodyLines(output, lines, fontSize)
+}
+
+func appendReceiptMarkup(output *[]string, value, align string, large, bold bool) {
+	value = escapePrintMarkup(printableText(value))
+	if value == "" {
+		return
+	}
+	if bold {
+		value = "<BOLD>" + value + "</BOLD>"
+	}
+	switch {
+	case large && strings.EqualFold(align, "CENTER"):
+		*output = append(*output, "<CB>"+value+"<BR></CB>")
+	case large:
+		*output = append(*output, "<L><B>"+value+"</B><BR></L>")
+	case strings.EqualFold(align, "CENTER"):
+		*output = append(*output, "<C>"+value+"<BR></C>")
+	case strings.EqualFold(align, "RIGHT"):
+		*output = append(*output, "<R>"+value+"<BR></R>")
+	default:
+		*output = append(*output, "<L>"+value+"<BR></L>")
+	}
+}
+
+func escapePrintMarkup(value string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(value)
+}
+
+func appendLabelText(output *strings.Builder, x, y, maxWidthDots, widthScale, heightScale int, value string) {
+	value = truncateLabelDots(printableText(value), maxWidthDots, widthScale)
+	if value == "" {
+		return
+	}
+	fmt.Fprintf(output, `<TEXT x="%d" y="%d" font="9" w="%d" h="%d" r="0">%s</TEXT>`,
+		x, y, widthScale, heightScale, escapePrintMarkup(value))
+}
+
+func appendLabelRightText(output *strings.Builder, rightX, y, widthScale, heightScale int, value string) {
+	value = printableText(value)
+	width := labelTextDots(value, widthScale)
+	x := rightX - width
+	if x < 0 {
+		x = 0
+	}
+	appendLabelText(output, x, y, rightX-x, widthScale, heightScale, value)
+}
+
+func truncateLabelDots(value string, maxDots, widthScale int) string {
+	if maxDots <= 0 {
+		return ""
+	}
+	var output strings.Builder
+	used := 0
+	for _, char := range value {
+		charDots := 12 * widthScale
+		if char > unicode.MaxASCII {
+			charDots = 24 * widthScale
+		}
+		if used+charDots > maxDots {
+			break
+		}
+		output.WriteRune(char)
+		used += charDots
+	}
+	return strings.TrimSpace(output.String())
+}
+
+func labelTextDots(value string, widthScale int) int {
+	dots := 0
+	for _, char := range value {
+		if char > unicode.MaxASCII {
+			dots += 24 * widthScale
+		} else {
+			dots += 12 * widthScale
+		}
+	}
+	return dots
 }
 
 func printHeader(value string, width int, style string) string {
@@ -955,7 +1131,7 @@ func nonEmptyPrintLines(lines []string) []string {
 	return result
 }
 
-func renderLabel(template string, order orderDTO, item orderItemDTO, extra string, reprint bool) string {
+func renderLabel(template string, order orderDTO, item orderItemDTO, itemIndex, itemTotal int, extra string, reprint bool) string {
 	options := printableItemOptions(item)
 	modifiers := printableItemModifiers(item)
 	content := renderOrderTemplate(template, order, strings.Join(printableOrderItemLines(item, 1), "\n"), extra, reprint)
@@ -964,10 +1140,23 @@ func renderLabel(template string, order orderDTO, item orderItemDTO, extra strin
 		"{{sku_name}}", printableText(item.SKUName),
 		"{{quantity}}", "1",
 		"{{ordered_quantity}}", strconv.Itoa(item.Quantity),
+		"{{item_index}}", strconv.Itoa(itemIndex),
+		"{{item_total}}", strconv.Itoa(itemTotal),
+		"{{item_sequence}}", fmt.Sprintf("%d/%d", itemIndex, itemTotal),
 		"{{options}}", strings.Join(options, "、"),
 		"{{modifiers}}", strings.Join(modifiers, "、"),
 		"{{item_remark}}", printableText(item.ItemRemark),
 	).Replace(content)
+}
+
+func printableLabelCount(items []orderItemDTO) int {
+	total := 0
+	for _, item := range items {
+		if item.Quantity > 0 {
+			total += item.Quantity
+		}
+	}
+	return total
 }
 
 func renderOrderTemplate(template string, order orderDTO, items, extra string, reprint bool) string {

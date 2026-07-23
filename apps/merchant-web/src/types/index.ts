@@ -134,6 +134,7 @@ export interface BusinessPrintTemplate {
 }
 
 export type PrintCopyRole = 'MERCHANT' | 'CUSTOMER' | 'KITCHEN' | 'ITEM';
+export type PrintLayoutPreset = 'COMPACT' | 'LARGE' | 'DETAILED' | 'CUSTOM';
 
 /**
  * 与具体打印机厂商无关的票据布局。服务端会把它渲染成 58/80mm 定宽文本；
@@ -141,14 +142,18 @@ export type PrintCopyRole = 'MERCHANT' | 'CUSTOMER' | 'KITCHEN' | 'ITEM';
  */
 export interface PrintTemplateLayout {
   schemaVersion: 1;
+  preset: PrintLayoutPreset;
   headerStyle: 'SIMPLE' | 'PROMINENT';
   fontSize: 'NORMAL' | 'LARGE';
+  copyTitle: string;
   showStoreName: boolean;
   showOrderType: boolean;
   showOrderNo: boolean;
+  showOrderTime: boolean;
   showPickupNo: boolean;
   showTable: boolean;
   showItems: boolean;
+  showItemSequence: boolean;
   showItemOptions: boolean;
   showPrices: boolean;
   showPayment: boolean;
@@ -156,6 +161,11 @@ export interface PrintTemplateLayout {
   showCustomer: boolean;
   showAddress: boolean;
   showQrCode: boolean;
+  showEndMarker: boolean;
+  endMarkerText: string;
+  feedLines: number;
+  labelWidthMM: number;
+  labelHeightMM: number;
   customHeader: string;
   customFooter: string;
 }
@@ -268,6 +278,8 @@ export interface Printer {
   enabled: boolean;
   lastSeenAt?: string;
   paperWidth?: number;
+  labelWidthMM?: number;
+  labelHeightMM?: number;
   printTrigger?: 'ORDER_CREATED' | 'PAYMENT_SUCCESS';
   outputType?: 'RECEIPT' | 'LABEL';
   copyRoles?: PrintCopyRole[];

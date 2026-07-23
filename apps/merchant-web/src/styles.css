@@ -378,6 +378,31 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .print-layout-editor { margin-bottom: 16px; }
 .print-layout-editor .field-label { display: block; margin: 2px 0 7px; color: #675b54; font-size: 13px; }
 .print-layout-editor .ant-col { margin-bottom: 15px; }
+.print-layout-editor .field-help { margin: 7px 0 0 !important; font-size: 12px; }
+.print-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.print-preset-option {
+  position: relative;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 20px;
+  align-items: start;
+  gap: 11px;
+  padding: 15px;
+  border: 1px solid #e6ded8;
+  border-radius: 12px;
+  color: #2a2420;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.print-preset-option:hover { border-color: #b99b82; box-shadow: 0 6px 18px rgba(74,53,38,.07); }
+.print-preset-option:focus-visible { outline: 3px solid rgba(132,91,62,.2); outline-offset: 2px; }
+.print-preset-option.is-selected { border-color: #7b5439; background: #fbf7f3; box-shadow: inset 0 0 0 1px #7b5439; }
+.print-preset-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: #7b5439; background: #f3ebe5; font-size: 17px; }
+.print-preset-option strong { display: block; margin: 1px 0 5px; font-size: 14px; }
+.print-preset-option small { display: block; color: #756b64; font-size: 12px; line-height: 1.55; }
+.print-preset-check { color: #7b5439; font-size: 17px; font-weight: 800; text-align: right; }
 .print-visibility-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px 12px; }
 .print-advanced-card .ant-card-body { padding: 7px 16px; }
 .printer-compatibility-note { margin-top: 18px; }
@@ -404,7 +429,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .thermal-store { text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 1px; }
 .thermal-store.header-prominent { margin-block: 3px 8px; font-size: 23px; }
 .thermal-scene { text-align: center; font-weight: 700; }
-.thermal-pickup { margin: 8px 0 5px; text-align: center; font-size: 22px; font-weight: 800; }
+.thermal-pickup { margin: 12px -4px 8px; text-align: center; font-size: 27px; line-height: 1.3; font-weight: 900; letter-spacing: .2px; }
 .thermal-rule { margin: 10px 0; border-top: 1px dashed #3c3936; }
 .thermal-pair { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 4px 0; }
 .thermal-pair span { flex: 0 0 auto; color: #4c4845; }
@@ -423,10 +448,30 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .thermal-qr { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 13px 0 8px; }
 .thermal-qr span { color: #403b38; font-size: 11px; }
 .thermal-footer { margin-top: 13px; text-align: center; font-weight: 600; }
-.thermal-end { margin-top: 16px; text-align: center; color: #5b5551; font-size: 11px; }
-.thermal-label { min-height: 320px; }
-.thermal-label-product { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 12px 0 8px; }
-.thermal-label-product strong { font-size: 23px; }
+.thermal-end { margin-top: 20px; padding: 13px 0 9px; border-top: 1px dashed #3c3936; text-align: center; color: #171412; font-size: 24px; line-height: 1.25; font-weight: 900; }
+.thermal-feed-line { height: 14px; }
+.thermal-label {
+  --label-ratio: 4 / 3;
+  position: relative;
+  width: min(100%, 390px);
+  min-height: 0;
+  aspect-ratio: var(--label-ratio);
+  padding: 18px 20px;
+  overflow: hidden;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.thermal-label-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.thermal-label-meta strong { font-weight: 700; }
+.thermal-label-product { display: block; margin: 13px 0 3px; }
+.thermal-label-product strong { font-size: 25px; line-height: 1.25; font-weight: 500; }
+.thermal-label.font-large .thermal-label-product strong { font-size: 34px; font-weight: 700; letter-spacing: -.5px; }
+.thermal-label-detail { margin-top: 4px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thermal-label .thermal-muted { margin-top: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thermal-label .thermal-custom { margin-bottom: 8px; padding: 3px 5px; font-size: 12px; }
+.thermal-label .thermal-footer { margin-top: 4px; text-align: left; font-size: 12px; }
+.thermal-label-bottom { position: absolute; inset: auto 20px 15px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
 .thermal-emphasis { margin: 9px 0; padding: 8px 5px; border-block: 2px solid #201c19; text-align: center; font-size: 17px; font-weight: 800; }
 .thermal-muted { margin-top: 4px; color: #4b4642; }
 
@@ -439,8 +484,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .print-scene-switch .ant-card-body { align-items: flex-start; flex-direction: column; }
   .print-copy-tabs .ant-tabs-nav-wrap { overflow-x: auto; }
   .print-visibility-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .print-preset-grid { grid-template-columns: 1fr; }
   .print-preview-stage .ant-card-body { padding-inline: 12px; }
   .thermal-paper { padding-inline: 15px; font-size: 12px; }
+  .thermal-label { padding-inline: 16px; }
+  .thermal-label-bottom { inset-inline: 16px; }
   .thermal-items-head, .thermal-item-line { grid-template-columns: minmax(0, 1fr) 30px 48px 50px; }
 }
 

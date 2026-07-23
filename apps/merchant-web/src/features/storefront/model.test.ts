@@ -100,6 +100,19 @@ describe('storefront domain normalization', () => {
     expect(defaultPrintTemplate('DELIVERY').sections.MERCHANT.templateText).toContain('{{total_cents}}');
     expect(defaultPrintTemplate('DINE_IN').sections.CUSTOMER.enabled).toBe(false);
     expect(defaultPrintTemplate('DINE_IN').sections.KITCHEN.layout.showPrices).toBe(false);
+    expect(defaultPrintTemplate('DINE_IN').sections.ITEM.layout).toMatchObject({
+      preset: 'LARGE',
+      showItemSequence: true,
+      showOrderType: true,
+      showOrderNo: false,
+      labelWidthMM: 40,
+      labelHeightMM: 30,
+    });
+    expect(defaultPrintTemplate('DINE_IN').sections.MERCHANT.layout).toMatchObject({
+      copyTitle: '商',
+      showEndMarker: true,
+      feedLines: 3,
+    });
 
     const normalized = normalizePrintTemplates([{
       id: 1,
@@ -130,6 +143,7 @@ describe('storefront domain normalization', () => {
     expect(normalized.sections.MERCHANT.layout.showQrCode).toBe(true);
     expect(normalized.sections.MERCHANT.templateText).toContain('{{table_name}}');
     expect(normalized.sections.ITEM.enabled).toBe(false);
+    expect(normalized.sections.MERCHANT.layout.preset).toBe('CUSTOM');
     expect(printTemplatePayload(normalized, 'MERCHANT')).toMatchObject({ businessType: 'DINE_IN', templateType: 'RECEIPT', copyRole: 'MERCHANT', triggerEvent: 'PAYMENT_SUCCESS', copies: 2, paperWidth: 80, enabled: true });
   });
 });

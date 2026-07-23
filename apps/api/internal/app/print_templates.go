@@ -18,9 +18,9 @@ var defaultPrintTemplateContent = map[string]string{
 }
 
 var defaultLabelTemplateContent = map[string]string{
-	orderTypeDineIn:   "【店内】 {{table_name}} #{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
-	orderTypeTakeout:  "【自提】 #{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
-	orderTypeDelivery: "【外卖】 #{{pickup_no}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
+	orderTypeDineIn:   "【店内】 {{table_name}} #{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
+	orderTypeTakeout:  "【自提】 #{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
+	orderTypeDelivery: "【外卖】 #{{pickup_no}} 数量：{{item_sequence}}\n{{product_name}} {{sku_name}}\n{{options}}\n{{modifiers}}\n{{item_remark}}",
 }
 
 type printTemplateDTO struct {
@@ -64,39 +64,50 @@ type printTemplateInput struct {
 }
 
 var printLayoutKeys = map[string]string{
-	"schemaVersion": "number", "headerStyle": "string", "fontSize": "string",
+	"schemaVersion": "version", "preset": "string", "headerStyle": "string", "fontSize": "string", "copyTitle": "string",
 	"showStoreName": "bool", "showOrderType": "bool", "showOrderNo": "bool",
-	"showPickupNo": "bool", "showTable": "bool", "showItems": "bool",
+	"showOrderTime": "bool", "showPickupNo": "bool", "showTable": "bool", "showItems": "bool", "showItemSequence": "bool",
 	"showItemOptions": "bool", "showPrices": "bool", "showPayment": "bool",
 	"showRemark": "bool", "showCustomer": "bool", "showAddress": "bool",
-	"showQrCode": "bool", "customHeader": "string", "customFooter": "string",
+	"showQrCode": "bool", "showEndMarker": "bool", "endMarkerText": "string",
+	"feedLines": "integer", "labelWidthMM": "integer", "labelHeightMM": "integer",
+	"customHeader": "string", "customFooter": "string",
 }
 
 func defaultStructuredPrintLayout(copyRole string) map[string]any {
 	customer := copyRole == "CUSTOMER"
+	item := copyRole == "ITEM"
+	kitchen := copyRole == "KITCHEN"
 	showPrices := copyRole != "KITCHEN" && copyRole != "ITEM"
 	showPayment := copyRole != "KITCHEN" && copyRole != "ITEM"
 	showStoreName := copyRole != "ITEM"
-	showOrderType := copyRole != "ITEM"
+	showOrderType := true
+	showOrderNo := copyRole != "ITEM"
 	headerStyle := "PROMINENT"
 	fontSize := "NORMAL"
+	preset := "DETAILED"
+	copyTitle := map[string]string{"MERCHANT": "商", "CUSTOMER": "客", "KITCHEN": "厨", "ITEM": "签"}[copyRole]
 	customFooter := ""
-	if copyRole == "KITCHEN" {
+	if kitchen {
 		fontSize = "LARGE"
+		preset = "LARGE"
 	}
-	if copyRole == "ITEM" {
+	if item {
 		headerStyle = "SIMPLE"
 		fontSize = "LARGE"
+		preset = "LARGE"
 	}
 	if customer {
 		customFooter = "感谢光临，欢迎再次惠顾"
 	}
 	return map[string]any{
-		"schemaVersion": 1, "headerStyle": headerStyle, "fontSize": fontSize,
-		"showStoreName": showStoreName, "showOrderType": showOrderType, "showOrderNo": true, "showPickupNo": true,
-		"showTable": true, "showItems": true, "showItemOptions": true, "showPrices": showPrices,
+		"schemaVersion": 1, "preset": preset, "headerStyle": headerStyle, "fontSize": fontSize, "copyTitle": copyTitle,
+		"showStoreName": showStoreName, "showOrderType": showOrderType, "showOrderNo": showOrderNo, "showOrderTime": true, "showPickupNo": true,
+		"showTable": true, "showItems": true, "showItemSequence": item, "showItemOptions": true, "showPrices": showPrices,
 		"showPayment": showPayment, "showRemark": true, "showCustomer": customer,
-		"showAddress": customer, "showQrCode": customer, "customHeader": "", "customFooter": customFooter,
+		"showAddress": customer, "showQrCode": customer, "showEndMarker": !item, "endMarkerText": "",
+		"feedLines": map[bool]int{true: 0, false: 3}[item], "labelWidthMM": 40, "labelHeightMM": 30,
+		"customHeader": "", "customFooter": customFooter,
 	}
 }
 
@@ -123,15 +134,40 @@ func normalizePrintLayout(layout map[string]any, copyRole string) (map[string]an
 			if len([]rune(text)) > 500 {
 				return nil, "", fmt.Errorf("layout.%s must not exceed 500 characters", key)
 			}
-		case "number":
+		case "version":
 			version, numberOK := layoutInt(value)
 			if !numberOK || version != 1 {
 				return nil, "", errors.New("layout.schemaVersion must be 1")
 			}
 			value = version
+		case "integer":
+			number, numberOK := layoutInt(value)
+			if !numberOK {
+				return nil, "", fmt.Errorf("layout.%s must be an integer", key)
+			}
+			switch key {
+			case "feedLines":
+				if number < 0 || number > 8 {
+					return nil, "", errors.New("layout.feedLines must be between 0 and 8")
+				}
+			case "labelWidthMM":
+				if number < 20 || number > 110 {
+					return nil, "", errors.New("layout.labelWidthMM must be between 20 and 110")
+				}
+			case "labelHeightMM":
+				if number < 20 || number > 200 {
+					return nil, "", errors.New("layout.labelHeightMM must be between 20 and 200")
+				}
+			}
+			value = number
 		}
 		normalized[key] = value
 	}
+	preset := strings.ToUpper(strings.TrimSpace(fmt.Sprint(normalized["preset"])))
+	if !validStatus(preset, "COMPACT", "LARGE", "DETAILED", "CUSTOM") {
+		return nil, "", errors.New("layout.preset must be COMPACT, LARGE, DETAILED or CUSTOM")
+	}
+	normalized["preset"] = preset
 	headerStyle := strings.ToUpper(strings.TrimSpace(fmt.Sprint(normalized["headerStyle"])))
 	if !validStatus(headerStyle, "SIMPLE", "PROMINENT") {
 		return nil, "", errors.New("layout.headerStyle must be SIMPLE or PROMINENT")
@@ -142,6 +178,14 @@ func normalizePrintLayout(layout map[string]any, copyRole string) (map[string]an
 		return nil, "", errors.New("layout.fontSize must be NORMAL or LARGE")
 	}
 	normalized["fontSize"] = fontSize
+	copyTitle := strings.TrimSpace(fmt.Sprint(normalized["copyTitle"]))
+	if copyTitle == "" || len([]rune(copyTitle)) > 4 {
+		return nil, "", errors.New("layout.copyTitle is required and must not exceed 4 characters")
+	}
+	normalized["copyTitle"] = copyTitle
+	if len([]rune(strings.TrimSpace(fmt.Sprint(normalized["endMarkerText"])))) > 40 {
+		return nil, "", errors.New("layout.endMarkerText must not exceed 40 characters")
+	}
 	body, err := json.Marshal(normalized)
 	if err != nil {
 		return nil, "", err
@@ -467,16 +511,18 @@ func (s *Server) deletePrintTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 type activePrintTemplate struct {
-	ID           int64
-	TemplateType string
-	CopyRole     string
-	Content      string
-	TriggerEvent string
-	Copies       int
-	PaperWidth   int
-	Layout       map[string]any
-	Found        bool
-	Enabled      bool
+	ID            int64
+	TemplateType  string
+	CopyRole      string
+	Content       string
+	TriggerEvent  string
+	Copies        int
+	PaperWidth    int
+	LabelWidthMM  int
+	LabelHeightMM int
+	Layout        map[string]any
+	Found         bool
+	Enabled       bool
 }
 
 func loadPrintTemplates(ctx context.Context, queryer sqlQueryer, tenantID, storeID int64, businessType, templateType string) ([]activePrintTemplate, error) {

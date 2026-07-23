@@ -48,6 +48,12 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/select-store" element={<StoreSelectionPage />} />
+      {import.meta.env.DEV && (
+        <Route
+          path="/__preview/print-template"
+          element={<BusinessPrintTemplatePage businessType="DINE_IN" previewMode />}
+        />
+      )}
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

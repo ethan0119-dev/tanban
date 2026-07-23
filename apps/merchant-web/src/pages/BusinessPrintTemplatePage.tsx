@@ -1,8 +1,12 @@
 import {
+  AppstoreOutlined,
+  FileTextOutlined,
   FireOutlined,
+  FontSizeOutlined,
   QrcodeOutlined,
   ReloadOutlined,
   SaveOutlined,
+  SettingOutlined,
   ShopOutlined,
   TagsOutlined,
   UserOutlined,
@@ -29,7 +33,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
@@ -45,6 +49,7 @@ import type {
   OrderBusinessType,
   PrintBusinessType,
   PrintCopyRole,
+  PrintLayoutPreset,
   PrintTemplateLayout,
   PrintTemplateRecord,
   PrintTemplateSection,
@@ -65,6 +70,7 @@ const commonVariables = [
 const dineInVariables = ['{{table_area}}', '{{table_name}}', '{{table_code}}'];
 const labelItemVariables = [
   '{{product_name}}', '{{sku_name}}', '{{quantity}}', '{{ordered_quantity}}',
+  '{{item_index}}', '{{item_total}}', '{{item_sequence}}',
   '{{options}}', '{{modifiers}}', '{{item_remark}}',
 ];
 
@@ -72,9 +78,11 @@ const visibilityOptions: Array<{ key: keyof PrintTemplateLayout; label: string; 
   { key: 'showStoreName', label: '店铺名称' },
   { key: 'showOrderType', label: '订单类型' },
   { key: 'showOrderNo', label: '订单编号' },
+  { key: 'showOrderTime', label: '下单时间' },
   { key: 'showPickupNo', label: '取单号' },
   { key: 'showTable', label: '桌台信息' },
   { key: 'showItems', label: '商品明细' },
+  { key: 'showItemSequence', label: '标签序号 1/2', roles: ['ITEM'] },
   { key: 'showItemOptions', label: '规格与加料' },
   { key: 'showPrices', label: '单价与金额', roles: ['MERCHANT', 'CUSTOMER'] },
   { key: 'showPayment', label: '支付与合计', roles: ['MERCHANT', 'CUSTOMER'] },
@@ -84,52 +92,132 @@ const visibilityOptions: Array<{ key: keyof PrintTemplateLayout; label: string; 
   { key: 'showQrCode', label: '取单二维码', roles: ['CUSTOMER'] },
 ];
 
+const presetMeta: Record<PrintLayoutPreset, { name: string; description: string; icon: ReactNode }> = {
+  LARGE: { name: '大字优先', description: '取餐码和商品名更醒目，适合后厨快速识别', icon: <FontSizeOutlined /> },
+  DETAILED: { name: '信息完整', description: '保留订单、规格、金额和备注等完整信息', icon: <FileTextOutlined /> },
+  COMPACT: { name: '简洁省纸', description: '只保留制作与取餐所需的核心字段', icon: <AppstoreOutlined /> },
+  CUSTOM: { name: '自定义', description: '继续使用字段开关和自定义文案精细配置', icon: <SettingOutlined /> },
+};
+
+const labelPaperSizes = [
+  { label: '40 × 30', value: '40x30', width: 40, height: 30 },
+  { label: '50 × 60', value: '50x60', width: 50, height: 60 },
+  { label: '50 × 70', value: '50x70', width: 50, height: 70 },
+  { label: '40 × 60', value: '40x60', width: 40, height: 60 },
+];
+
 function cents(value: number): string {
   return `¥${(value / 100).toFixed(2)}`;
+}
+
+function applyLayoutPreset(section: PrintTemplateSection, preset: PrintLayoutPreset): PrintTemplateLayout {
+  const current = section.layout;
+  if (preset === 'CUSTOM') return { ...current, preset };
+  if (section.copyRole === 'ITEM') {
+    if (preset === 'COMPACT') {
+      return {
+        ...current, preset, fontSize: 'NORMAL', showStoreName: false, showOrderType: true,
+        showOrderNo: false, showOrderTime: true, showPickupNo: true, showTable: true,
+        showItems: true, showItemSequence: true, showItemOptions: false, showPrices: false,
+        showPayment: false, showRemark: false, showCustomer: false, showAddress: false, showQrCode: false,
+      };
+    }
+    if (preset === 'LARGE') {
+      return {
+        ...current, preset, fontSize: 'LARGE', showStoreName: false, showOrderType: true,
+        showOrderNo: false, showOrderTime: true, showPickupNo: true, showTable: true,
+        showItems: true, showItemSequence: true, showItemOptions: true, showPrices: false,
+        showPayment: false, showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
+      };
+    }
+    return {
+      ...current, preset, fontSize: 'NORMAL', showStoreName: false, showOrderType: true,
+      showOrderNo: true, showOrderTime: true, showPickupNo: true, showTable: true,
+      showItems: true, showItemSequence: true, showItemOptions: true, showPrices: false,
+      showPayment: false, showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
+    };
+  }
+
+  const customer = section.copyRole === 'CUSTOMER';
+  const kitchen = section.copyRole === 'KITCHEN';
+  if (preset === 'COMPACT') {
+    return {
+      ...current, preset, fontSize: 'NORMAL', headerStyle: 'SIMPLE', showStoreName: false,
+      showOrderType: true, showOrderNo: false, showOrderTime: false, showPickupNo: true,
+      showTable: true, showItems: true, showItemSequence: false, showItemOptions: false,
+      showPrices: !kitchen, showPayment: !kitchen, showRemark: true, showCustomer: false,
+      showAddress: false, showQrCode: false, showEndMarker: true,
+    };
+  }
+  if (preset === 'LARGE') {
+    return {
+      ...current, preset, fontSize: 'LARGE', headerStyle: 'SIMPLE', showStoreName: false,
+      showOrderType: true, showOrderNo: false, showOrderTime: false, showPickupNo: true,
+      showTable: true, showItems: true, showItemSequence: false, showItemOptions: true,
+      showPrices: false, showPayment: false, showRemark: true, showCustomer: false,
+      showAddress: false, showQrCode: false, showEndMarker: true,
+    };
+  }
+  return {
+    ...current, preset, fontSize: kitchen ? 'LARGE' : 'NORMAL', headerStyle: 'PROMINENT',
+    showStoreName: true, showOrderType: true, showOrderNo: true, showOrderTime: true,
+    showPickupNo: true, showTable: true, showItems: true, showItemSequence: false,
+    showItemOptions: true, showPrices: !kitchen, showPayment: !kitchen, showRemark: true,
+    showCustomer: customer, showAddress: customer, showQrCode: customer, showEndMarker: true,
+  };
 }
 
 function PaperPreview({ section, businessType }: { section: PrintTemplateSection; businessType: PrintBusinessType }) {
   const { layout } = section;
   const label = section.copyRole === 'ITEM';
   const scene = businessType === 'DINE_IN' ? '桌码堂食' : businessType === 'TAKEOUT' ? '到店自取' : '外卖配送';
+  const sceneShort = businessType === 'DINE_IN' ? '堂食' : businessType === 'TAKEOUT' ? '自提' : '外卖';
   const products = [
     { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰 / 不另外加糖' },
     { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热 / 加燕麦奶' },
   ];
 
   if (label) {
+    const sizeStyle = { '--label-ratio': `${layout.labelWidthMM} / ${layout.labelHeightMM}` } as CSSProperties;
     return (
-      <div className={`thermal-paper thermal-label paper-${section.paperWidth} font-${layout.fontSize.toLowerCase()}`}>
-        <div className="thermal-copy-mark">{roleMeta[section.copyRole].label}</div>
+      <div className={`thermal-paper thermal-label font-${layout.fontSize.toLowerCase()}`} style={sizeStyle}>
         {layout.customHeader && <div className="thermal-custom">{layout.customHeader}</div>}
-        {layout.showStoreName && <div className="thermal-store">码农咖啡</div>}
-        {layout.showPickupNo && <div className="thermal-pickup">#0038</div>}
+        <div className="thermal-label-meta">
+          <span>{layout.showTable && businessType === 'DINE_IN' ? '桌号：VIP-001' : layout.showPickupNo ? '取餐：0038' : sceneShort}</span>
+          {layout.showItemSequence && <strong>数量：1/2</strong>}
+        </div>
         {layout.showItems && (
-          <div className="thermal-label-product">
-            <strong>燕麦拿铁</strong>
-            <span>大杯 × 1</span>
-          </div>
+          <>
+            <div className="thermal-label-product"><strong>燕麦拿铁</strong></div>
+            <div className="thermal-label-detail">规格：大杯、燕麦奶</div>
+          </>
         )}
-        {layout.showItemOptions && <div className="thermal-emphasis">热 · 少糖 · 加燕麦奶</div>}
-        {layout.showRemark && <div className="thermal-note"><b>杯贴备注</b> 写 Ethan</div>}
-        {layout.showOrderNo && <div className="thermal-muted">订单 TB202607200001</div>}
-        {layout.showTable && businessType === 'DINE_IN' && <div className="thermal-muted">露台 · B02 桌</div>}
+        {layout.showItemOptions && <div className="thermal-label-detail">属性：热、少糖</div>}
+        {layout.showRemark && <div className="thermal-label-detail">备注：杯身写 Ethan</div>}
+        {layout.showOrderNo && <div className="thermal-muted">订单：TB202607200001</div>}
         {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
+        <div className="thermal-label-bottom">
+          {layout.showOrderTime && <span>07-23 12:11</span>}
+          {layout.showOrderType && <b>{sceneShort}</b>}
+        </div>
       </div>
     );
   }
 
+  const pickupCode = 'A002';
+  const endText = layout.endMarkerText || `—— #${pickupCode} 完 ——`;
   return (
     <div className={`thermal-paper paper-${section.paperWidth} font-${layout.fontSize.toLowerCase()}`}>
-      <div className="thermal-copy-mark">{roleMeta[section.copyRole].label}</div>
       {layout.customHeader && <div className="thermal-custom">{layout.customHeader}</div>}
       {layout.showStoreName && <div className={`thermal-store header-${layout.headerStyle.toLowerCase()}`}>码农咖啡</div>}
-      {layout.showOrderType && <div className="thermal-scene">【{scene}】</div>}
-      {layout.showPickupNo && <div className="thermal-pickup">取单号 #0038</div>}
+      {layout.showPickupNo
+        ? <div className="thermal-pickup">（{layout.copyTitle}）取餐码：{pickupCode}</div>
+        : <div className="thermal-pickup">（{layout.copyTitle}）{roleMeta[section.copyRole].label}</div>}
       <div className="thermal-rule" />
+      {layout.showOrderType && <div className="thermal-pair"><span>类型</span><b>{scene}</b></div>}
       {layout.showOrderNo && <div className="thermal-pair"><span>订单编号</span><b>TB202607200001</b></div>}
       {layout.showTable && businessType === 'DINE_IN' && <div className="thermal-pair"><span>桌台</span><b>露台 · B02 桌</b></div>}
-      <div className="thermal-pair"><span>下单时间</span><b>2026-07-20 18:26</b></div>
+      {layout.showOrderTime && <div className="thermal-pair"><span>下单时间</span><b>2026-07-23 12:11</b></div>}
       {layout.showCustomer && <div className="thermal-pair"><span>顾客</span><b>赵先生 186****6557</b></div>}
       {layout.showAddress && businessType === 'DELIVERY' && <div className="thermal-address">天津市和平区南京路 88 号 A 座 1206</div>}
       {layout.showItems && (
@@ -159,12 +247,19 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
       {layout.showRemark && <div className="thermal-note"><b>备注</b> 燕麦拿铁少冰，杯身写 Ethan</div>}
       {layout.showQrCode && <div className="thermal-qr"><QRCode value="https://miniapp.example/order/TB202607200001" size={112} bordered={false} /><span>扫码查看订单</span></div>}
       {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
-      <div className="thermal-end">— {roleMeta[section.copyRole].label}打印完毕 —</div>
+      {layout.showEndMarker && <div className="thermal-end">{endText}</div>}
+      {Array.from({ length: layout.feedLines }).map((_, index) => <div className="thermal-feed-line" key={index} />)}
     </div>
   );
 }
 
-export function BusinessPrintTemplatePage({ businessType }: { businessType: OrderBusinessType }) {
+export function BusinessPrintTemplatePage({
+  businessType,
+  previewMode = false,
+}: {
+  businessType: OrderBusinessType;
+  previewMode?: boolean;
+}) {
   const [template, setTemplate] = useState<BusinessPrintTemplate>(() => defaultPrintTemplate(businessType));
   const [activeType, setActiveType] = useState<PrintBusinessType>(businessType);
   const [activeRole, setActiveRole] = useState<PrintCopyRole>('MERCHANT');
@@ -188,6 +283,13 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
   }, [businessType]);
 
   const load = useCallback(async () => {
+    if (previewMode) {
+      setTemplate(defaultPrintTemplate(activeType));
+      setDirtyRoles(new Set());
+      setLoadWarning('');
+      setLoading(false);
+      return;
+    }
     const revision = ++loadRevision.current;
     setLoading(true);
     setLoadWarning('');
@@ -204,7 +306,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
     } finally {
       if (revision === loadRevision.current) setLoading(false);
     }
-  }, [activeType]);
+  }, [activeType, previewMode]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -216,8 +318,18 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
     setDirtyRoles((current) => new Set(current).add(activeRole));
   };
 
-  const updateLayout = <K extends keyof PrintTemplateLayout>(key: K, value: PrintTemplateLayout[K]) => {
-    updateSection({ layout: { ...section.layout, [key]: value } });
+  const customizeLayout = <K extends keyof PrintTemplateLayout>(key: K, value: PrintTemplateLayout[K]) => {
+    updateSection({ layout: { ...section.layout, preset: 'CUSTOM', [key]: value } });
+  };
+
+  const selectPreset = (preset: PrintLayoutPreset) => {
+    updateSection({ layout: applyLayoutPreset(section, preset) });
+  };
+
+  const selectLabelPaper = (value: string) => {
+    const paper = labelPaperSizes.find((item) => item.value === value);
+    if (!paper) return;
+    updateSection({ layout: { ...section.layout, labelWidthMM: paper.width, labelHeightMM: paper.height } });
   };
 
   const save = async () => {
@@ -296,7 +408,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
       {modalContextHolder}
       <PageHeading
         title={`${domainName}打印模板`}
-        description="为 58/80mm 热敏打印机维护结构化票据；不同经营场景、不同联次互不串用"
+        description="选择常用版式或继续自定义；页面预览与芯烨打印指令使用同一套配置"
         extra={<Space><Button icon={<ReloadOutlined />} loading={loading} disabled={saving} onClick={reloadWithGuard}>重新加载</Button><Button disabled={loading || saving} onClick={reset}>恢复当前默认</Button><Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={loading || !dirtyRoles.has(activeRole)} onClick={() => void save()}>保存当前联次</Button></Space>}
       />
       {businessType === 'DELIVERY' && <FeatureAvailabilityNotice className="printer-tip" feature="DELIVERY" />}
@@ -314,38 +426,69 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
       </Card>
 
       <Row gutter={[18, 18]} className={`print-builder-grid ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
-        <Col xs={24} xxl={10}>
-          <Card bordered={false} className="content-card print-preview-stage" title={<Space>{roleMeta[activeRole].icon}<span>打印效果预览</span><Tag>{section.paperWidth}mm</Tag></Space>}>
+        <Col xs={24} xl={9}>
+          <Card bordered={false} className="content-card print-preview-stage" title={<Space>{roleMeta[activeRole].icon}<span>打印效果预览</span><Tag>{activeRole === 'ITEM' ? `${section.layout.labelWidthMM} × ${section.layout.labelHeightMM}mm` : `${section.paperWidth}mm`}</Tag></Space>}>
             <PaperPreview section={section} businessType={activeType} />
-            <Typography.Paragraph type="secondary" className="print-preview-note">预览使用示例订单；实际打印会根据所绑定设备的纸张宽度自动排版。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary" className="print-preview-note">示例订单仅用于预览；字号、字段、结束标识和标签序号会同步用于实际打印。</Typography.Paragraph>
           </Card>
         </Col>
-        <Col xs={24} xxl={14}>
-          <Card bordered={false} className="content-card print-layout-editor" title="联次与纸张">
+        <Col xs={24} xl={15}>
+          <Card bordered={false} className="content-card print-layout-editor" title="选择打印版式">
             <div className="print-template-switch-row">
               <div><strong>启用{roleMeta[activeRole].label}</strong><Typography.Paragraph type="secondary">关闭后该联次不会自动生成打印任务，手工补打仍受操作权限控制。</Typography.Paragraph></div>
               <Switch checked={section.enabled} onChange={(checked) => updateSection({ enabled: checked })} />
             </div>
+            <div className="print-preset-grid" role="radiogroup" aria-label="打印版式">
+              {(Object.keys(presetMeta) as PrintLayoutPreset[]).map((preset) => {
+                const meta = presetMeta[preset];
+                const selected = section.layout.preset === preset;
+                return (
+                  <button type="button" role="radio" aria-checked={selected} className={`print-preset-option ${selected ? 'is-selected' : ''}`} key={preset} onClick={() => selectPreset(preset)}>
+                    <span className="print-preset-icon">{meta.icon}</span>
+                    <span><strong>{meta.name}</strong><small>{meta.description}</small></span>
+                    <span className="print-preset-check" aria-hidden="true">{selected ? '✓' : ''}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card bordered={false} className="content-card print-layout-editor" title={activeRole === 'ITEM' ? '标签与打印设置' : '纸张与打印设置'}>
             <Row gutter={14}>
               <Col xs={24} md={12}><label className="field-label">模板名称</label><Input value={section.name} maxLength={100} onChange={(event) => updateSection({ name: event.target.value })} /></Col>
               <Col xs={24} md={12}><label className="field-label">打印触发点</label><Select value={section.triggerEvent} style={{ width: '100%' }} onChange={(value) => updateSection({ triggerEvent: value })} options={[{ value: 'PAYMENT_SUCCESS', label: '付款成功后打印' }, { value: 'ORDER_CREATED', label: '下单后打印（含待付款）' }]} /></Col>
-              <Col xs={24} md={8}><label className="field-label">纸张宽度</label><Segmented block value={section.paperWidth} onChange={(value) => updateSection({ paperWidth: value as 58 | 80 })} options={[{ value: 58, label: '58mm' }, { value: 80, label: '80mm' }]} /></Col>
-              <Col xs={24} md={8}><label className="field-label">打印份数</label><InputNumber min={1} max={5} precision={0} value={section.copies} addonAfter="份" style={{ width: '100%' }} onChange={(value) => updateSection({ copies: Number(value || 1) })} /></Col>
-              <Col xs={24} md={8}><label className="field-label">字号</label><Segmented block value={section.layout.fontSize} onChange={(value) => updateLayout('fontSize', value as PrintTemplateLayout['fontSize'])} options={[{ value: 'NORMAL', label: '普通' }, { value: 'LARGE', label: '大字' }]} /></Col>
-              {activeRole !== 'ITEM' && <Col xs={24}><label className="field-label">抬头样式</label><Segmented value={section.layout.headerStyle} onChange={(value) => updateLayout('headerStyle', value as PrintTemplateLayout['headerStyle'])} options={[{ value: 'SIMPLE', label: '简洁模式' }, { value: 'PROMINENT', label: '突出店名' }]} /></Col>}
+              {activeRole === 'ITEM' ? (
+                <Col xs={24}>
+                  <label className="field-label">标签纸尺寸（宽 × 高）</label>
+                  <Segmented block value={`${section.layout.labelWidthMM}x${section.layout.labelHeightMM}`} onChange={(value) => selectLabelPaper(String(value))} options={labelPaperSizes.map((item) => ({ value: item.value, label: item.label }))} />
+                  <Typography.Paragraph type="secondary" className="field-help">XP-T271U 使用 40 × 30mm；这里的尺寸会直接写入每一张标签的打印指令。</Typography.Paragraph>
+                </Col>
+              ) : (
+                <Col xs={24} md={8}><label className="field-label">纸张宽度</label><Segmented block value={section.paperWidth} onChange={(value) => updateSection({ paperWidth: value as 58 | 80 })} options={[{ value: 58, label: '58mm' }, { value: 80, label: '80mm' }]} /></Col>
+              )}
+              <Col xs={24} md={activeRole === 'ITEM' ? 12 : 8}><label className="field-label">打印份数</label><InputNumber min={1} max={5} precision={0} value={section.copies} addonAfter="份" style={{ width: '100%' }} onChange={(value) => updateSection({ copies: Number(value || 1) })} /></Col>
+              <Col xs={24} md={activeRole === 'ITEM' ? 12 : 8}><label className="field-label">正文字号</label><Segmented block value={section.layout.fontSize} onChange={(value) => customizeLayout('fontSize', value as PrintTemplateLayout['fontSize'])} options={[{ value: 'NORMAL', label: '普通' }, { value: 'LARGE', label: '大字' }]} /></Col>
             </Row>
           </Card>
 
-          <Card bordered={false} className="content-card print-layout-editor" title="票据内容">
+          <Card bordered={false} className="content-card print-layout-editor" title={activeRole === 'ITEM' ? '标签显示内容' : '单据显示内容'}>
             <div className="print-visibility-grid">
               {availableVisibility.map((item) => (
-                <Checkbox key={item.key} checked={Boolean(section.layout[item.key])} onChange={(event) => updateLayout(item.key, event.target.checked as never)}>{item.label}</Checkbox>
+                <Checkbox key={item.key} checked={Boolean(section.layout[item.key])} onChange={(event) => customizeLayout(item.key, event.target.checked as never)}>{item.label}</Checkbox>
               ))}
             </div>
             <Divider />
             <Row gutter={14}>
-              <Col xs={24} md={12}><label className="field-label">自定义抬头文案</label><Input value={section.layout.customHeader} maxLength={100} placeholder="例如：预订单 / 请优先制作" onChange={(event) => updateLayout('customHeader', event.target.value)} /></Col>
-              <Col xs={24} md={12}><label className="field-label">自定义底部文案</label><Input value={section.layout.customFooter} maxLength={200} placeholder="例如：感谢光临" onChange={(event) => updateLayout('customFooter', event.target.value)} /></Col>
+              {activeRole !== 'ITEM' && <Col xs={24} md={8}><label className="field-label">联次简称</label><Input value={section.layout.copyTitle} maxLength={4} placeholder="商 / 客 / 厨" onChange={(event) => customizeLayout('copyTitle', event.target.value)} /></Col>}
+              <Col xs={24} md={activeRole === 'ITEM' ? 12 : 8}><label className="field-label">自定义抬头</label><Input value={section.layout.customHeader} maxLength={100} placeholder="例如：预订单 / 请优先制作" onChange={(event) => customizeLayout('customHeader', event.target.value)} /></Col>
+              <Col xs={24} md={activeRole === 'ITEM' ? 12 : 8}><label className="field-label">自定义底部</label><Input value={section.layout.customFooter} maxLength={200} placeholder="例如：感谢光临" onChange={(event) => customizeLayout('customFooter', event.target.value)} /></Col>
+              {activeRole !== 'ITEM' && (
+                <>
+                  <Col xs={24} md={8}><label className="field-label">显示结束标识</label><Switch checked={section.layout.showEndMarker} checkedChildren="显示" unCheckedChildren="隐藏" onChange={(checked) => customizeLayout('showEndMarker', checked)} /></Col>
+                  <Col xs={24} md={8}><label className="field-label">结束文案</label><Input value={section.layout.endMarkerText} maxLength={40} placeholder="默认：—— #取餐码 完 ——" onChange={(event) => customizeLayout('endMarkerText', event.target.value)} /></Col>
+                  <Col xs={24} md={8}><label className="field-label">打印后走纸</label><InputNumber min={0} max={8} precision={0} value={section.layout.feedLines} addonAfter="行" style={{ width: '100%' }} onChange={(value) => customizeLayout('feedLines', Number(value ?? 0))} /></Col>
+                </>
+              )}
             </Row>
           </Card>
 
@@ -363,7 +506,7 @@ export function BusinessPrintTemplatePage({ businessType }: { businessType: Orde
           <Typography.Paragraph type="secondary" className="template-meta">当前联次更新：{dateTime(section.updatedAt)}</Typography.Paragraph>
         </Col>
       </Row>
-      <Alert className="printer-compatibility-note" icon={<QrcodeOutlined />} type="success" showIcon message="模板可适配不同纸宽的打印设备" description="更换受支持的打印设备后，已有模板仍可继续使用，无需重新录入票据内容。" />
+      <Alert className="printer-compatibility-note" icon={<QrcodeOutlined />} type="success" showIcon message="预览和实际打印已使用同一套结构" description="商品标签会按整单商品数量显示 1/2、2/2；单据会突出联次简称和取餐码，并在结束标识后按设置继续走纸。" />
     </div>
   );
 }

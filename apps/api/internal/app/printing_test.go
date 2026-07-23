@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,12 @@ import (
 
 type fixedWidthPrintContent struct{ columns int }
 
+var printMarkupPattern = regexp.MustCompile(`<[^>]+>`)
+
+func plainPrintLine(value string) string {
+	return strings.TrimSpace(printMarkupPattern.ReplaceAllString(value, ""))
+}
+
 func (matcher fixedWidthPrintContent) Match(value driver.Value) bool {
 	content, ok := value.(string)
 	if !ok {
@@ -26,6 +33,10 @@ func (matcher fixedWidthPrintContent) Match(value driver.Value) bool {
 	}
 	foundSeparator := false
 	for _, line := range strings.Split(content, "\n") {
+		line = plainPrintLine(line)
+		if line == "" {
+			continue
+		}
 		if printDisplayWidth(line) > matcher.columns {
 			return false
 		}
@@ -86,9 +97,13 @@ func TestNormalizePrinterCopyRoleRoutingAndLegacyDefaults(t *testing.T) {
 	if err := normalizePrinterInput(&legacyReceipt); err != nil || strings.Join(legacyReceipt.CopyRoles, ",") != "MERCHANT" {
 		t.Fatalf("legacy receipt must conservatively default to MERCHANT: %+v err=%v", legacyReceipt, err)
 	}
-	legacyLabel := printerInput{OutputType: "LABEL"}
+	legacyLabel := printerInput{OutputType: "LABEL", LabelWidthMM: 40, LabelHeightMM: 30}
 	if err := normalizePrinterInput(&legacyLabel); err != nil || strings.Join(legacyLabel.CopyRoles, ",") != "ITEM" {
 		t.Fatalf("legacy label must default to ITEM: %+v err=%v", legacyLabel, err)
+	}
+	missingLabelSize := printerInput{OutputType: "LABEL"}
+	if err := normalizePrinterInput(&missingLabelSize); err == nil {
+		t.Fatal("label printers must require physical label dimensions")
 	}
 	invalid := printerInput{OutputType: "RECEIPT", CopyRoles: []string{"ITEM"}}
 	if err := normalizePrinterInput(&invalid); err == nil {
@@ -113,10 +128,10 @@ func TestUpdatePrinterAcceptsUnchangedValues(t *testing.T) {
 		WithArgs(int64(11), int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery("SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices").
+	mock.ExpectQuery("SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices").
 		WithArgs(int64(11), int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
-			AddRow(11, 9, "后厨打印机", "mock", "Mock Printer", "MOCK-11", 58, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT", "ticket", "ACTIVE"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "label_width_mm", "label_height_mm", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
+			AddRow(11, 9, "后厨打印机", "mock", "Mock Printer", "MOCK-11", 58, nil, nil, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT", "ticket", "ACTIVE"))
 
 	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
 	router := chi.NewRouter()
@@ -186,13 +201,13 @@ func TestLabelRenderingSplitsByItemQuantityAndReplacesItemVariables(t *testing.T
 			"modifiers": []any{map[string]any{"name": "燕麦奶", "quantity": float64(1)}},
 		}}},
 	}
-	template := "{{store_name}} #{{pickup_no}} {{paid_amount}}\n{{product_name}} {{sku_name}} x{{quantity}}/{{ordered_quantity}}\n{{options}}\n{{modifiers}}\n{{item_remark}}\n{{items}}"
+	template := "{{store_name}} #{{pickup_no}} {{paid_amount}} {{item_sequence}}\n{{product_name}} {{sku_name}} x{{quantity}}/{{ordered_quantity}}\n{{options}}\n{{modifiers}}\n{{item_remark}}\n{{items}}"
 	contents := renderPrintContents("LABEL", template, order, "", false)
 	if len(contents) != 2 {
 		t.Fatalf("two ordered drinks must create two labels, got %d", len(contents))
 	}
-	for _, content := range contents {
-		for _, expected := range []string{"码农咖啡 #0023 18.90", "拿铁 大杯 x1/2", "温度：少冰", "燕麦奶", "少冰"} {
+	for index, content := range contents {
+		for _, expected := range []string{fmt.Sprintf("码农咖啡 #0023 18.90 %d/2", index+1), "拿铁 大杯 x1/2", "温度：少冰", "燕麦奶", "少冰"} {
 			if !strings.Contains(content, expected) {
 				t.Fatalf("label missing %q: %s", expected, content)
 			}
@@ -223,12 +238,16 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	layout["customFooter"] = "谢谢惠顾 {{order_no}}"
 	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, Layout: layout}
 	content := renderStructuredReceipt(template, order, "", false)
-	for _, expected := range []string{"【商家联】", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "拿铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001"} {
+	for _, expected := range []string{"<CB>", "（商）取餐码：0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "拿铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "—— #0023 完 ——", "<BR>"} {
 		if !strings.Contains(content, expected) {
 			t.Fatalf("structured receipt missing %q:\n%s", expected, content)
 		}
 	}
 	for _, line := range strings.Split(content, "\n") {
+		line = plainPrintLine(line)
+		if line == "" {
+			continue
+		}
 		if got := printDisplayWidth(line); got > 32 {
 			t.Fatalf("58mm line exceeds 32 display columns (%d): %q", got, line)
 		}
@@ -241,10 +260,14 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	template.PaperWidth = 80
 	template.Layout = defaultStructuredPrintLayout("KITCHEN")
 	kitchen := renderStructuredReceipt(template, order, "", false)
-	if !strings.Contains(kitchen, "【后厨联】") || strings.Contains(kitchen, "¥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
+	if !strings.Contains(kitchen, "（厨）取餐码：0023") || strings.Contains(kitchen, "¥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
 		t.Fatalf("kitchen copy must emphasize production data without prices:\n%s", kitchen)
 	}
 	for _, line := range strings.Split(kitchen, "\n") {
+		line = plainPrintLine(line)
+		if line == "" {
+			continue
+		}
 		if got := printDisplayWidth(line); got > 24 {
 			t.Fatalf("80mm LARGE line exceeds 24 display columns (%d): %q", got, line)
 		}
@@ -261,6 +284,7 @@ func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) 
 		}}},
 	}
 	layout := defaultStructuredPrintLayout("ITEM")
+	layout["showOrderNo"] = true
 	layout["showPrices"] = true
 	layout["showPayment"] = true
 	layout["showQrCode"] = true
@@ -269,8 +293,8 @@ func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) 
 	if len(contents) != 2 {
 		t.Fatalf("quantity two must create two structured item labels, got %d", len(contents))
 	}
-	for _, content := range contents {
-		for _, expected := range []string{"商品标签", "商品：美式", "规格：大杯", "温度：热", "备注：不要糖", "价格", "实付", "订单备注：整单加急", "订单码"} {
+	for index, content := range contents {
+		for _, expected := range []string{"<PAGE l=\"2\"><SIZE>40,30</SIZE>", fmt.Sprintf("数量：%d/2", index+1), "美式", "规格：大杯", "属性：温度：热", "备注：不要糖", "订单：TB8", `h="2"`} {
 			if !strings.Contains(content, expected) {
 				t.Fatalf("structured label missing %q:\n%s", expected, content)
 			}
@@ -278,15 +302,13 @@ func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) 
 		if strings.Contains(content, "店内堂食") || strings.Contains(content, "码农咖啡") {
 			t.Fatalf("default item label must keep the compact frontend contract:\n%s", content)
 		}
-		for _, line := range strings.Split(content, "\n") {
-			if got := printDisplayWidth(line); got > 48 {
-				t.Fatalf("80mm line exceeds 48 display columns (%d): %q", got, line)
-			}
+		if !strings.HasSuffix(content, "</PAGE>") {
+			t.Fatalf("structured label must close the physical label page:\n%s", content)
 		}
 	}
 
 	layout["showRemark"] = false
-	withoutRemarks := renderStructuredLabel(templateWithLayout(template, layout), order, order.Items[0], "", false)
+	withoutRemarks := renderStructuredLabel(templateWithLayout(template, layout), order, order.Items[0], 1, 2, "", false)
 	if strings.Contains(withoutRemarks, "不要糖") || strings.Contains(withoutRemarks, "整单加急") {
 		t.Fatalf("showRemark=false must hide item and order remarks:\n%s", withoutRemarks)
 	}
@@ -354,10 +376,10 @@ func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,status,deleted_at FROM stores")).
 		WithArgs(int64(5), int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "status", "deleted_at"}).AddRow(true, false, "ACTIVE", nil))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,store_id,name,provider,model,sn,paper_width,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices")).
 		WithArgs(int64(2), int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
-			AddRow(31, 5, "收银台", "mock", "virtual", "SN31", 58, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT,CUSTOMER", "legacy", "ACTIVE"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "label_width_mm", "label_height_mm", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).
+			AddRow(31, 5, "收银台", "mock", "virtual", "SN31", 58, nil, nil, "PAYMENT_SUCCESS", "RECEIPT", "MERCHANT,CUSTOMER", "legacy", "ACTIVE"))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,template_type,COALESCE(copy_role,CASE WHEN template_type='LABEL' THEN 'ITEM' ELSE 'MERCHANT' END),content_text,trigger_event,copies,paper_width,COALESCE(layout_json,'{}'),status")).
 		WithArgs(int64(2), int64(5), orderTypeDineIn, "RECEIPT").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "template_type", "copy_role", "content_text", "trigger_event", "copies", "paper_width", "layout_json", "status"}).

@@ -79,8 +79,31 @@ func TestPrinterRouterUsesDeviceProviderAndPrintEndpoint(t *testing.T) {
 	if err != nil || result.ProviderJobNo != "ORDER-1" || path != "/print" {
 		t.Fatalf("unexpected receipt print result=%+v path=%s err=%v", result, path, err)
 	}
-	result, err = router.Print(context.Background(), PrintRequest{Provider: "xpyun", DeviceSN: "SN-2", OutputType: "LABEL", Content: "<SIZE>50,30</SIZE><TEXT>test</TEXT>"})
+	result, err = router.Print(context.Background(), PrintRequest{Provider: "xpyun", DeviceSN: "SN-2", OutputType: "LABEL", LabelWidthMM: 40, LabelHeightMM: 30, Content: "test"})
 	if err != nil || result.ProviderJobNo != "ORDER-1" || path != "/printLabel" {
 		t.Fatalf("unexpected label print result=%+v path=%s err=%v", result, path, err)
+	}
+}
+
+func TestXPrinterLabelContentIncludesConfiguredSizeAndEscapesText(t *testing.T) {
+	t.Parallel()
+	content := xPrinterLabelContent(40, 30, "冰拿铁 <少冰>\n燕麦奶")
+	for _, expected := range []string{
+		"<PAGE><SIZE>40,30</SIZE>",
+		`<TEXT x="8" y="8" font="9" w="1" h="1" r="0">冰拿铁 &lt;少冰&gt;</TEXT>`,
+		`<TEXT x="8" y="35" font="9" w="1" h="1" r="0">燕麦奶</TEXT>`,
+		"</PAGE>",
+	} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("label content missing %q: %s", expected, content)
+		}
+	}
+}
+
+func TestXPrinterRejectsLabelWithoutDimensions(t *testing.T) {
+	t.Parallel()
+	printer := NewXPrinter(XPrinterConfig{User: "developer", UserKey: "secret"})
+	if _, err := printer.Print(context.Background(), PrintRequest{OutputType: "LABEL", Content: "test"}); err == nil || !strings.Contains(err.Error(), "缺少标签尺寸") {
+		t.Fatalf("expected missing dimensions error, got %v", err)
 	}
 }
