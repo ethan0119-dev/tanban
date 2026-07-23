@@ -176,6 +176,17 @@ Page({
     if (!address) return wx.showToast({ title: "商家暂未配置地址", icon: "none" });
     wx.setClipboardData({ data: address });
   },
+  openStoreLocation() {
+    const store = this.data.store;
+    if (!store?.location) return wx.showToast({ title: "商家暂未配置地图位置", icon: "none" });
+    wx.openLocation({
+      latitude: store.location.latitude,
+      longitude: store.location.longitude,
+      name: store.name,
+      address: store.address || "",
+      scale: 16,
+    });
+  },
   previewCustomerQR() {
     const url = this.data.store?.customerService?.qrUrl || "";
     if (!url) return wx.showToast({ title: "商家暂未上传客服二维码", icon: "none" });

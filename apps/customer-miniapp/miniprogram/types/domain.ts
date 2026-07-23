@@ -156,6 +156,7 @@ export interface Store {
   businessHoursSummary?: string;
   phone?: string;
   businessHours?: string;
+  location?: { latitude: number; longitude: number };
   theme?: StoreTheme;
   decoration?: DecorationConfig;
   decorationVersion?: number;

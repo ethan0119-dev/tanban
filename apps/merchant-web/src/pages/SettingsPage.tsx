@@ -141,6 +141,7 @@ export function SettingsPage() {
   const [documents, setDocuments] = useState<Pick<MerchantSettings, 'businessLicenseUrl' | 'foodBusinessLicenseUrl'>>({});
   const [environmentImages, setEnvironmentImages] = useState<string[]>([]);
   const [foodSafetyImages, setFoodSafetyImages] = useState<string[]>([]);
+  const [locatingStore, setLocatingStore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -247,6 +248,29 @@ export function SettingsPage() {
   const mapURL = useMemo(() => location != null && latitude != null
     ? `https://uri.amap.com/marker?position=${location},${latitude}&name=${encodeURIComponent(address || form.getFieldValue('storeName') || '门店位置')}`
     : '', [address, form, latitude, location]);
+  const locateStore = () => {
+    if (!navigator.geolocation) {
+      messageApi.error('当前浏览器不支持定位，请手动填写经纬度');
+      return;
+    }
+    setLocatingStore(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        form.setFieldsValue({
+          storeLatitude: Number(coords.latitude.toFixed(7)),
+          storeLongitude: Number(coords.longitude.toFixed(7)),
+        });
+        setLocatingStore(false);
+        messageApi.success('已选择当前位置，请核对地图后保存');
+      },
+      (error) => {
+        setLocatingStore(false);
+        const denied = error.code === error.PERMISSION_DENIED;
+        messageApi.error(denied ? '定位权限未开启，请在浏览器地址栏允许位置权限后重试' : '暂时无法获取当前位置，请手动填写经纬度');
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
+  };
 
   const basicTab = (
     <div className="store-settings-stack">
@@ -280,11 +304,16 @@ export function SettingsPage() {
           <Col xs={24} lg={12}><Form.Item label="详细地址" name="address" rules={[{ max: 255 }]}><Input prefix={<EnvironmentOutlined />} placeholder="街道、商场、楼层或摊位位置" /></Form.Item></Col>
         </Row>
         <div className="store-location-box">
-          <div className="store-location-copy"><GlobalOutlined /><div><strong>门店地图定位</strong><Typography.Text type="secondary">经纬度同时填写后，可打开高德地图核对门店位置。</Typography.Text></div></div>
+          <div className="store-location-copy"><GlobalOutlined /><div><strong>门店地图定位</strong><Typography.Text type="secondary">在门店现场可直接选择当前位置，也可以手动填写经纬度；保存后顾客可在小程序中导航到店。</Typography.Text></div></div>
           <Row gutter={12} className="store-coordinate-row">
             <Col xs={24} sm={9}><Form.Item name="storeLongitude" label="经度" dependencies={['storeLatitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLatitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('经纬度需同时填写')); } })]}><InputNumber min={-180} max={180} precision={7} placeholder="117.1714700" style={{ width: '100%' }} /></Form.Item></Col>
             <Col xs={24} sm={9}><Form.Item name="storeLatitude" label="纬度" dependencies={['storeLongitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLongitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('经纬度需同时填写')); } })]}><InputNumber min={-90} max={90} precision={7} placeholder="39.1435280" style={{ width: '100%' }} /></Form.Item></Col>
-            <Col xs={24} sm={6} className="store-map-action"><Button icon={<EnvironmentOutlined />} href={mapURL || undefined} target="_blank" disabled={!mapURL}>在地图中查看</Button></Col>
+            <Col xs={24} sm={6} className="store-map-action">
+              <Space wrap>
+                <Button icon={<EnvironmentOutlined />} loading={locatingStore} onClick={locateStore}>选择当前位置</Button>
+                <Button href={mapURL || undefined} target="_blank" disabled={!mapURL}>地图核对</Button>
+              </Space>
+            </Col>
           </Row>
         </div>
         <Form.Item label="店铺公告" name="announcement" rules={[{ max: 500 }]}><Input.TextArea rows={3} maxLength={120} showCount placeholder="营业提醒、取餐说明等内容，将展示在顾客端" /></Form.Item>

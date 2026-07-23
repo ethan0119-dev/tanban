@@ -203,15 +203,19 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 	var orderingMode, customerServicePhone, customerServiceWechat, customerServiceQRURL, privacyPolicyText, userAgreementText string
 	var distanceCheckEnabled, requireCustomerPhone, allowOrderRemark, allowItemRemark bool
 	var distanceLimitM int
-	err = s.DB.QueryRowContext(ctx, `SELECT ordering_mode,distance_check_enabled,distance_limit_m,require_customer_phone,
+	var storeLatitude, storeLongitude sql.NullFloat64
+	err = s.DB.QueryRowContext(ctx, `SELECT ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,require_customer_phone,
 		allow_order_remark,allow_item_remark,customer_service_phone,customer_service_wechat,customer_service_qr_url,
 		privacy_policy_text,user_agreement_text FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
-		Scan(&orderingMode, &distanceCheckEnabled, &distanceLimitM, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
+		Scan(&orderingMode, &distanceCheckEnabled, &distanceLimitM, &storeLatitude, &storeLongitude, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
 			&customerServicePhone, &customerServiceWechat, &customerServiceQRURL, &privacyPolicyText, &userAgreementText)
 	if err == nil {
 		view["orderingSettings"] = map[string]any{"orderingMode": orderingMode, "distanceCheckEnabled": distanceCheckEnabled,
 			"distanceLimitM": distanceLimitM, "requireCustomerPhone": requireCustomerPhone, "allowOrderRemark": allowOrderRemark,
 			"allowItemRemark": allowItemRemark}
+		if storeLatitude.Valid && storeLongitude.Valid {
+			view["location"] = map[string]any{"latitude": storeLatitude.Float64, "longitude": storeLongitude.Float64}
+		}
 		view["customerService"] = map[string]any{"phone": customerServicePhone, "wechat": customerServiceWechat, "qrUrl": customerServiceQRURL}
 		view["legal"] = map[string]any{"privacyPolicy": privacyPolicyText, "userAgreement": userAgreementText}
 	} else if !errors.Is(err, sql.ErrNoRows) {
