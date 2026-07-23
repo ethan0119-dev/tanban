@@ -385,6 +385,10 @@ func TestStructuredReceiptPrintsProductAndOptionsBeforeBoldValues(t *testing.T) 
 	if !strings.Contains(content, "<BOLD>") || !strings.Contains(content, "x1") || !strings.Contains(content, "12.00") {
 		t.Fatalf("quantity, unit price and amount must be emitted on a bold value row:\n%s", content)
 	}
+	valueLine := printReceiptItemValueLines(1, 1200, 1200, printableColumns(80, "NORMAL"), true)[0]
+	if !strings.HasPrefix(valueLine, " ") || !strings.Contains(content, "<BOLD>"+valueLine+"</BOLD>") {
+		t.Fatalf("printer markup must preserve the leading column padding on the value row:\n%s", content)
+	}
 	if strings.Contains(content, "<L>冰<BR></L>") || strings.Contains(content, "<L>无糖<BR></L>") {
 		t.Fatalf("option values must not be emitted as standalone rows:\n%s", content)
 	}
