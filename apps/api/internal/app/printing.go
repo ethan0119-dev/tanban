@@ -684,18 +684,23 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		showOptionGroupNames := layoutBool(template.Layout, "showOptionGroupNames", false)
 		if layoutBool(template.Layout, "showItemHeader", true) {
 			for _, line := range printReceiptItemHeader(width, showPrices) {
-				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
+				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), false)
 			}
 		}
 		for _, item := range order.Items {
 			name := printableText(strings.TrimSpace(item.ProductName + " " + item.SKUName))
-			for _, line := range printReceiptItemLines(name, item.Quantity, item.UnitPriceCents, item.SubtotalCents, width, showPrices) {
+			if showOptions {
+				if options := printableItemOptions(item, showOptionGroupNames); len(options) > 0 {
+					name += "（" + strings.Join(options, "，") + "）"
+				}
+			}
+			for _, line := range wrapPrintText(name, width) {
+				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), false)
+			}
+			for _, line := range printReceiptItemValueLines(item.Quantity, item.UnitPriceCents, item.SubtotalCents, width, showPrices) {
 				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
 			}
 			if showOptions {
-				for _, option := range printableItemOptions(item, showOptionGroupNames) {
-					appendReceiptBodyLines(&output, wrapPrintText("  "+option, width), fontSize)
-				}
 				if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
 					appendReceiptBodyLines(&output, wrapPrintText("  加料："+strings.Join(modifiers, "、"), width), fontSize)
 				}
@@ -1066,8 +1071,8 @@ func printReceiptItemHeader(width int, showPrices bool) []string {
 	}
 	if width < 28 {
 		return []string{
-			printTwoColumns("商品", "数量", width),
-			printTwoColumns("单价", "金额", width),
+			"商品",
+			printCompactReceiptValueColumns("数量", "单价", "金额", width),
 		}
 	}
 	nameWidth, quantityWidth, unitWidth, amountWidth := receiptItemColumnWidths(width)
@@ -1079,30 +1084,21 @@ func printReceiptItemHeader(width int, showPrices bool) []string {
 	)}
 }
 
-func printReceiptItemLines(name string, quantity int, unitCents, subtotalCents int64, width int, showPrices bool) []string {
+func printReceiptItemValueLines(quantity int, unitCents, subtotalCents int64, width int, showPrices bool) []string {
 	quantityText := "x" + strconv.Itoa(quantity)
 	if !showPrices {
-		return printTwoColumnsWrapped(name, quantityText, width)
+		return []string{printTwoColumns("", quantityText, width)}
 	}
 	if width < 28 {
-		lines := printTwoColumnsWrapped(name, quantityText, width)
-		return append(lines, printTwoColumns(formatPrintAmount(unitCents), formatPrintAmount(subtotalCents), width))
+		return []string{printCompactReceiptValueColumns(quantityText, formatPrintAmount(unitCents), formatPrintAmount(subtotalCents), width)}
 	}
 	nameWidth, quantityWidth, unitWidth, amountWidth := receiptItemColumnWidths(width)
-	nameLines := wrapPrintText(name, nameWidth)
-	if len(nameLines) == 0 {
-		nameLines = []string{""}
-	}
-	lines := []string{joinReceiptColumns(
-		printTableCell(nameLines[0], nameWidth, false),
+	return []string{joinReceiptColumns(
+		printTableCell("", nameWidth, false),
 		printTableCell(quantityText, quantityWidth, true),
 		printTableCell(formatPrintAmount(unitCents), unitWidth, true),
 		printTableCell(formatPrintAmount(subtotalCents), amountWidth, true),
 	)}
-	for _, continuation := range nameLines[1:] {
-		lines = append(lines, fitPrintText(continuation, nameWidth))
-	}
-	return lines
 }
 
 func receiptItemColumnWidths(width int) (name, quantity, unit, amount int) {
@@ -1125,6 +1121,17 @@ func printTableCell(value string, width int, right bool) string {
 
 func joinReceiptColumns(columns ...string) string {
 	return strings.Join(columns, " ")
+}
+
+func printCompactReceiptValueColumns(quantity, unit, amount string, width int) string {
+	quantityWidth := 4
+	unitWidth := (width - quantityWidth - 2) / 2
+	amountWidth := width - quantityWidth - unitWidth - 2
+	return joinReceiptColumns(
+		printTableCell(quantity, quantityWidth, true),
+		printTableCell(unit, unitWidth, true),
+		printTableCell(amount, amountWidth, true),
+	)
 }
 
 func centerPrintText(value string, width int) string {

@@ -183,8 +183,8 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
   const scene = businessType === 'DINE_IN' ? '桌码堂食' : businessType === 'TAKEOUT' ? '到店自取' : '外卖配送';
   const sceneShort = businessType === 'DINE_IN' ? '堂食' : businessType === 'TAKEOUT' ? '自提' : '外卖';
   const products = [
-    { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰 / 不另外加糖', namedOptions: '温度：少冰 / 甜度：不另外加糖' },
-    { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热 / 加燕麦奶', namedOptions: '温度：热 / 加料：燕麦奶' },
+    { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰，不另外加糖', namedOptions: '温度：少冰，甜度：不另外加糖' },
+    { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热，加燕麦奶', namedOptions: '温度：热，加料：燕麦奶' },
   ];
 
   if (label) {
@@ -233,15 +233,18 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
       {layout.showItems && (
         <>
           <div className="thermal-rule" />
-          {layout.showItemHeader && <div className="thermal-items-head"><b>商品</b><b>数量</b>{layout.showPrices && <><b>单价</b><b>金额</b></>}</div>}
+          {layout.showItemHeader && <div className="thermal-items-head"><span>商品</span><span>数量</span>{layout.showPrices && <><span>单价</span><span>金额</span></>}</div>}
           {products.map((product) => (
             <div className="thermal-item" key={product.name}>
-              <div className="thermal-item-line">
-                <b>{product.name} <small>{product.sku}</small></b>
-                <span>×{product.quantity}</span>
-                {layout.showPrices && <><span>{cents(product.price)}</span><span>{cents(product.price * product.quantity)}</span></>}
+              <div className="thermal-item-name">
+                {product.name} {product.sku}
+                {layout.showItemOptions && `（${layout.showOptionGroupNames ? product.namedOptions : product.options}）`}
               </div>
-              {layout.showItemOptions && <small>{layout.showOptionGroupNames ? product.namedOptions : product.options}</small>}
+              <div className="thermal-item-values">
+                <span aria-hidden="true" />
+                <strong>×{product.quantity}</strong>
+                {layout.showPrices && <><strong>{cents(product.price)}</strong><strong>{cents(product.price * product.quantity)}</strong></>}
+              </div>
             </div>
           ))}
         </>
