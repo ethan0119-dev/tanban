@@ -52,6 +52,53 @@ func (matcher fixedWidthPrintContent) Match(value driver.Value) bool {
 	return foundSeparator
 }
 
+func TestReprintOrderInputAcceptsLegacyClientFields(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/orders/8/reprint", bytes.NewBufferString(
+		`{"type":"RECEIPT","business_type":"DINE_IN","markAsReprint":true}`,
+	))
+	response := httptest.NewRecorder()
+	var input reprintOrderInput
+	if !decodeJSON(response, request, &input) {
+		t.Fatalf("legacy reprint payload must remain compatible: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if input.Type != "RECEIPT" || input.BusinessType != "DINE_IN" || !input.MarkAsReprint {
+		t.Fatalf("unexpected decoded reprint input: %+v", input)
+	}
+}
+
+func TestClonePrintJobForReprintCreatesIndependentJob(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	sourceContent := "<CB><BOLD>（商）取餐码：0028</BOLD><BR></CB>\n<L>美式 x1  ¥12.00<BR></L><CB>—— #0028 完 ——<BR></CB>"
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT j.order_id,j.printer_id,j.template_id,j.copy_role,j.paper_width,j.content_text,d.output_type
+		FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id AND d.tenant_id=j.tenant_id AND d.store_id=j.store_id
+		WHERE j.id=? AND j.tenant_id=? AND j.store_id=? AND j.status IN ('SUCCESS','FAILED','UNKNOWN')`)).
+		WithArgs(int64(28), int64(5), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"order_id", "printer_id", "template_id", "copy_role", "paper_width", "content_text", "output_type"}).
+			AddRow(100, 3, 7, "MERCHANT", 58, sourceContent, "RECEIPT"))
+
+	expectedContent := "<CB><BOLD>【补打】</BOLD><BR></CB><CB><BOLD>(商)取餐码:0028</BOLD><BR></CB><L>美式 x1  12.00<BR></L><CB>--#0028完--<BR></CB>"
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO print_jobs(tenant_id,store_id,order_id,printer_id,template_id,copy_role,paper_width,content_text,status,attempts,is_reprint,reprint_of,error_message,created_by)
+		VALUES(?,?,?,?,?,?,?,?,'PENDING',0,1,?,'',?)`)).
+		WithArgs(int64(5), int64(9), int64(100), int64(3), int64(7), "MERCHANT", 58, expectedContent, int64(28), int64(12)).
+		WillReturnResult(sqlmock.NewResult(29, 1))
+
+	reprintID, err := clonePrintJobForReprint(context.Background(), db, 5, 9, 28, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reprintID != 29 {
+		t.Fatalf("expected independent reprint job 29, got %d", reprintID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRenderTicketIncludesProductConfiguration(t *testing.T) {
 	order := orderDTO{OrderNo: "TB1", OrderType: orderTypeDineIn, TotalCents: 1800, Table: &orderTableDTO{Name: "B02", AreaName: "大厅", TableCode: "B02"}, Items: []orderItemDTO{{
 		ProductName: "拿铁", SKUName: "大杯", Quantity: 1, ItemRemark: "奶泡少一点",

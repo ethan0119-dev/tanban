@@ -232,7 +232,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
     if (!selected) return;
     setActionLoading(true);
     try {
-      await api.post(`/merchant/orders/${selected.id}/reprint`, { type: 'RECEIPT', business_type: businessType, markAsReprint: true });
+      await api.post(`/merchant/orders/${selected.id}/reprint`, { output_type: 'RECEIPT' });
       messageApi.success('补打任务已提交，小票将标记“补打”');
     } catch (error) {
       messageApi.error(errorMessage(error));

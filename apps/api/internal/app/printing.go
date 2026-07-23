@@ -1279,16 +1279,20 @@ func printableText(value string) string {
 	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(value))
 }
 
+type reprintOrderInput struct {
+	Type          string `json:"type"`
+	OutputType    string `json:"output_type"`
+	BusinessType  string `json:"business_type"`
+	MarkAsReprint bool   `json:"markAsReprint"`
+}
+
 func (s *Server) reprintOrder(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "orderID")
 	if !ok {
 		return
 	}
 	identity := currentIdentity(r.Context())
-	input := struct {
-		Type       string `json:"type"`
-		OutputType string `json:"output_type"`
-	}{}
+	input := reprintOrderInput{}
 	if r.ContentLength != 0 && !decodeJSON(w, r, &input) {
 		return
 	}
@@ -1367,17 +1371,75 @@ func (s *Server) retryPrintJob(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE print_jobs SET status='PENDING',attempts=0,is_reprint=1,
-		content_text=IF(content_text LIKE '【补打】%',content_text,CONCAT('【补打】\n',content_text)),error_message=''
-		WHERE id=? AND tenant_id=? AND store_id=? AND status IN ('FAILED','UNKNOWN')`, id, identity.TenantID, storeID)
+	reprintID, err := clonePrintJobForReprint(r.Context(), s.DB, identity.TenantID, storeID, id, identity.UserID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "print job not found or is still processing")
+			return
+		}
 		handleSQLError(w, err)
 		return
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "print job not found")
-		return
+	s.audit(r.Context(), identity, "print_job.reprint", "print_job", int64String(reprintID), map[string]any{"reprint_of": id}, r)
+	writeData(w, http.StatusAccepted, map[string]any{"id": reprintID, "status": "PENDING", "is_reprint": true, "reprint_of": id})
+}
+
+func clonePrintJobForReprint(ctx context.Context, executor sqlQueryExecer, tenantID, storeID, sourceID, actorID int64) (int64, error) {
+	var orderID, printerID int64
+	var templateID sql.NullInt64
+	var copyRole, content, outputType string
+	var paperWidth int
+	err := executor.QueryRowContext(ctx, `SELECT j.order_id,j.printer_id,j.template_id,j.copy_role,j.paper_width,j.content_text,d.output_type
+		FROM print_jobs j JOIN printer_devices d ON d.id=j.printer_id AND d.tenant_id=j.tenant_id AND d.store_id=j.store_id
+		WHERE j.id=? AND j.tenant_id=? AND j.store_id=? AND j.status IN ('SUCCESS','FAILED','UNKNOWN')`,
+		sourceID, tenantID, storeID).Scan(&orderID, &printerID, &templateID, &copyRole, &paperWidth, &content, &outputType)
+	if err != nil {
+		return 0, err
 	}
-	s.audit(r.Context(), identity, "print_job.retry", "print_job", int64String(id), nil, r)
-	writeData(w, http.StatusAccepted, map[string]any{"id": id, "status": "PENDING", "is_reprint": true})
+	content = markPrintJobContentAsReprint(content, outputType)
+	result, err := executor.ExecContext(ctx, `INSERT INTO print_jobs(tenant_id,store_id,order_id,printer_id,template_id,copy_role,paper_width,content_text,status,attempts,is_reprint,reprint_of,error_message,created_by)
+		VALUES(?,?,?,?,?,?,?,?,'PENDING',0,1,?,'',?)`,
+		tenantID, storeID, orderID, printerID, nullableID(templateID.Int64), copyRole, paperWidth, content, sourceID, actorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func markPrintJobContentAsReprint(content, outputType string) string {
+	if strings.Contains(content, "【补打】") {
+		return content
+	}
+	content = strings.NewReplacer("¥", "", "￥", "").Replace(content)
+	if strings.EqualFold(outputType, "RECEIPT") && strings.Contains(strings.ToUpper(content), "<BR>") {
+		content = strings.ReplaceAll(strings.ReplaceAll(content, "\r", ""), "\n", "")
+		content = compactStoredPickupHeadline(content)
+		content = strings.ReplaceAll(content, "—— #", "--#")
+		content = strings.ReplaceAll(content, " 完 ——", "完--")
+		return "<CB><BOLD>【补打】</BOLD><BR></CB>" + content
+	}
+	if strings.EqualFold(outputType, "LABEL") && strings.Contains(strings.ToUpper(content), "<PAGE") {
+		if textStart := strings.Index(strings.ToUpper(content), "<TEXT "); textStart >= 0 {
+			if textEnd := strings.Index(content[textStart:], ">"); textEnd >= 0 {
+				valueStart := textStart + textEnd + 1
+				return content[:valueStart] + "补打 " + content[valueStart:]
+			}
+		}
+		return content
+	}
+	return "【补打】\n" + content
+}
+
+func compactStoredPickupHeadline(content string) string {
+	const marker = "）取餐码："
+	end := strings.Index(content, marker)
+	if end < 0 {
+		return content
+	}
+	start := strings.LastIndex(content[:end], "（")
+	if start < 0 {
+		return content
+	}
+	title := fitPrintText(content[start+len("（"):end], 2)
+	return content[:start] + "(" + title + ")取餐码:" + content[end+len(marker):]
 }
