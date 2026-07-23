@@ -360,6 +360,36 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	}
 }
 
+func TestStructuredReceiptPrintsProductAndOptionsBeforeBoldValues(t *testing.T) {
+	t.Parallel()
+	order := orderDTO{
+		ID: 24, StoreName: "码农咖啡", OrderNo: "TB24", OrderType: orderTypeTakeout,
+		TotalCents: 1200, PaidCents: 1200,
+		Items: []orderItemDTO{{
+			ProductName: "美式咖啡", SKUName: "标准杯", Quantity: 1,
+			UnitPriceCents: 1200, SubtotalCents: 1200,
+			Configuration: map[string]any{"options": []any{
+				map[string]any{"groupName": "温度", "valueName": "冰"},
+				map[string]any{"groupName": "甜度", "valueName": "无糖"},
+			}},
+		}},
+	}
+	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 80, Layout: defaultStructuredPrintLayout("MERCHANT")}
+	content := renderStructuredReceipt(template, order, "", false)
+	if !strings.Contains(content, "<L>商品") || strings.Contains(content, "<BOLD>商品") {
+		t.Fatalf("item table header must use normal weight:\n%s", content)
+	}
+	if !strings.Contains(content, "<L>美式咖啡 标准杯（冰，无糖）<BR></L>") || strings.Contains(content, "<BOLD>美式咖啡") {
+		t.Fatalf("product, SKU and option values must share one normal-weight line:\n%s", content)
+	}
+	if !strings.Contains(content, "<BOLD>") || !strings.Contains(content, "x1") || !strings.Contains(content, "12.00") {
+		t.Fatalf("quantity, unit price and amount must be emitted on a bold value row:\n%s", content)
+	}
+	if strings.Contains(content, "<L>冰<BR></L>") || strings.Contains(content, "<L>无糖<BR></L>") {
+		t.Fatalf("option values must not be emitted as standalone rows:\n%s", content)
+	}
+}
+
 func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) {
 	t.Parallel()
 	order := orderDTO{

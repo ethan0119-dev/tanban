@@ -435,12 +435,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .thermal-pair span { flex: 0 0 auto; color: #4c4845; }
 .thermal-pair b { text-align: right; font-weight: 600; }
 .thermal-address { margin: 7px 0; padding: 7px 0; border-block: 1px dotted #77716d; font-weight: 600; }
-.thermal-items-head, .thermal-item-line { display: grid; grid-template-columns: minmax(0, 1fr) 36px 55px 58px; align-items: start; gap: 4px; }
-.thermal-items-head > *:nth-child(n+2), .thermal-item-line > *:nth-child(n+2) { text-align: right; }
-.thermal-items-head:not(:has(> :nth-child(3))), .thermal-item-line:not(:has(> :nth-child(3))) { grid-template-columns: minmax(0, 1fr) 42px; }
+.thermal-items-head, .thermal-item-values { display: grid; grid-template-columns: minmax(0, 1fr) 36px 55px 58px; align-items: start; gap: 4px; }
+.thermal-items-head { font-weight: 400; }
+.thermal-items-head > *:nth-child(n+2), .thermal-item-values > *:nth-child(n+2) { text-align: right; }
+.thermal-items-head:not(:has(> :nth-child(3))), .thermal-item-values:not(:has(> :nth-child(3))) { grid-template-columns: minmax(0, 1fr) 42px; }
 .thermal-item { margin: 8px 0 10px; }
-.thermal-item-line b small { display: block; color: #4c4845; font-size: .82em; font-weight: 500; }
-.thermal-item > small { display: block; margin-top: 3px; color: #4e4946; }
+.thermal-item-name { color: #2f2b29; font-weight: 400; }
+.thermal-item-values { margin-top: 3px; }
+.thermal-item-values strong { font-weight: 700; }
 .thermal-total { display: flex; align-items: baseline; justify-content: space-between; margin: 5px 0; font-weight: 500; }
 .thermal-total strong { font-size: inherit; font-weight: inherit; }
 .thermal-total.is-emphasized { margin: 8px 0; font-size: 20px; font-weight: 700; }
@@ -491,7 +493,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .thermal-paper { padding-inline: 15px; font-size: 12px; }
   .thermal-label { padding-inline: 16px; }
   .thermal-label-bottom { inset-inline: 16px; }
-  .thermal-items-head, .thermal-item-line { grid-template-columns: minmax(0, 1fr) 30px 48px 50px; }
+  .thermal-items-head, .thermal-item-values { grid-template-columns: minmax(0, 1fr) 30px 48px 50px; }
 }
 
 .role-grid { margin-bottom: 16px; }
