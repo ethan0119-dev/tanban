@@ -429,7 +429,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .thermal-store { text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 1px; }
 .thermal-store.header-prominent { margin-block: 3px 8px; font-size: 23px; }
 .thermal-scene { text-align: center; font-weight: 700; }
-.thermal-pickup { margin: 12px -4px 8px; text-align: center; font-size: 27px; line-height: 1.3; font-weight: 900; letter-spacing: .2px; }
+.thermal-pickup { margin: 12px -4px 8px; text-align: center; font-size: 27px; line-height: 1.3; font-weight: 600; letter-spacing: .2px; white-space: nowrap; }
 .thermal-rule { margin: 10px 0; border-top: 1px dashed #3c3936; }
 .thermal-pair { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 4px 0; }
 .thermal-pair span { flex: 0 0 auto; color: #4c4845; }
@@ -441,8 +441,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .thermal-item { margin: 8px 0 10px; }
 .thermal-item-line b small { display: block; color: #4c4845; font-size: .82em; font-weight: 500; }
 .thermal-item > small { display: block; margin-top: 3px; color: #4e4946; }
-.thermal-total { display: flex; align-items: baseline; justify-content: space-between; margin: 9px 0; font-size: 17px; font-weight: 700; }
-.thermal-total strong { font-size: 24px; }
+.thermal-total { display: flex; align-items: baseline; justify-content: space-between; margin: 5px 0; font-weight: 500; }
+.thermal-total strong { font-size: inherit; font-weight: inherit; }
+.thermal-total.is-emphasized { margin: 8px 0; font-size: 20px; font-weight: 700; }
+.thermal-total.is-emphasized strong { font-size: 22px; }
 .thermal-note { margin: 10px 0; padding: 8px 0; border-block: 1px dashed #4c4743; }
 .thermal-note b { margin-right: 6px; }
 .thermal-qr { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 13px 0 8px; }

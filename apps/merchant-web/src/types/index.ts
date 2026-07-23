@@ -154,9 +154,12 @@ export interface PrintTemplateLayout {
   showTable: boolean;
   showItems: boolean;
   showItemSequence: boolean;
+  showItemHeader: boolean;
   showItemOptions: boolean;
+  showOptionGroupNames: boolean;
   showPrices: boolean;
   showPayment: boolean;
+  emphasizePaid: boolean;
   showRemark: boolean;
   showCustomer: boolean;
   showAddress: boolean;

@@ -23,7 +23,7 @@ func TestNormalizePrintTemplateInput(t *testing.T) {
 		t.Fatalf("item labels must default to SIMPLE/LARGE: %+v", itemLayout)
 	}
 	customerLayout := defaultStructuredPrintLayout("CUSTOMER")
-	if customerLayout["showCustomer"] != true || customerLayout["showAddress"] != true || customerLayout["showQrCode"] != true || customerLayout["customFooter"] == "" || customerLayout["copyTitle"] != "客" || customerLayout["showEndMarker"] != true || customerLayout["feedLines"] != 3 {
+	if customerLayout["showCustomer"] != true || customerLayout["showAddress"] != true || customerLayout["showQrCode"] != true || customerLayout["customFooter"] == "" || customerLayout["copyTitle"] != "客" || customerLayout["showEndMarker"] != true || customerLayout["showItemHeader"] != true || customerLayout["showOptionGroupNames"] != false || customerLayout["emphasizePaid"] != true || customerLayout["feedLines"] != 3 {
 		t.Fatalf("customer copies must default to customer, address and pickup-code fields: %+v", customerLayout)
 	}
 	input.Copies = 6

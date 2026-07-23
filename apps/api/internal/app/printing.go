@@ -645,10 +645,10 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	copyTitle := layoutString(template.Layout, "copyTitle", copyRoleShortTitle(template.CopyRole))
 	if layoutBool(template.Layout, "showPickupNo", true) && pickupCode != "" {
 		headline := fmt.Sprintf("(%s)取餐码:%s", fitPrintText(copyTitle, 2), pickupCode)
-		appendReceiptProminentLine(&output, headline, template.PaperWidth)
+		appendReceiptProminentLine(&output, headline, template.PaperWidth, false)
 	} else {
 		headline := "(" + fitPrintText(copyTitle, 2) + ")" + copyRoleTitle(template.CopyRole)
-		appendReceiptProminentLine(&output, headline, template.PaperWidth)
+		appendReceiptProminentLine(&output, headline, template.PaperWidth, false)
 	}
 	appendReceiptMarkup(&output, separator, "LEFT", false, false)
 	if layoutBool(template.Layout, "showOrderType", true) {
@@ -681,17 +681,19 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		appendReceiptMarkup(&output, separator, "LEFT", false, false)
 		showPrices := layoutBool(template.Layout, "showPrices", template.CopyRole != "KITCHEN")
 		showOptions := layoutBool(template.Layout, "showItemOptions", true)
+		showOptionGroupNames := layoutBool(template.Layout, "showOptionGroupNames", false)
+		if layoutBool(template.Layout, "showItemHeader", true) {
+			for _, line := range printReceiptItemHeader(width, showPrices) {
+				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
+			}
+		}
 		for _, item := range order.Items {
 			name := printableText(strings.TrimSpace(item.ProductName + " " + item.SKUName))
-			right := "x" + strconv.Itoa(item.Quantity)
-			if showPrices {
-				right += "  " + formatPrintAmount(item.SubtotalCents)
-			}
-			for _, line := range printTwoColumnsWrapped(name, right, width) {
+			for _, line := range printReceiptItemLines(name, item.Quantity, item.UnitPriceCents, item.SubtotalCents, width, showPrices) {
 				appendReceiptMarkup(&output, line, "LEFT", strings.EqualFold(fontSize, "LARGE"), true)
 			}
 			if showOptions {
-				for _, option := range printableItemOptions(item) {
+				for _, option := range printableItemOptions(item, showOptionGroupNames) {
 					appendReceiptBodyLines(&output, wrapPrintText("  "+option, width), fontSize)
 				}
 				if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
@@ -708,7 +710,12 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		appendReceiptBodyLines(&output, []string{printTwoColumns("合计", formatPrintAmount(order.TotalCents), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showPayment", template.CopyRole != "KITCHEN") {
-		appendReceiptBodyLines(&output, []string{printTwoColumns("实付", formatPrintAmount(order.PaidCents), width)}, fontSize)
+		if layoutBool(template.Layout, "emphasizePaid", true) {
+			paidWidth := printableColumns(template.PaperWidth, "LARGE")
+			appendReceiptMarkup(&output, printTwoColumns("实付", formatPrintAmount(order.PaidCents), paidWidth), "LEFT", true, false)
+		} else {
+			appendReceiptBodyLines(&output, []string{printTwoColumns("实付", formatPrintAmount(order.PaidCents), width)}, fontSize)
+		}
 		if method := printablePaymentMethod(order.Payment); method != "" {
 			appendReceiptBodyLines(&output, []string{printKeyValue("支付", method, width)}, fontSize)
 		}
@@ -732,7 +739,7 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 		} else {
 			endText = "--" + fitPrintText(copyTitle, 2) + "联打印结束--"
 		}
-		appendReceiptProminentLine(&output, endText, template.PaperWidth)
+		appendReceiptProminentLine(&output, endText, template.PaperWidth, true)
 	}
 	for feedLine := 0; feedLine < layoutInteger(template.Layout, "feedLines", 3); feedLine++ {
 		output = append(output, "<BR>")
@@ -794,7 +801,7 @@ func renderStructuredLabel(template activePrintTemplate, order orderDTO, item or
 		}
 		if layoutBool(template.Layout, "showItemOptions", true) && y+24 < bottomY {
 			details := []string{}
-			if options := printableItemOptions(item); len(options) > 0 {
+			if options := printableItemOptions(item, layoutBool(template.Layout, "showOptionGroupNames", false)); len(options) > 0 {
 				details = append(details, strings.Join(options, "、"))
 			}
 			if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
@@ -928,9 +935,9 @@ func appendReceiptCustomText(output *[]string, custom string, order orderDTO, wi
 	appendReceiptBodyLines(output, lines, fontSize)
 }
 
-func appendReceiptProminentLine(output *[]string, value string, paperWidth int) {
+func appendReceiptProminentLine(output *[]string, value string, paperWidth int, bold bool) {
 	value = fitPrintText(value, printableColumns(paperWidth, "NORMAL"))
-	appendReceiptMarkup(output, value, "CENTER", printDisplayWidth(value) <= printableColumns(paperWidth, "LARGE"), true)
+	appendReceiptMarkup(output, value, "CENTER", printDisplayWidth(value) <= printableColumns(paperWidth, "LARGE"), bold)
 }
 
 func appendReceiptMarkup(output *[]string, value, align string, large, bold bool) {
@@ -1053,6 +1060,73 @@ func printTwoColumnsWrapped(left, right string, width int) []string {
 	return leftLines
 }
 
+func printReceiptItemHeader(width int, showPrices bool) []string {
+	if !showPrices {
+		return []string{printTwoColumns("商品", "数量", width)}
+	}
+	if width < 28 {
+		return []string{
+			printTwoColumns("商品", "数量", width),
+			printTwoColumns("单价", "金额", width),
+		}
+	}
+	nameWidth, quantityWidth, unitWidth, amountWidth := receiptItemColumnWidths(width)
+	return []string{joinReceiptColumns(
+		printTableCell("商品", nameWidth, false),
+		printTableCell("数量", quantityWidth, true),
+		printTableCell("单价", unitWidth, true),
+		printTableCell("金额", amountWidth, true),
+	)}
+}
+
+func printReceiptItemLines(name string, quantity int, unitCents, subtotalCents int64, width int, showPrices bool) []string {
+	quantityText := "x" + strconv.Itoa(quantity)
+	if !showPrices {
+		return printTwoColumnsWrapped(name, quantityText, width)
+	}
+	if width < 28 {
+		lines := printTwoColumnsWrapped(name, quantityText, width)
+		return append(lines, printTwoColumns(formatPrintAmount(unitCents), formatPrintAmount(subtotalCents), width))
+	}
+	nameWidth, quantityWidth, unitWidth, amountWidth := receiptItemColumnWidths(width)
+	nameLines := wrapPrintText(name, nameWidth)
+	if len(nameLines) == 0 {
+		nameLines = []string{""}
+	}
+	lines := []string{joinReceiptColumns(
+		printTableCell(nameLines[0], nameWidth, false),
+		printTableCell(quantityText, quantityWidth, true),
+		printTableCell(formatPrintAmount(unitCents), unitWidth, true),
+		printTableCell(formatPrintAmount(subtotalCents), amountWidth, true),
+	)}
+	for _, continuation := range nameLines[1:] {
+		lines = append(lines, fitPrintText(continuation, nameWidth))
+	}
+	return lines
+}
+
+func receiptItemColumnWidths(width int) (name, quantity, unit, amount int) {
+	quantity, unit, amount = 4, 7, 7
+	name = width - quantity - unit - amount - 3
+	return
+}
+
+func printTableCell(value string, width int, right bool) string {
+	value = fitPrintText(value, width)
+	padding := width - printDisplayWidth(value)
+	if padding < 0 {
+		padding = 0
+	}
+	if right {
+		return strings.Repeat(" ", padding) + value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
+func joinReceiptColumns(columns ...string) string {
+	return strings.Join(columns, " ")
+}
+
 func centerPrintText(value string, width int) string {
 	value = fitPrintText(printableText(value), width)
 	padding := (width - printDisplayWidth(value)) / 2
@@ -1142,7 +1216,7 @@ func nonEmptyPrintLines(lines []string) []string {
 }
 
 func renderLabel(template string, order orderDTO, item orderItemDTO, itemIndex, itemTotal int, extra string, reprint bool) string {
-	options := printableItemOptions(item)
+	options := printableItemOptions(item, false)
 	modifiers := printableItemModifiers(item)
 	content := renderOrderTemplate(template, order, strings.Join(printableOrderItemLines(item, 1), "\n"), extra, reprint)
 	return strings.NewReplacer(
@@ -1219,7 +1293,7 @@ func printablePickupCode(order orderDTO) string {
 
 func printableOrderItemLines(item orderItemDTO, quantity int) []string {
 	lines := []string{fmt.Sprintf("%s %s x%d", printableText(item.ProductName), printableText(item.SKUName), quantity)}
-	for _, option := range printableItemOptions(item) {
+	for _, option := range printableItemOptions(item, false) {
 		lines = append(lines, "  "+option)
 	}
 	if modifiers := printableItemModifiers(item); len(modifiers) > 0 {
@@ -1231,7 +1305,7 @@ func printableOrderItemLines(item orderItemDTO, quantity int) []string {
 	return lines
 }
 
-func printableItemOptions(item orderItemDTO) []string {
+func printableItemOptions(item orderItemDTO, showGroupNames bool) []string {
 	result := []string{}
 	options, _ := item.Configuration["options"].([]any)
 	for _, raw := range options {
@@ -1241,7 +1315,7 @@ func printableItemOptions(item orderItemDTO) []string {
 		if valueName == "" || valueName == "<nil>" {
 			continue
 		}
-		if groupName != "" && groupName != "<nil>" {
+		if showGroupNames && groupName != "" && groupName != "<nil>" {
 			result = append(result, groupName+"："+valueName)
 		} else {
 			result = append(result, valueName)

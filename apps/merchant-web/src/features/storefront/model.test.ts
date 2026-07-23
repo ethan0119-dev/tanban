@@ -110,6 +110,9 @@ describe('storefront domain normalization', () => {
     });
     expect(defaultPrintTemplate('DINE_IN').sections.MERCHANT.layout).toMatchObject({
       copyTitle: '商',
+      showItemHeader: true,
+      showOptionGroupNames: false,
+      emphasizePaid: true,
       showEndMarker: true,
       feedLines: 3,
     });
@@ -141,6 +144,9 @@ describe('storefront domain normalization', () => {
     expect(normalized.sections.MERCHANT.copies).toBe(2);
     expect(normalized.sections.MERCHANT.paperWidth).toBe(80);
     expect(normalized.sections.MERCHANT.layout.showQrCode).toBe(true);
+    expect(normalized.sections.MERCHANT.layout.showItemHeader).toBe(true);
+    expect(normalized.sections.MERCHANT.layout.showOptionGroupNames).toBe(false);
+    expect(normalized.sections.MERCHANT.layout.emphasizePaid).toBe(true);
     expect(normalized.sections.MERCHANT.templateText).toContain('{{table_name}}');
     expect(normalized.sections.ITEM.enabled).toBe(false);
     expect(normalized.sections.MERCHANT.layout.preset).toBe('CUSTOM');
