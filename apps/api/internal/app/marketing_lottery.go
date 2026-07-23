@@ -915,7 +915,9 @@ func issueLotteryProvisionalCoupon(ctx context.Context, tx *sql.Tx, store storeD
 		return nil, nil, err
 	}
 	id, _ := result.LastInsertId()
-	return provisionalCouponView(id, couponNo, campaign.ID, campaign.Name, "LOTTERY", validFrom, validTo), id, nil
+	view := provisionalCouponView(id, couponNo, campaign.ID, campaign.Name, "LOTTERY", validFrom, validTo)
+	view["campaign"] = publicMarketingCouponView(campaign)
+	return view, id, nil
 }
 
 func marketingDrawView(id int64, drawNo string, campaignID int64, campaignName string, prize marketingLotteryPrizeRow, resultType, resultReason string, coupon map[string]any, createdAt time.Time) map[string]any {

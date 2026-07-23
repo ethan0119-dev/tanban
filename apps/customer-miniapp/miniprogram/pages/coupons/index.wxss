@@ -4,7 +4,7 @@
 .coupon-hero text:last-child { color: var(--muted); font-size: var(--font-body); }
 .coupon-notice { margin: 0 28rpx 22rpx; padding: 18rpx 22rpx; border-radius: 18rpx; color: var(--green); background: var(--surface); font-size: 21rpx; line-height: 1.6; }
 .coupon-list { display: flex; flex-direction: column; gap: 20rpx; padding: 0 28rpx 40rpx; }
-.coupon-card { display: grid; grid-template-columns: 176rpx 1fr 106rpx; align-items: center; min-height: 182rpx; overflow: hidden; border: 1rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
+.coupon-card { display: grid; grid-template-columns: 176rpx minmax(0, 1fr) 120rpx; align-items: center; min-height: 182rpx; overflow: hidden; border: 1rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
 .coupon-value { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7rpx; padding: 18rpx 10rpx; color: var(--on-primary); background: var(--green); }
 .coupon-value view { display: flex; align-items: baseline; }
 .coupon-value view text { font-size: 25rpx; }
@@ -13,5 +13,5 @@
 .coupon-main { min-width: 0; display: flex; flex-direction: column; gap: 8rpx; padding: 22rpx 18rpx; }
 .coupon-title { font-size: 28rpx; font-weight: 800; }
 .coupon-desc, .coupon-validity { overflow: hidden; color: var(--muted); font-size: 20rpx; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
-.coupon-claim { width: 86rpx; min-width: 0; margin: 0 20rpx 0 0; padding: 0; border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); font-size: var(--font-caption); line-height: 58rpx; }
+.coupon-claim { width: 96rpx; min-width: 0; margin: 0 12rpx; padding: 0; box-sizing: border-box; border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); font-size: var(--font-caption); line-height: 58rpx; }
 .coupon-claim[disabled] { color: #999; background: #eee; }

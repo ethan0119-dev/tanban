@@ -15,12 +15,12 @@
 .scene-badge.dine-in { background: var(--green); }
 .store-name { font-size: var(--font-subtitle); font-weight: 900; }
 .status-text { color: var(--muted); font-size: var(--font-body); }
-.order-time { margin-top: 13rpx; padding-bottom: 22rpx; border-bottom: 1rpx solid #eeeeeb; color: #929691; font-size: 22rpx; }
+.order-time { margin-top: 13rpx; padding-bottom: 22rpx; border-bottom: 1rpx solid var(--line); color: var(--muted); font-size: 22rpx; }
 .order-summary { min-height: 116rpx; gap: 24rpx; }
-.order-summary > text { min-width: 0; overflow: hidden; color: #333733; font-size: 25rpx; text-overflow: ellipsis; white-space: nowrap; }
-.order-summary > view { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6rpx; color: #999d99; font-size: 20rpx; }
-.order-summary .amount { color: #111; font-size: 34rpx; font-weight: 800; }
-.order-foot { padding-top: 20rpx; border-top: 1rpx solid #eeeeeb; color: #929691; font-size: 22rpx; }
-.order-foot text:last-child { padding: 10rpx 18rpx; border: 1rpx solid #dedfdd; border-radius: 999rpx; color: #333; }
+.order-summary > text { min-width: 0; overflow: hidden; color: var(--ink); font-size: 25rpx; text-overflow: ellipsis; white-space: nowrap; }
+.order-summary > view { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6rpx; color: var(--muted); font-size: 20rpx; }
+.order-summary .amount { color: var(--ink); font-size: 34rpx; font-weight: 800; }
+.order-foot { padding-top: 20rpx; border-top: 1rpx solid var(--line); color: var(--muted); font-size: 22rpx; }
+.order-foot text:last-child { padding: 10rpx 18rpx; border: 1rpx solid var(--line); border-radius: 999rpx; color: var(--ink); }
 .empty-order { display: flex; flex-direction: column; align-items: center; gap: 26rpx; }
 .empty-order button { width: 270rpx; }

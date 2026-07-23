@@ -30,9 +30,9 @@ export const customerFeatureCopy: Record<CustomerFeatureKey, CustomerFeatureAvai
     releaseBlocker: true,
   },
   COUPON_REDEMPTION: {
-    title: "优惠券暂不可用于付款",
-    content: "您可以查看已领取的优惠券，抵扣服务开放时间请关注门店通知。",
-    releaseBlocker: true,
+    title: "优惠券使用说明",
+    content: "结算时会自动选择当前订单可用且优惠最大的券；使用门槛、有效期和适用场景以券面说明为准。",
+    releaseBlocker: false,
   },
   LOTTERY_REWARD: {
     title: "抽奖权益暂不可用于付款",
@@ -59,7 +59,7 @@ export const customerExperienceCopy = {
   serviceError: "服务暂时繁忙，请稍后重试。",
   invalidQrCode: "二维码无效或已过期，请重新扫描门店提供的二维码。",
   wrongStoreQrCode: "该二维码不适用于当前门店，请重新扫码。",
-  couponClaimed: "领取记录已保存，请在“我的优惠券”中查看。抵扣服务开放时间请关注门店通知。",
+  couponClaimed: "领取成功。满足门槛时，结算页会自动使用当前订单优惠最大的券。",
   couponPreparing: "优惠券服务正在准备中，暂不可领取。",
   lotteryTerms: "本活动免费参与，奖品数量有限，权益使用范围和有效期以活动说明为准。",
 } as const;
@@ -72,6 +72,9 @@ const apiErrorCopy: Record<string, string> = {
   ORDER_NOT_PAYABLE: "订单已关闭，请重新提交订单。",
   PAYMENT_PENDING: "付款结果正在确认，请勿重复付款。",
   PAYMENT_FAILED: "付款未完成，请重试或联系门店。",
+  COUPON_NOT_AVAILABLE: "这张优惠券已失效、已使用或暂不可用，请重新选择。",
+  COUPON_THRESHOLD_NOT_MET: "当前商品金额还未达到优惠券使用门槛。",
+  COUPON_ORDER_TYPE_MISMATCH: "这张优惠券不适用于当前点餐方式。",
 };
 
 /** Convert API/SDK failures to customer-safe copy without exposing raw backend messages. */

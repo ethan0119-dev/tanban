@@ -16,6 +16,6 @@ describe('merchant feature availability copy', () => {
     expect(merchantReleaseBlockers.length).toBeGreaterThan(0);
     expect(merchantReleaseBlockers).toContain('OFFICIAL_MINIAPP_CODE');
     expect(merchantReleaseBlockers).toContain('ONLINE_STORED_VALUE');
-    expect(merchantReleaseBlockers).toContain('COUPON_REDEMPTION');
+    expect(merchantReleaseBlockers).not.toContain('COUPON_REDEMPTION');
   });
 });

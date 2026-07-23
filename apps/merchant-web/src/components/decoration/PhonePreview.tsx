@@ -134,6 +134,8 @@ function HomePreview({ config, storeName }: { config: DecorationConfig; storeNam
                 {(module.hotspots ?? []).map((hotspot, index) => <span key={hotspot.id} title={`${hotspot.label} · ${hotspot.action.type}`} style={hotspotStyle(hotspot)}>{index + 1}</span>)}
               </section>
             );
+          case 'CUSTOMER_SERVICE':
+            return <section className="mini-feature" key={module.id}><small>WECHAT SERVICE</small><strong>{module.title || '微信咨询'}　▦</strong><span>{module.subtitle || '长按识别二维码添加客服'}</span></section>;
           case 'SPACER':
             return <div key={module.id} style={{ height: Math.min(80, Math.max(4, Number.parseInt(module.subtitle, 10) || 24)) }} />;
           default:

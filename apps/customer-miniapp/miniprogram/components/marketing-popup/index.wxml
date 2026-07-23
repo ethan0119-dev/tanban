@@ -1,4 +1,4 @@
-<view class="marketing-popup-mask" wx:if="{{visible && placement}}" bindtap="close">
+<view class="marketing-popup-mask" style="{{appearanceStyle}}" wx:if="{{visible && placement}}" bindtap="close">
   <view class="marketing-popup-card" catchtap="noop">
     <view class="marketing-popup-close" role="button" aria-label="关闭活动弹窗" bindtap="close"><image src="/assets/icons/close-white.png" mode="aspectFit" /></view>
     <image wx:if="{{placement.image_url}}" class="marketing-popup-image" src="{{placement.image_url}}" mode="aspectFill" />

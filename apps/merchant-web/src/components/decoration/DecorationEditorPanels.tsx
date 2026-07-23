@@ -87,6 +87,14 @@ export function PageModulesPanel({ config, onChange, assets = [], assetUploading
             />
             : module.type === 'STORE_HEADER'
             ? <Typography.Text type="secondary">展示门店设置中的 Logo、营业状态和经营地址。</Typography.Text>
+            : module.type === 'CUSTOMER_SERVICE'
+            ? <>
+              <Typography.Text type="secondary">二维码、微信号和电话读取“门店设置 → 隐私与客服”中的商户客服资料。</Typography.Text>
+              <Row gutter={12} style={{ marginTop: 16 }}>
+                <Col span={12}><Form.Item label="模块标题"><Input value={module.title} maxLength={30} onChange={(event) => updateModule(index, { title: event.target.value })} /></Form.Item></Col>
+                <Col span={12}><Form.Item label="引导文案"><Input value={module.subtitle} maxLength={80} onChange={(event) => updateModule(index, { subtitle: event.target.value })} /></Form.Item></Col>
+              </Row>
+            </>
             : module.type === 'SPACER'
               ? <Form.Item label="留白高度"><InputNumber min={4} max={160} addonAfter="px" value={Number.parseInt(module.subtitle, 10) || 24} onChange={(value) => updateModule(index, { subtitle: String(value ?? 24) })} /></Form.Item>
               : <>
@@ -121,6 +129,7 @@ function moduleDefaults(type: HomeModuleType): Pick<DecorationConfig['homeModule
     case 'QUICK_ACTIONS': return { title: '堂食 / 自提点单', subtitle: '选好口味，在线下单', imageUrl: '' };
     case 'IMAGE': return { title: '活动图片', subtitle: '', imageUrl: 'https://placehold.co/1200x600/png' };
     case 'HOTSPOT_IMAGE': return { title: '首页导航图', subtitle: '', imageUrl: '', hotspots: [] };
+    case 'CUSTOMER_SERVICE': return { title: '微信咨询', subtitle: '点击二维码，长按识别添加客服', imageUrl: '' };
     case 'SPACER': return { title: '留白', subtitle: '24', imageUrl: '' };
     case 'TEXT':
     default: return { title: '品牌故事', subtitle: '在这里介绍门店或活动内容', imageUrl: '' };

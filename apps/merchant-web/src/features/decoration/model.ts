@@ -1,6 +1,6 @@
 export type DecorationStatus = 'DRAFT' | 'PUBLISHED';
 
-export type HomeModuleType = 'HERO_BANNER' | 'STORE_HEADER' | 'ANNOUNCEMENT' | 'QUICK_ACTIONS' | 'IMAGE' | 'HOTSPOT_IMAGE' | 'TEXT' | 'SPACER';
+export type HomeModuleType = 'HERO_BANNER' | 'STORE_HEADER' | 'ANNOUNCEMENT' | 'QUICK_ACTIONS' | 'IMAGE' | 'HOTSPOT_IMAGE' | 'TEXT' | 'CUSTOMER_SERVICE' | 'SPACER';
 
 export type DecorationActionType =
   | 'NONE'
@@ -165,6 +165,7 @@ export const HOME_MODULE_LABELS: Record<HomeModuleType, string> = {
   IMAGE: '单图模块',
   HOTSPOT_IMAGE: '单图热区',
   TEXT: '图文介绍',
+  CUSTOMER_SERVICE: '客服 / 微信咨询',
   SPACER: '留白间距',
 };
 

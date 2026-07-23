@@ -168,6 +168,11 @@ type decorationTextConfig struct {
 	Align string `json:"align"`
 }
 
+type decorationCustomerServiceConfig struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
 type decorationSpacerConfig struct {
 	Height int `json:"height"`
 }
@@ -569,6 +574,14 @@ func validateDecorationModule(module DecorationModule) error {
 		}
 		if !validText(config.Title, 80) || !validText(config.Body, 500) || !oneOf(config.Align, "LEFT", "CENTER", "RIGHT") {
 			return errors.New("text module content or alignment is invalid")
+		}
+	case "CUSTOMER_SERVICE":
+		var config decorationCustomerServiceConfig
+		if err := strictRawJSON(module.Config, &config); err != nil {
+			return err
+		}
+		if !validText(config.Title, 80) || !validText(config.Body, 500) {
+			return errors.New("customer service module text is too long")
 		}
 	case "SPACER":
 		var config decorationSpacerConfig

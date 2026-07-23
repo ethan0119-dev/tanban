@@ -134,6 +134,9 @@ func (s *Server) expireOrderReservationLocked(ctx context.Context, conn *sql.Con
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE orders SET status='CLOSED',inventory_reserved=0,stock_reserved_at=NULL,closed_at=NOW(3)
 			WHERE id=? AND tenant_id=? AND status='PENDING_PAYMENT' AND payment_status='UNPAID' AND inventory_reserved=1`, orderID, tenantID)
+		if err == nil {
+			err = releaseOrderCoupon(ctx, tx, tenantID, orderID)
+		}
 	}
 	if err != nil {
 		return false, allowLate == 1, err

@@ -19,7 +19,7 @@ export function SystemSettingsPage() {
     setError('');
     try {
       const result = await settingsService.getSystem();
-      const values = { platformName: '摊伴餐饮 SaaS', orderExpireMinutes: 15, loginFailureLimit: 5, sessionExpireMinutes: 720, ...result };
+      const values = { platformName: '摊伴餐饮系统', marketingTitle: '让每一家小店，都能轻松拥有自己的数字化点餐系统', marketingSubtitle: '点餐、营销、会员与门店经营，一套系统顺畅连接。', marketingPageUrl: '', orderExpireMinutes: 15, loginFailureLimit: 5, sessionExpireMinutes: 720, ...result };
       setSettings(values);
       form.setFieldsValue(values);
     } catch (loadError) {
@@ -62,6 +62,16 @@ export function SystemSettingsPage() {
                 <Col xs={24} md={12}><Form.Item label="客服邮箱" name="supportEmail" rules={[{ type: 'email', message: '邮箱格式不正确' }]}><Input placeholder="support@example.com" /></Form.Item></Col>
               </Row>
               <Alert type="info" showIcon message="这些信息会用于商户后台的帮助与支持入口。" />
+              <div style={{ marginTop: 20 }}>
+                <Form.Item label="版权说明页主标题" name="marketingTitle" rules={[{ required: true, message: '请输入宣传标题' }]}><Input maxLength={80} /></Form.Item>
+                <Form.Item label="版权说明页简介" name="marketingSubtitle"><Input.TextArea rows={3} maxLength={200} showCount /></Form.Item>
+                <Form.Item label="版权说明 HTML 页面地址" name="marketingPageUrl" rules={[{ type: 'url', message: '请输入完整的 HTTPS 页面地址' }]}><Input placeholder="https://tanban-saas.liuxiaoyicn.chatgpt.site/copyright" /></Form.Item>
+                <Row gutter={12}>
+                  <Col xs={24} md={12}><Form.Item label="联系微信号" name="contactWechat"><Input placeholder="用于顾客咨询" /></Form.Item></Col>
+                  <Col xs={24} md={12}><Form.Item label="微信二维码图片地址" name="contactQrUrl" rules={[{ type: 'url', message: '请输入完整的 HTTPS 图片地址' }]}><Input placeholder="https://..." /></Form.Item></Col>
+                </Row>
+                <Alert type="info" showIcon message="以上内容会展示在顾客小程序的“版权说明”页面，二维码由平台统一配置，不属于商户配置。" />
+              </div>
             </Card>
           </Col>
           <Col xs={24} xl={12}>

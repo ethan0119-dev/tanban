@@ -1,14 +1,16 @@
-import type { MarketingPlacement } from "../../types/domain";
+import type { MarketingCoupon, MarketingPlacement } from "../../types/domain";
 import { customerGuestKey } from "../../utils/customer";
 import { marketingEventKey, rememberMarketingPopup, shouldDisplayMarketingPopup } from "../../utils/marketing";
 import { idempotencyKey, request } from "../../utils/request";
 import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
+import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
 
 Component({
   properties: {
     storeCode: { type: String, value: "" },
     placementCode: { type: String, value: "HOME_POPUP" },
     channelScope: { type: String, value: "ALL" },
+    appearanceStyle: { type: String, value: "" },
   },
   data: {
     placement: null as MarketingPlacement | null,
@@ -84,13 +86,13 @@ Component({
       if (placement.action_type === "OPEN_LOTTERY") return void wx.navigateTo({ url: `/pages/lottery/index?id=${placement.action_target_id || ""}` });
       if (placement.action_type === "CLAIM_COUPON" && placement.action_target_id) {
         try {
-          const result = await request<{ warning?: string }>({
+          const result = await request<{ warning?: string; campaign?: MarketingCoupon }>({
             url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/coupons/${placement.action_target_id}/claim`,
             method: "POST",
             header: { "Idempotency-Key": idempotencyKey("popup_coupon") },
             data: { subject_key: customerGuestKey() },
           });
-          void result;
+          if (result.campaign) rememberClaimedCoupon(storeCode, result.campaign);
           wx.showModal({ title: "领取结果", content: customerExperienceCopy.couponClaimed, showCancel: false });
         } catch (error) {
           wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法领取，请稍后重试。"), icon: "none" });

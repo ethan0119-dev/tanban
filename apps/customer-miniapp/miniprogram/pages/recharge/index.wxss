@@ -10,10 +10,10 @@
 .rule { display: flex; flex-direction: column; align-items: center; gap: 8rpx; padding: 30rpx 16rpx; border: 2rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
 .rule text:first-child { font-size: 36rpx; font-weight: 900; }
 .rule text:last-child { color: var(--green); font-size: 21rpx; }
-.rule.selected { border-color: var(--green); box-shadow: 0 12rpx 30rpx rgba(33,77,63,.1); }
+.rule.selected { border-color: var(--green); box-shadow: var(--card-shadow); }
 .unavailable, .safety { display: flex; flex-direction: column; gap: 14rpx; padding: 28rpx; border-radius: var(--radius); background: var(--surface); }
 .unavailable text:first-child, .safety text:first-child { font-size: 29rpx; font-weight: 900; }
 .unavailable text:last-child, .safety text:last-child { color: var(--muted); font-size: 22rpx; line-height: 1.7; }
 .safety { margin-top: 24rpx; }
 .recharge-button { margin-top: 34rpx; }
-.recharge-button[disabled] { color: #8d918e; background: #dfe2df; }
+.recharge-button[disabled] { color: var(--disabled-text); background: var(--disabled-bg); }

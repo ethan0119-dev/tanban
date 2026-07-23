@@ -80,6 +80,7 @@ export type DecorationModuleType =
   | "IMAGE"
   | "HOTSPOT_IMAGE"
   | "TEXT"
+  | "CUSTOMER_SERVICE"
   | "SPACER";
 
 export interface DecorationModule {
@@ -153,6 +154,8 @@ export interface Store {
   timezone?: string;
   nextOpenAt?: string;
   businessHoursSummary?: string;
+  phone?: string;
+  businessHours?: string;
   theme?: StoreTheme;
   decoration?: DecorationConfig;
   decorationVersion?: number;
@@ -165,6 +168,14 @@ export interface Store {
     allowItemRemark: boolean;
   };
   customerService?: { phone?: string; wechat?: string; qrUrl?: string };
+  platformBranding?: {
+    platformName?: string;
+    marketingTitle?: string;
+    marketingSubtitle?: string;
+    contactWechat?: string;
+    contactQrUrl?: string;
+    marketingPageUrl?: string;
+  };
   legal?: { privacyPolicy?: string; userAgreement?: string };
 }
 
@@ -320,6 +331,7 @@ export interface Product {
   inStoreEnabled?: boolean;
   deliveryEnabled?: boolean;
   sales?: number;
+  recommended?: boolean;
   skus?: Sku[];
   optionGroups?: ProductOptionGroup[];
   modifierGroups?: ModifierGroup[];
@@ -364,6 +376,9 @@ export interface Order {
   };
   remark?: string;
   amount: number;
+  subtotal?: number;
+  discount?: number;
+  couponName?: string;
   createdAt: string;
   items?: Array<CartItem & { amount: number }>;
 }

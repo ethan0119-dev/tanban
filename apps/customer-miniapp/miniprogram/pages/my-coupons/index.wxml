@@ -1,11 +1,11 @@
 <view class="page coupon-wallet-page" style="{{appearanceStyle}}">
   <view class="wallet-hero"><text>我的优惠券</text><text>已领取的门店优惠都在这里</text></view>
-  <view class="wallet-notice">当前展示领取记录；优惠券抵扣服务开放时间请关注门店通知。</view>
+  <view class="wallet-notice">结算时会自动使用满足门槛、适用当前点餐方式且优惠最大的券。</view>
   <view class="coupon-list" wx:if="{{coupons.length}}">
     <view class="coupon-card" wx:for="{{coupons}}" wx:key="id">
       <view class="coupon-value"><view><text>¥</text><text>{{item.amountText}}</text></view><text>{{item.thresholdText}}</text></view>
       <view class="coupon-content"><text class="coupon-name">{{item.name}}</text><text>{{item.description || '门店点单优惠'}}</text><text>领取于 {{item.claimedDate}} · 门店券</text></view>
-      <text class="coupon-pending">暂不可抵扣</text>
+      <text class="coupon-pending">结算自动使用</text>
     </view>
   </view>
   <view class="empty" wx:else><text>还没有领取记录</text><button class="primary" bindtap="goCouponCenter">去领券中心</button></view>

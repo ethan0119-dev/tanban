@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tanban-saas.openai.site"),
+  metadataBase: new URL("https://tanban-saas.liuxiaoyicn.chatgpt.site"),
   title: "摊伴 TANBAN｜移动餐饮 SaaS",
   description: "面向咖啡摊、夜市摊与小型门店的一体化点单经营系统。",
   openGraph: {

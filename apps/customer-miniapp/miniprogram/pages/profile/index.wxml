@@ -20,4 +20,4 @@
     <view class="service-item" bindtap="contact"><image src="/assets/icons/customer-service.png" mode="aspectFit" /><text>联系商家</text></view>
   </view>
 </view>
-<marketing-popup style="{{appearanceStyle}}" store-code="{{storeCode}}" placement-code="PROFILE_POPUP" channel-scope="{{channelScope}}" />
+<marketing-popup appearance-style="{{appearanceStyle}}" store-code="{{storeCode}}" placement-code="PROFILE_POPUP" channel-scope="{{channelScope}}" />

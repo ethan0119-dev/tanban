@@ -50,14 +50,14 @@ export const merchantFeatureCopy: Record<MerchantFeatureKey, MerchantFeatureAvai
     releaseBlocker: true,
   },
   COUPON_REDEMPTION: {
-    title: '优惠券抵扣暂未开通',
-    description: '当前可维护券面、库存和领取规则；抵扣开通前，优惠券不会改变顾客订单金额。',
-    releaseBlocker: true,
+    title: '优惠券已支持订单抵扣',
+    description: '顾客领取后，结算会自动选择满足门槛且优惠最大的券；未支付关单会释放，支付成功后完成核销。',
+    releaseBlocker: false,
   },
   LOTTERY_REWARD_REDEMPTION: {
-    title: '抽奖权益使用暂未开通',
-    description: '活动和奖项可以提前维护；顾客中奖后，暂不能将优惠券奖品用于订单抵扣。',
-    releaseBlocker: true,
+    title: '抽奖优惠券可用于订单抵扣',
+    description: '顾客中奖获得的优惠券按普通券规则，在满足门槛和适用场景时自动用于结算。',
+    releaseBlocker: false,
   },
   MEMBERSHIP_AUTOMATION: {
     title: '会员自动成长暂未开通',

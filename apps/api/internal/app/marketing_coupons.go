@@ -637,6 +637,7 @@ func (s *Server) publicClaimMarketingCoupon(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	view := provisionalCouponView(recordID, couponNo, campaignID, campaign.Name, "PUBLIC_CLAIM", validFrom, validTo)
+	view["campaign"] = publicMarketingCouponView(campaign)
 	writeData(w, http.StatusCreated, view)
 }
 

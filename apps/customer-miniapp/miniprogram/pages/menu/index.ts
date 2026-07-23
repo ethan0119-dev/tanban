@@ -48,6 +48,7 @@ Page({
     store: null as Store | null,
     categories: [] as Category[],
     products: [] as MenuProduct[],
+    recommendedProducts: [] as MenuProduct[],
     activeCategoryId: 0,
     cart: [] as CartItem[],
     cartQuantity: 0,
@@ -92,11 +93,13 @@ Page({
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
       if (catalog.store) rememberPageAppearance(catalog.store);
       const visibleProducts = (catalog.products || []).filter((product) => decoration.menu.showSoldOut || !product.soldOut);
+      const decoratedProducts = decorateProducts(visibleProducts, this.data.cart);
       this.setData({
         store: catalog.store || null,
         nextOpenLabel: nextOpenLabel(catalog.store?.nextOpenAt),
         categories: catalog.categories || [],
-        products: decorateProducts(visibleProducts, this.data.cart),
+        products: decoratedProducts,
+        recommendedProducts: decoratedProducts.filter((product) => product.recommended),
         activeCategoryId: decoration.menu.loadMode === "ALL" ? 0 : catalog.categories?.[0]?.id || 0,
         decoration,
         appearanceStyle: decorationStyle(decoration),
@@ -323,6 +326,7 @@ Page({
     this.setData({
       cart,
       products: decorateProducts(this.data.products, cart),
+      recommendedProducts: decorateProducts(this.data.products.filter((product) => product.recommended), cart),
       cartQuantity: cart.reduce((sum, item) => sum + item.quantity, 0),
       cartAmount: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
     });

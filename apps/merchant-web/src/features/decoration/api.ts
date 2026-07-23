@@ -156,6 +156,7 @@ function moduleView(payload: unknown, index: number): HomeModuleConfig {
     return { ...fallback, title: stringValue(moduleConfig.alt) || '热区图片', imageUrl: stringValue(moduleConfig.imageUrl, moduleConfig.image_url), hotspots };
   }
   if (type === 'TEXT') return { ...fallback, title: stringValue(moduleConfig.title), subtitle: stringValue(moduleConfig.body) };
+  if (type === 'CUSTOMER_SERVICE') return { ...fallback, title: stringValue(moduleConfig.title) || '微信咨询', subtitle: stringValue(moduleConfig.body) || '点击二维码，长按识别添加客服' };
   if (type === 'SPACER') return { ...fallback, title: '留白', subtitle: `${numberValue(24, moduleConfig.height)}px` };
   return fallback;
 }
@@ -274,6 +275,9 @@ function modulePayload(module: HomeModuleConfig, index: number): ApiDecorationMo
       break;
     case 'SPACER':
       config = { height: Math.min(160, Math.max(4, Number.parseInt(module.subtitle, 10) || 24)) };
+      break;
+    case 'CUSTOMER_SERVICE':
+      config = { title: module.title, body: module.subtitle };
       break;
     case 'TEXT':
     default:

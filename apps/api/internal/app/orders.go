@@ -295,6 +295,18 @@ func reserveStock(ctx context.Context, executor sqlExecer, tenantID, skuID int64
 	return nil
 }
 
+func releaseOrderCoupon(ctx context.Context, executor sqlExecer, tenantID, orderID int64) error {
+	_, err := executor.ExecContext(ctx, `UPDATE customer_coupons SET status='PROVISIONAL',order_id=NULL
+		WHERE tenant_id=? AND order_id=? AND status='RESERVED'`, tenantID, orderID)
+	return err
+}
+
+func useOrderCoupon(ctx context.Context, executor sqlExecer, tenantID, orderID int64) error {
+	_, err := executor.ExecContext(ctx, `UPDATE customer_coupons SET status='USED',used_at=NOW(3)
+		WHERE tenant_id=? AND order_id=? AND status='RESERVED'`, tenantID, orderID)
+	return err
+}
+
 type transitionInput struct {
 	Status string `json:"status"`
 }
@@ -376,6 +388,10 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 				handleSQLError(w, restoreErr)
 				return
 			}
+		}
+		if couponErr := releaseOrderCoupon(r.Context(), tx, identity.TenantID, id); couponErr != nil {
+			handleSQLError(w, couponErr)
+			return
 		}
 	}
 	reservationUpdate := ""
@@ -853,6 +869,9 @@ func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, prov
 			targetStatus = "PAYMENT_EXCEPTION"
 		}
 		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?", targetStatus, paidAt, orderID); err != nil {
+			return err
+		}
+		if err = useOrderCoupon(ctx, tx, tenantID, orderID); err != nil {
 			return err
 		}
 		if targetStatus == "PAYMENT_EXCEPTION" {

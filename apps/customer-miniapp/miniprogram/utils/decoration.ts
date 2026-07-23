@@ -22,6 +22,7 @@ const MODULE_TYPES: DecorationModuleType[] = [
   "IMAGE",
   "HOTSPOT_IMAGE",
   "TEXT",
+  "CUSTOMER_SERVICE",
   "SPACER",
 ];
 const NAV_KEYS: DecorationNavigationItem["key"][] = ["home", "menu", "orders", "profile"];

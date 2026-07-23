@@ -1,10 +1,11 @@
 import type { TanbanAppOption } from "../../app";
-import type { MarketingLottery, MarketingLotteryPrize } from "../../types/domain";
+import type { MarketingCoupon, MarketingLottery, MarketingLotteryPrize } from "../../types/domain";
 import { customerGuestKey } from "../../utils/customer";
 import { idempotencyKey, request } from "../../utils/request";
 import { tableContextForStore } from "../../utils/table-context";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
+import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
 
 interface LotteryPrizeView extends MarketingLotteryPrize {
   stockText: string;
@@ -20,6 +21,7 @@ interface DrawResult {
   prize_name?: string;
   prize_type?: "THANKS" | "COUPON";
   warning?: string;
+  coupon?: { campaign?: MarketingCoupon };
 }
 
 Page({
@@ -67,6 +69,7 @@ Page({
       });
       const prizeType = result.prize_type || result.prize?.prize_type;
       const prizeName = result.prize_name || result.prize?.name || "谢谢参与";
+      if (result.coupon?.campaign) rememberClaimedCoupon(storeCode, result.coupon.campaign);
       wx.showModal({
         title: prizeType === "COUPON" ? "恭喜中奖" : "本次结果",
         content: prizeName,

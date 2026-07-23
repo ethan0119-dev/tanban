@@ -1,0 +1,36 @@
+<web-view wx:if="{{!loading && webUrl}}" src="{{webUrl}}" />
+<view class="copyright-page" style="{{appearanceStyle}}" wx:elif="{{!loading && store}}">
+  <view class="brand-hero">
+    <text class="brand-kicker">TANBAN · SMART ORDERING</text>
+    <text class="brand-name">{{store.platformBranding.platformName || '摊伴餐饮系统'}}</text>
+    <text class="brand-title">{{store.platformBranding.marketingTitle || '让每一家小店，都能轻松拥有自己的数字化点餐系统'}}</text>
+    <text class="brand-subtitle">{{store.platformBranding.marketingSubtitle || '点餐、营销、会员与门店经营，一套系统顺畅连接。'}}</text>
+  </view>
+
+  <view class="feature-card">
+    <text class="section-kicker">一套系统，连接经营全流程</text>
+    <view class="feature-grid">
+      <view><text>01</text><text>微信点餐</text><text>堂食、自取、支付与订单进度清晰流畅</text></view>
+      <view><text>02</text><text>营销增长</text><text>优惠券、弹窗活动与推荐商品灵活配置</text></view>
+      <view><text>03</text><text>门店管理</text><text>商品、库存、打印与经营数据统一管理</text></view>
+      <view><text>04</text><text>品牌装修</text><text>配色、首页组件与内容都能体现门店风格</text></view>
+    </view>
+  </view>
+
+  <view class="promise-card">
+    <text>为认真经营的小店，做一套好用、耐用、看得懂的系统。</text>
+    <text>摊伴把复杂的技术留在后台，把简单顺畅的体验交给商家和顾客。</text>
+  </view>
+
+  <view class="contact-card">
+    <text class="section-kicker">想了解更多？</text>
+    <text class="contact-title">扫码联系摊伴</text>
+    <image wx:if="{{store.platformBranding.contactQrUrl}}" src="{{store.platformBranding.contactQrUrl}}" mode="aspectFill" bindtap="previewQR" />
+    <view wx:else class="qr-placeholder">平台联系二维码待配置</view>
+    <text wx:if="{{store.platformBranding.contactWechat}}" bindtap="copyWechat">微信号：{{store.platformBranding.contactWechat}}（点击复制）</text>
+    <text class="contact-hint">点击二维码可放大，再长按识别</text>
+  </view>
+
+  <text class="copyright-note">本页面由 {{store.platformBranding.platformName || '摊伴餐饮系统'}} 提供技术支持</text>
+</view>
+<view class="empty" wx:else>正在加载版权说明…</view>

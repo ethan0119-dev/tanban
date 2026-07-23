@@ -10,6 +10,7 @@
     "pages/recharge/index",
     "pages/lottery/index",
     "pages/legal/index",
+    "pages/copyright/index",
     "pages/profile/index"
   ],
   "window": {

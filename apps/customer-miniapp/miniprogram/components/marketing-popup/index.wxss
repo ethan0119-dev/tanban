@@ -6,4 +6,4 @@
 .marketing-popup-copy { display: flex; flex-direction: column; gap: 9rpx; padding: 28rpx 34rpx 8rpx; color: var(--ink, #3d2c22); }
 .marketing-popup-copy text:first-child { font-size: 39rpx; font-weight: 900; }
 .marketing-popup-copy text:last-child { font-size: 23rpx; }
-.marketing-popup-action { width: calc(100% - 68rpx); min-height: 78rpx; margin: 24rpx 34rpx 32rpx; padding: 0 28rpx; border: 0; border-radius: 18rpx; color: var(--ink, #3d2c22); background: var(--lime, #f8d36d); font-size: 28rpx; font-weight: 800; line-height: 78rpx; }
+.marketing-popup-action { width: calc(100% - 68rpx); min-height: 78rpx; margin: 24rpx 34rpx 32rpx; padding: 0 28rpx; border: 0; border-radius: var(--button-radius, 18rpx); color: var(--on-primary, #fff); background: var(--green, #214d3f); font-size: 28rpx; font-weight: 800; line-height: 78rpx; }

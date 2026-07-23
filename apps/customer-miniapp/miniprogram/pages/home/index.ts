@@ -1,5 +1,5 @@
 import type { TanbanAppOption } from "../../app";
-import type { DecorationAction, DecorationConfig, DecorationModule, FastFoodOrderingContext, MarketingPlacement, Store, TableOrderingContext } from "../../types/domain";
+import type { DecorationAction, DecorationConfig, DecorationModule, FastFoodOrderingContext, MarketingCoupon, MarketingPlacement, Store, TableOrderingContext } from "../../types/domain";
 import {
   applyDecorationChrome,
   decorationStyle,
@@ -18,6 +18,7 @@ import { fastFoodContextForStore } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
+import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -34,6 +35,7 @@ Page({
     splashImageMode: "aspectFit" as "aspectFill" | "aspectFit",
     marketingPopup: null as MarketingPlacement | null,
     marketingPopupVisible: false,
+    storeInfoVisible: false,
     error: "",
   },
   onShow() {
@@ -122,12 +124,12 @@ Page({
     if (placement.action_type === "CLAIM_COUPON" && placement.action_target_id) {
       try {
         const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-        const result = await request<{ warning?: string }>({
+        const result = await request<{ warning?: string; campaign?: MarketingCoupon }>({
           url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/coupons/${placement.action_target_id}/claim`, method: "POST",
           header: { "Idempotency-Key": idempotencyKey("popup_coupon") },
           data: { subject_key: customerGuestKey() },
         });
-        void result;
+        if (result.campaign) rememberClaimedCoupon(storeCode, result.campaign);
         wx.showModal({ title: "领取结果", content: customerExperienceCopy.couponClaimed, showCancel: false });
       } catch (error) {
         wx.showToast({ title: customerSafeErrorMessage(error, "暂时无法领取，请稍后重试。"), icon: "none" });
@@ -161,6 +163,26 @@ Page({
   },
   onSplashImageLoad(event: WechatMiniprogram.CustomEvent<{ width: number; height: number }>) {
     this.setData({ splashImageMode: splashImageMode(event.detail.width, event.detail.height) });
+  },
+  showStoreInfo() { this.setData({ storeInfoVisible: true }); },
+  closeStoreInfo() { this.setData({ storeInfoVisible: false }); },
+  callStore() {
+    const phone = this.data.store?.phone || this.data.store?.customerService?.phone;
+    if (!phone) return wx.showToast({ title: "商家暂未配置电话", icon: "none" });
+    wx.makePhoneCall({ phoneNumber: phone });
+  },
+  copyAddress() {
+    const address = this.data.store?.address || "";
+    if (!address) return wx.showToast({ title: "商家暂未配置地址", icon: "none" });
+    wx.setClipboardData({ data: address });
+  },
+  previewCustomerQR() {
+    const url = this.data.store?.customerService?.qrUrl || "";
+    if (!url) return wx.showToast({ title: "商家暂未上传客服二维码", icon: "none" });
+    wx.previewImage({ current: url, urls: [url] });
+  },
+  openCopyright() {
+    wx.navigateTo({ url: `/pages/copyright/index?storeCode=${encodeURIComponent(this.data.store?.code || "")}` });
   },
   goMenu() { wx.switchTab({ url: "/pages/menu/index" }); },
   goOrders() { wx.switchTab({ url: "/pages/orders/index" }); },

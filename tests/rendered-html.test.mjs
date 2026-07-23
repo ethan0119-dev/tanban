@@ -26,3 +26,12 @@ test("server renders the Tanban product prototype", async () => {
   assert.match(html, /顾客点单端/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);
 });
+
+test("server renders the mobile copyright advertisement page", async () => {
+  const response = await render("/copyright?brand=%E6%91%8A%E4%BC%B4%E9%A4%90%E9%A5%AE%E7%B3%BB%E7%BB%9F");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  const html = await response.text();
+  assert.match(html, /版权说明|一套系统，连接经营全流程/);
+  assert.match(html, /扫码联系摊伴/);
+});

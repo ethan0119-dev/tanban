@@ -38,7 +38,7 @@ describe('customer-facing availability copy', () => {
 
   it('tracks customer release blockers centrally', () => {
     expect(customerReleaseBlockers).toContain('STORED_VALUE');
-    expect(customerReleaseBlockers).toContain('COUPON_REDEMPTION');
+    expect(customerReleaseBlockers).not.toContain('COUPON_REDEMPTION');
     expect(customerReleaseBlockers).toContain('MEMBERSHIP');
   });
 });

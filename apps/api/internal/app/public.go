@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -152,7 +153,7 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, configErr)
 			return
 		}
-		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "inStoreEnabled": product.InStoreEnabled, "deliveryEnabled": product.DeliveryEnabled, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
+		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "recommended": product.Recommended, "inStoreEnabled": product.InStoreEnabled, "deliveryEnabled": product.DeliveryEnabled, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
 	}
 	writeData(w, http.StatusOK, map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts})
 }
@@ -182,7 +183,7 @@ func publicModifierGroups(groups []modifierGroupDTO) []map[string]any {
 }
 
 func publicStoreView(store storeDTO) map[string]any {
-	return map[string]any{"id": store.ID, "code": store.Code, "name": store.Name, "logoUrl": store.LogoURL, "address": store.Address, "theme": map[string]any{"bannerUrl": store.BannerURL, "announcement": store.Notice}}
+	return map[string]any{"id": store.ID, "code": store.Code, "name": store.Name, "logoUrl": store.LogoURL, "address": store.Address, "phone": store.Phone, "businessHours": store.BusinessHours, "theme": map[string]any{"bannerUrl": store.BannerURL, "announcement": store.Notice}}
 }
 
 func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string]any {
@@ -215,6 +216,24 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 		view["legal"] = map[string]any{"privacyPolicy": privacyPolicyText, "userAgreement": userAgreementText}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		s.Logger.Error("load public store operation settings", "store_id", store.ID, "error", err)
+	}
+	branding := systemSettings{
+		PlatformName:      "摊伴餐饮系统",
+		MarketingTitle:    "让每一家小店，都能轻松拥有自己的数字化点餐系统",
+		MarketingSubtitle: "点餐、营销、会员与门店经营，一套系统顺畅连接。",
+	}
+	var settingsJSON string
+	if settingErr := s.DB.QueryRowContext(ctx, "SELECT value_text FROM platform_settings WHERE setting_key='system'").Scan(&settingsJSON); settingErr == nil {
+		if unmarshalErr := json.Unmarshal([]byte(settingsJSON), &branding); unmarshalErr != nil {
+			s.Logger.Error("decode public platform branding", "error", unmarshalErr)
+		}
+	} else if !errors.Is(settingErr, sql.ErrNoRows) {
+		s.Logger.Error("load public platform branding", "error", settingErr)
+	}
+	view["platformBranding"] = map[string]any{
+		"platformName": branding.PlatformName, "marketingTitle": branding.MarketingTitle,
+		"marketingSubtitle": branding.MarketingSubtitle, "contactWechat": branding.ContactWechat,
+		"contactQrUrl": branding.ContactQRURL, "marketingPageUrl": branding.MarketingPageURL,
 	}
 	return view
 }
@@ -254,6 +273,13 @@ type publicOrderInput struct {
 	LegacyFastFoodPlatePublicID string                 `json:"fast_food_plate_public_id"`
 	CustomerLatitude            *float64               `json:"customerLatitude"`
 	CustomerLongitude           *float64               `json:"customerLongitude"`
+	CouponCampaignID            int64                  `json:"couponCampaignId"`
+}
+
+type publicOrderCoupon struct {
+	RecordID int64
+	Name     string
+	Discount int64
 }
 
 func legacyPublicOrderFingerprint(input publicOrderInput) string {
@@ -532,6 +558,42 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		total += subtotal
 		resolved = append(resolved, row)
 	}
+	var appliedCoupon publicOrderCoupon
+	if input.CouponCampaignID > 0 {
+		subjectHash, hashErr := marketingSubjectHash(input.CustomerKey)
+		if hashErr != nil {
+			writeError(w, http.StatusBadRequest, "COUPON_CUSTOMER_REQUIRED", "customer identity is required to use a coupon")
+			return
+		}
+		var couponType, orderTypesJSON string
+		var threshold int64
+		err = tx.QueryRowContext(r.Context(), `SELECT cc.id,c.name,c.coupon_type,c.threshold_cents,c.discount_cents,c.order_types_json
+			FROM customer_coupons cc JOIN coupon_campaigns c ON c.id=cc.campaign_id AND c.tenant_id=cc.tenant_id
+			WHERE cc.tenant_id=? AND cc.store_id=? AND cc.campaign_id=? AND cc.subject_key_hash=?
+			  AND cc.status='PROVISIONAL' AND cc.valid_from<=NOW(3) AND cc.valid_to>NOW(3)
+			ORDER BY cc.id LIMIT 1 FOR UPDATE`, store.TenantID, store.ID, input.CouponCampaignID, subjectHash).
+			Scan(&appliedCoupon.RecordID, &appliedCoupon.Name, &couponType, &threshold, &appliedCoupon.Discount, &orderTypesJSON)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusConflict, "COUPON_NOT_AVAILABLE", "coupon is unavailable, expired, or already used")
+			return
+		}
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if !marketingOrderTypesContain(decodeMarketingOrderTypes(orderTypesJSON), input.OrderType) {
+			writeError(w, http.StatusConflict, "COUPON_ORDER_TYPE_MISMATCH", "coupon cannot be used for this order type")
+			return
+		}
+		if couponType == "FULL_REDUCTION" && total < threshold {
+			writeError(w, http.StatusConflict, "COUPON_THRESHOLD_NOT_MET", "order amount does not meet the coupon threshold")
+			return
+		}
+		if appliedCoupon.Discount > total {
+			appliedCoupon.Discount = total
+		}
+		total -= appliedCoupon.Discount
+	}
 	customerID, err := upsertPublicOrderCustomer(r.Context(), tx, store, input)
 	if err != nil {
 		handleSQLError(w, err)
@@ -571,6 +633,18 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orderID, _ := result.LastInsertId()
+	if appliedCoupon.RecordID > 0 {
+		couponUpdate, updateErr := tx.ExecContext(r.Context(), `UPDATE customer_coupons SET status='RESERVED',order_id=?
+			WHERE id=? AND tenant_id=? AND status='PROVISIONAL' AND order_id IS NULL`, orderID, appliedCoupon.RecordID, store.TenantID)
+		if updateErr != nil {
+			handleSQLError(w, updateErr)
+			return
+		}
+		if changed, _ := couponUpdate.RowsAffected(); changed != 1 {
+			writeError(w, http.StatusConflict, "COUPON_NOT_AVAILABLE", "coupon was used by another order")
+			return
+		}
+	}
 	for _, row := range resolved {
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, orderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity))
 		if err != nil {

@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
@@ -126,13 +127,18 @@ type systemSettings struct {
 	PlatformName         string `json:"platformName"`
 	SupportPhone         string `json:"supportPhone"`
 	SupportEmail         string `json:"supportEmail"`
+	MarketingTitle       string `json:"marketingTitle"`
+	MarketingSubtitle    string `json:"marketingSubtitle"`
+	ContactWechat        string `json:"contactWechat"`
+	ContactQRURL         string `json:"contactQrUrl"`
+	MarketingPageURL     string `json:"marketingPageUrl"`
 	OrderExpireMinutes   int    `json:"orderExpireMinutes"`
 	LoginFailureLimit    int    `json:"loginFailureLimit"`
 	SessionExpireMinutes int    `json:"sessionExpireMinutes"`
 }
 
 func (s *Server) getPlatformSystemSettings(w http.ResponseWriter, r *http.Request) {
-	settings := systemSettings{PlatformName: "摊伴", OrderExpireMinutes: 15, LoginFailureLimit: 5, SessionExpireMinutes: int(s.Config.JWTTTL.Minutes())}
+	settings := systemSettings{PlatformName: "摊伴餐饮系统", MarketingTitle: "让每一家小店，都能轻松拥有自己的数字化点餐系统", MarketingSubtitle: "点餐、营销、会员与门店经营，一套系统顺畅连接。", OrderExpireMinutes: 15, LoginFailureLimit: 5, SessionExpireMinutes: int(s.Config.JWTTTL.Minutes())}
 	_ = s.loadSettingJSON(r, "system", &settings)
 	writeData(w, http.StatusOK, settings)
 }
@@ -144,6 +150,24 @@ func (s *Server) updatePlatformSystemSettings(w http.ResponseWriter, r *http.Req
 	}
 	if input.OrderExpireMinutes < 1 || input.LoginFailureLimit < 1 || input.SessionExpireMinutes < 1 {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "numeric settings must be positive")
+		return
+	}
+	input.PlatformName = strings.TrimSpace(input.PlatformName)
+	input.MarketingTitle = strings.TrimSpace(input.MarketingTitle)
+	input.MarketingSubtitle = strings.TrimSpace(input.MarketingSubtitle)
+	input.ContactWechat = strings.TrimSpace(input.ContactWechat)
+	input.ContactQRURL = strings.TrimSpace(input.ContactQRURL)
+	input.MarketingPageURL = strings.TrimSpace(input.MarketingPageURL)
+	if !validRequiredText(input.PlatformName, 80) || !validRequiredText(input.MarketingTitle, 120) || !validText(input.MarketingSubtitle, 300) || !validText(input.ContactWechat, 80) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "platform branding text is missing or too long")
+		return
+	}
+	if input.ContactQRURL != "" && !validDecorationURL(input.ContactQRURL) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "contactQrUrl must be an HTTPS image URL")
+		return
+	}
+	if input.MarketingPageURL != "" && !validDecorationURL(input.MarketingPageURL) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "marketingPageUrl must be an HTTPS URL")
 		return
 	}
 	if err := s.saveSettingJSON(r, "system", input); err != nil {

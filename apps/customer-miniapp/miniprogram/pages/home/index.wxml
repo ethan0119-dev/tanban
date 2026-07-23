@@ -1,4 +1,5 @@
 <view class="page decorated-page" style="{{appearanceStyle}}" wx:if="{{!loading && store}}">
+  <view class="home-tools"><button bindtap="showStoreInfo">•••<text>门店信息</text></button></view>
   <view class="store-closed-card" wx:if="{{store.businessStatus !== 'OPEN'}}">
     <view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间，暂时不能下单'}}</text></view>
     <text wx:if="{{store.nextOpenAt}}">下次营业：{{store.nextOpenAt}}</text>
@@ -69,11 +70,37 @@
       <text class="text-module-title" wx:if="{{item.config.title}}">{{item.config.title}}</text><text class="muted">{{item.config.body}}</text>
     </view>
 
+    <view wx:elif="{{item.type === 'CUSTOMER_SERVICE'}}" class="decor-module customer-service-module">
+      <view class="customer-service-copy">
+        <text class="customer-service-title">{{item.config.title || '微信咨询'}}</text>
+        <text>{{item.config.body || '点击二维码，长按识别添加客服'}}</text>
+        <text wx:if="{{store.customerService.wechat}}">微信号：{{store.customerService.wechat}}</text>
+        <button wx:if="{{store.customerService.phone}}" bindtap="callStore">电话咨询</button>
+      </view>
+      <image wx:if="{{store.customerService.qrUrl}}" src="{{store.customerService.qrUrl}}" mode="aspectFill" bindtap="previewCustomerQR" />
+      <view wx:else class="customer-qr-placeholder">商户暂未上传二维码</view>
+    </view>
+
     <view wx:elif="{{item.type === 'SPACER'}}" class="decor-module" style="height: {{item.config.height}}rpx" />
   </block>
+  <view class="platform-credit" bindtap="openCopyright">
+    <text>摊伴餐饮系统</text>
+    <text>点击了解详情 ›</text>
+  </view>
 </view>
 
-<view class="marketing-popup-mask" wx:if="{{marketingPopupVisible && marketingPopup}}" bindtap="closeMarketingPopup">
+<view class="store-info-mask" style="{{appearanceStyle}}" wx:if="{{storeInfoVisible && store}}" bindtap="closeStoreInfo">
+  <view class="store-info-sheet" catchtap="noop">
+    <view class="store-info-handle" />
+    <view class="store-info-title"><text>{{store.name}}</text><button bindtap="closeStoreInfo">×</button></view>
+    <view class="store-info-section"><text>公告</text><text>{{store.theme.announcement || '商家暂无公告'}}</text></view>
+    <view class="store-info-section"><text>营业时间</text><text>{{store.businessHoursSummary || store.businessHours || '请电话咨询商家'}}</text></view>
+    <view class="store-info-section"><text>门店信息</text><text>联系电话：{{store.phone || store.customerService.phone || '暂未配置'}}</text><text>门店地址：{{store.address || '暂未配置'}}</text></view>
+    <view class="store-info-actions"><button bindtap="copyAddress">复制地址</button><button class="primary" bindtap="callStore">联系商家</button></view>
+  </view>
+</view>
+
+<view class="marketing-popup-mask" style="{{appearanceStyle}}" wx:if="{{marketingPopupVisible && marketingPopup}}" bindtap="closeMarketingPopup">
   <view class="marketing-popup-card" catchtap="noop">
     <view class="marketing-popup-close" role="button" aria-label="关闭活动弹窗" bindtap="closeMarketingPopup"><image src="/assets/icons/close-white.png" mode="aspectFit" /></view>
     <image wx:if="{{marketingPopup.image_url}}" class="marketing-popup-image" src="{{marketingPopup.image_url}}" mode="aspectFill" />

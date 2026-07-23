@@ -143,6 +143,11 @@ export interface SystemSettings {
   platformName?: string;
   supportPhone?: string;
   supportEmail?: string;
+  marketingTitle?: string;
+  marketingSubtitle?: string;
+  contactWechat?: string;
+  contactQrUrl?: string;
+  marketingPageUrl?: string;
   orderExpireMinutes?: number;
   loginFailureLimit?: number;
   sessionExpireMinutes?: number;

@@ -150,6 +150,8 @@ func TestPaidCallbackWithoutReservationBecomesPaymentException(t *testing.T) {
 		WithArgs(paidAt, int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?")).
 		WithArgs("PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE customer_coupons SET status='USED',used_at=NOW(3)")).
+		WithArgs(int64(4), int64(8)).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	if err = server.markPaymentPaidLocked(context.Background(), conn, "mock", "MOCK-1", paidAt); err != nil {
@@ -224,6 +226,8 @@ func TestLateSuccessClosesNewerPendingAttemptAndFlagsException(t *testing.T) {
 		WithArgs(paidAt, int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?")).
 		WithArgs("PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE customer_coupons SET status='USED',used_at=NOW(3)")).
+		WithArgs(int64(4), int64(8)).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	if err = server.markPaymentPaidLocked(context.Background(), conn, "mock", "MOCK-OLD", paidAt); err != nil {

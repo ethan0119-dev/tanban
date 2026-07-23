@@ -169,6 +169,8 @@ func TestPaymentSuccessCommitsFactWithOutboxInsteadOfRenderingTemplates(t *testi
 		WithArgs(paidAt, int64(41)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?")).
 		WithArgs("PAID", paidAt, int64(11)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE customer_coupons SET status='USED',used_at=NOW(3)")).
+		WithArgs(int64(2), int64(11)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO print_outbox(tenant_id,store_id,order_id,event_type,dedupe_key,actor_id,extra_text,status,available_at)")).
 		WithArgs(int64(2), int64(5), int64(11), "PAYMENT_SUCCESS", "PAYMENT:41", int64(0), "").
 		WillReturnResult(sqlmock.NewResult(17, 1))

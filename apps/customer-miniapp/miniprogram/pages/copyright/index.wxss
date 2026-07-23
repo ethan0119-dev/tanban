@@ -1,0 +1,22 @@
+.copyright-page { min-height: 100vh; padding: 28rpx 28rpx 80rpx; box-sizing: border-box; background: var(--paper); color: var(--ink); }
+.brand-hero { display: flex; flex-direction: column; gap: 20rpx; padding: 52rpx 34rpx; overflow: hidden; border-radius: var(--radius); background: linear-gradient(145deg, var(--green), var(--ink)); color: var(--on-primary); box-shadow: var(--card-shadow); }
+.brand-kicker, .section-kicker { font-size: 19rpx; font-weight: 800; letter-spacing: 3rpx; opacity: .72; }
+.brand-name { font-size: 30rpx; font-weight: 800; }
+.brand-title { max-width: 600rpx; font-size: 47rpx; font-weight: 900; line-height: 1.25; }
+.brand-subtitle { font-size: 24rpx; line-height: 1.75; opacity: .78; }
+.feature-card, .promise-card, .contact-card { margin-top: 24rpx; padding: 34rpx; border: 1rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
+.section-kicker { display: block; color: var(--green); opacity: 1; }
+.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; margin-top: 26rpx; }
+.feature-grid view { display: flex; min-height: 190rpx; flex-direction: column; gap: 10rpx; padding: 23rpx; border-radius: calc(var(--radius) * .65); background: var(--soft-primary); }
+.feature-grid view text:first-child { color: var(--green); font-size: 19rpx; font-weight: 900; }
+.feature-grid view text:nth-child(2) { font-size: 28rpx; font-weight: 900; }
+.feature-grid view text:last-child { color: var(--muted); font-size: 21rpx; line-height: 1.55; }
+.promise-card { display: flex; flex-direction: column; gap: 18rpx; border: 0; background: var(--green); color: var(--on-primary); }
+.promise-card text:first-child { font-size: 32rpx; font-weight: 900; line-height: 1.5; }
+.promise-card text:last-child { font-size: 22rpx; line-height: 1.7; opacity: .75; }
+.contact-card { display: flex; flex-direction: column; align-items: center; gap: 16rpx; text-align: center; }
+.contact-title { font-size: 38rpx; font-weight: 900; }
+.contact-card image, .qr-placeholder { width: 330rpx; height: 330rpx; margin: 12rpx 0; border-radius: calc(var(--radius) * .7); background: var(--paper); }
+.qr-placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22rpx; }
+.contact-card > text:not(.section-kicker):not(.contact-title) { color: var(--muted); font-size: 21rpx; }
+.copyright-note { display: block; padding-top: 40rpx; color: var(--muted); font-size: 19rpx; text-align: center; }
