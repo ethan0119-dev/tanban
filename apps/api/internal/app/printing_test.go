@@ -108,7 +108,7 @@ func TestRenderTicketIncludesProductConfiguration(t *testing.T) {
 		},
 	}}}
 	result := renderTicket("{{order_type}} {{table_area}} {{table_name}} {{table_code}}\n{{items}}", order, "", false)
-	for _, expected := range []string{"DINE_IN 大厅 B02 B02", "拿铁 大杯 x1", "温度：冰", "加料：浓缩x2", "单品备注：奶泡少一点"} {
+	for _, expected := range []string{"DINE_IN 大厅 B02 B02", "拿铁 大杯 x1", "冰", "加料：浓缩x2", "单品备注：奶泡少一点"} {
 		if !strings.Contains(result, expected) {
 			t.Fatalf("ticket missing %q: %s", expected, result)
 		}
@@ -259,7 +259,7 @@ func TestLabelRenderingSplitsByItemQuantityAndReplacesItemVariables(t *testing.T
 		t.Fatalf("two ordered drinks must create two labels, got %d", len(contents))
 	}
 	for index, content := range contents {
-		for _, expected := range []string{fmt.Sprintf("码农咖啡 #0023 18.90 %d/2", index+1), "拿铁 大杯 x1/2", "温度：少冰", "燕麦奶", "少冰"} {
+		for _, expected := range []string{fmt.Sprintf("码农咖啡 #0023 18.90 %d/2", index+1), "拿铁 大杯 x1/2", "燕麦奶", "少冰"} {
 			if !strings.Contains(content, expected) {
 				t.Fatalf("label missing %q: %s", expected, content)
 			}
@@ -290,7 +290,7 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	layout["customFooter"] = "谢谢惠顾 {{order_no}}"
 	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, Layout: layout}
 	content := renderStructuredReceipt(template, order, "", false)
-	for _, expected := range []string{"<CB>", "(商)取餐码:0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "超长名称燕麦奶生椰水", "铁 超大杯", "温度：少冰", "加料：燕麦奶", "备注：少冰不要吸管", "实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "--#0023完--", "<BR>"} {
+	for _, expected := range []string{"<CB>", "(商)取餐码:0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "商品", "数量", "单价", "金额", "超长名称燕", "麦奶生椰水", "拿铁 超大杯", "少冰", "加料：燕麦奶", "备注：少冰不要吸管", "<L><B>实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "--#0023完--", "<BR>"} {
 		if !strings.Contains(content, expected) {
 			t.Fatalf("structured receipt missing %q:\n%s", expected, content)
 		}
@@ -300,6 +300,12 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	}
 	if strings.ContainsAny(content, "¥￥") {
 		t.Fatalf("structured receipt must omit unsupported currency glyphs:\n%s", content)
+	}
+	if strings.Contains(content, "温度：少冰") {
+		t.Fatalf("structured receipt must omit option group names by default:\n%s", content)
+	}
+	if strings.Contains(content, "<CB><BOLD>(商)取餐码") {
+		t.Fatalf("pickup headline must not stack large and bold printer commands:\n%s", content)
 	}
 	if headline := "(商)取餐码:0023"; printDisplayWidth(headline) > printableColumns(58, "LARGE") {
 		t.Fatalf("58mm pickup headline would wrap at large size: %q", headline)
@@ -326,6 +332,14 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 		if got := printDisplayWidth(plainPrintLine(line)); got > 32 {
 			t.Fatalf("custom 58mm line exceeds 32 display columns (%d): %q", got, plainPrintLine(line))
 		}
+	}
+
+	layout["showItemHeader"] = false
+	layout["showOptionGroupNames"] = true
+	layout["emphasizePaid"] = false
+	customized := renderStructuredReceipt(template, order, "", false)
+	if strings.Contains(customized, "商品        数量") || !strings.Contains(customized, "温度：少冰") || strings.Contains(customized, "<L><B>实付") {
+		t.Fatalf("structured receipt must honor item header, option label and paid emphasis switches:\n%s", customized)
 	}
 
 	template.CopyRole = "KITCHEN"
@@ -366,7 +380,7 @@ func TestStructuredItemLabelSplitsQuantityAndHonorsLayoutSwitches(t *testing.T) 
 		t.Fatalf("quantity two must create two structured item labels, got %d", len(contents))
 	}
 	for index, content := range contents {
-		for _, expected := range []string{"<PAGE l=\"2\"><SIZE>40,30</SIZE>", fmt.Sprintf("数量：%d/2", index+1), "美式", "规格：大杯", "属性：温度：热", "备注：不要糖", "订单：TB8", `h="2"`} {
+		for _, expected := range []string{"<PAGE l=\"2\"><SIZE>40,30</SIZE>", fmt.Sprintf("数量：%d/2", index+1), "美式", "规格：大杯", "属性：热", "备注：不要糖", "订单：TB8", `h="2"`} {
 			if !strings.Contains(content, expected) {
 				t.Fatalf("structured label missing %q:\n%s", expected, content)
 			}

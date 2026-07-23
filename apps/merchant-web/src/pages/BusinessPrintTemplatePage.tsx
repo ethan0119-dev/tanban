@@ -83,9 +83,12 @@ const visibilityOptions: Array<{ key: keyof PrintTemplateLayout; label: string; 
   { key: 'showTable', label: '桌台信息' },
   { key: 'showItems', label: '商品明细' },
   { key: 'showItemSequence', label: '标签序号 1/2', roles: ['ITEM'] },
+  { key: 'showItemHeader', label: '商品表头', roles: ['MERCHANT', 'CUSTOMER', 'KITCHEN'] },
   { key: 'showItemOptions', label: '规格与加料' },
+  { key: 'showOptionGroupNames', label: '显示属性名称' },
   { key: 'showPrices', label: '单价与金额', roles: ['MERCHANT', 'CUSTOMER'] },
   { key: 'showPayment', label: '支付与合计', roles: ['MERCHANT', 'CUSTOMER'] },
+  { key: 'emphasizePaid', label: '放大实付金额', roles: ['MERCHANT', 'CUSTOMER'] },
   { key: 'showRemark', label: '订单备注' },
   { key: 'showCustomer', label: '顾客信息', roles: ['MERCHANT', 'CUSTOMER'] },
   { key: 'showAddress', label: '配送地址', roles: ['MERCHANT', 'CUSTOMER'] },
@@ -118,23 +121,26 @@ function applyLayoutPreset(section: PrintTemplateSection, preset: PrintLayoutPre
       return {
         ...current, preset, fontSize: 'NORMAL', showStoreName: false, showOrderType: true,
         showOrderNo: false, showOrderTime: true, showPickupNo: true, showTable: true,
-        showItems: true, showItemSequence: true, showItemOptions: false, showPrices: false,
-        showPayment: false, showRemark: false, showCustomer: false, showAddress: false, showQrCode: false,
+        showItems: true, showItemSequence: true, showItemHeader: false, showItemOptions: false,
+        showOptionGroupNames: false, showPrices: false, showPayment: false, emphasizePaid: false,
+        showRemark: false, showCustomer: false, showAddress: false, showQrCode: false,
       };
     }
     if (preset === 'LARGE') {
       return {
         ...current, preset, fontSize: 'LARGE', showStoreName: false, showOrderType: true,
         showOrderNo: false, showOrderTime: true, showPickupNo: true, showTable: true,
-        showItems: true, showItemSequence: true, showItemOptions: true, showPrices: false,
-        showPayment: false, showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
+        showItems: true, showItemSequence: true, showItemHeader: false, showItemOptions: true,
+        showOptionGroupNames: false, showPrices: false, showPayment: false, emphasizePaid: false,
+        showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
       };
     }
     return {
       ...current, preset, fontSize: 'NORMAL', showStoreName: false, showOrderType: true,
       showOrderNo: true, showOrderTime: true, showPickupNo: true, showTable: true,
-      showItems: true, showItemSequence: true, showItemOptions: true, showPrices: false,
-      showPayment: false, showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
+      showItems: true, showItemSequence: true, showItemHeader: false, showItemOptions: true,
+      showOptionGroupNames: false, showPrices: false, showPayment: false, emphasizePaid: false,
+      showRemark: true, showCustomer: false, showAddress: false, showQrCode: false,
     };
   }
 
@@ -144,26 +150,30 @@ function applyLayoutPreset(section: PrintTemplateSection, preset: PrintLayoutPre
     return {
       ...current, preset, fontSize: 'NORMAL', headerStyle: 'SIMPLE', showStoreName: false,
       showOrderType: true, showOrderNo: false, showOrderTime: false, showPickupNo: true,
-      showTable: true, showItems: true, showItemSequence: false, showItemOptions: false,
-      showPrices: !kitchen, showPayment: !kitchen, showRemark: true, showCustomer: false,
-      showAddress: false, showQrCode: false, showEndMarker: true,
+      showTable: true, showItems: true, showItemSequence: false, showItemHeader: true,
+      showItemOptions: false, showOptionGroupNames: false, showPrices: !kitchen,
+      showPayment: !kitchen, emphasizePaid: !kitchen, showRemark: true,
+      showCustomer: false, showAddress: false, showQrCode: false, showEndMarker: true,
     };
   }
   if (preset === 'LARGE') {
     return {
       ...current, preset, fontSize: 'LARGE', headerStyle: 'SIMPLE', showStoreName: false,
       showOrderType: true, showOrderNo: false, showOrderTime: false, showPickupNo: true,
-      showTable: true, showItems: true, showItemSequence: false, showItemOptions: true,
-      showPrices: false, showPayment: false, showRemark: true, showCustomer: false,
-      showAddress: false, showQrCode: false, showEndMarker: true,
+      showTable: true, showItems: true, showItemSequence: false, showItemHeader: true,
+      showItemOptions: true, showOptionGroupNames: false, showPrices: false,
+      showPayment: false, emphasizePaid: false, showRemark: true,
+      showCustomer: false, showAddress: false, showQrCode: false, showEndMarker: true,
     };
   }
   return {
     ...current, preset, fontSize: kitchen ? 'LARGE' : 'NORMAL', headerStyle: 'PROMINENT',
     showStoreName: true, showOrderType: true, showOrderNo: true, showOrderTime: true,
     showPickupNo: true, showTable: true, showItems: true, showItemSequence: false,
-    showItemOptions: true, showPrices: !kitchen, showPayment: !kitchen, showRemark: true,
-    showCustomer: customer, showAddress: customer, showQrCode: customer, showEndMarker: true,
+    showItemHeader: true, showItemOptions: true, showOptionGroupNames: false,
+    showPrices: !kitchen, showPayment: !kitchen, emphasizePaid: !kitchen,
+    showRemark: true, showCustomer: customer, showAddress: customer,
+    showQrCode: customer, showEndMarker: true,
   };
 }
 
@@ -173,8 +183,8 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
   const scene = businessType === 'DINE_IN' ? '桌码堂食' : businessType === 'TAKEOUT' ? '到店自取' : '外卖配送';
   const sceneShort = businessType === 'DINE_IN' ? '堂食' : businessType === 'TAKEOUT' ? '自提' : '外卖';
   const products = [
-    { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰 / 不另外加糖' },
-    { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热 / 加燕麦奶' },
+    { name: '冰美式', sku: '中杯', quantity: 1, price: 1600, options: '少冰 / 不另外加糖', namedOptions: '温度：少冰 / 甜度：不另外加糖' },
+    { name: '燕麦拿铁', sku: '大杯', quantity: 1, price: 2100, options: '热 / 加燕麦奶', namedOptions: '温度：热 / 加料：燕麦奶' },
   ];
 
   if (label) {
@@ -192,7 +202,7 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
             <div className="thermal-label-detail">规格：大杯、燕麦奶</div>
           </>
         )}
-        {layout.showItemOptions && <div className="thermal-label-detail">属性：热、少糖</div>}
+        {layout.showItemOptions && <div className="thermal-label-detail">属性：{layout.showOptionGroupNames ? '温度：热、甜度：少糖' : '热、少糖'}</div>}
         {layout.showRemark && <div className="thermal-label-detail">备注：杯身写 Ethan</div>}
         {layout.showOrderNo && <div className="thermal-muted">订单：TB202607200001</div>}
         {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
@@ -223,7 +233,7 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
       {layout.showItems && (
         <>
           <div className="thermal-rule" />
-          <div className="thermal-items-head"><b>商品</b><b>数量</b>{layout.showPrices && <><b>单价</b><b>金额</b></>}</div>
+          {layout.showItemHeader && <div className="thermal-items-head"><b>商品</b><b>数量</b>{layout.showPrices && <><b>单价</b><b>金额</b></>}</div>}
           {products.map((product) => (
             <div className="thermal-item" key={product.name}>
               <div className="thermal-item-line">
@@ -231,7 +241,7 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
                 <span>×{product.quantity}</span>
                 {layout.showPrices && <><span>{cents(product.price)}</span><span>{cents(product.price * product.quantity)}</span></>}
               </div>
-              {layout.showItemOptions && <small>{product.options}</small>}
+              {layout.showItemOptions && <small>{layout.showOptionGroupNames ? product.namedOptions : product.options}</small>}
             </div>
           ))}
         </>
@@ -240,7 +250,7 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
         <>
           <div className="thermal-rule" />
           <div className="thermal-pair"><span>商品金额</span><b>37.00</b></div>
-          <div className="thermal-total"><span>实付</span><strong>37.00</strong></div>
+          <div className={layout.emphasizePaid ? 'thermal-total is-emphasized' : 'thermal-total'}><span>实付</span><strong>37.00</strong></div>
           <div className="thermal-pair"><span>支付方式</span><b>会生活聚合支付</b></div>
         </>
       )}
