@@ -522,6 +522,7 @@ type activePrintTemplate struct {
 	PaperWidth    int
 	LabelWidthMM  int
 	LabelHeightMM int
+	StorePhone    string
 	Layout        map[string]any
 	Found         bool
 	Enabled       bool

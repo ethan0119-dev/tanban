@@ -254,12 +254,18 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
           <div className="thermal-rule" />
           <div className="thermal-pair"><span>商品金额</span><b>37.00</b></div>
           <div className={layout.emphasizePaid ? 'thermal-total is-emphasized' : 'thermal-total'}><span>实付</span><strong>37.00</strong></div>
+          <div className="thermal-feed-line" />
           <div className="thermal-pair"><span>支付方式</span><b>会生活聚合支付</b></div>
         </>
       )}
       {layout.showRemark && <div className="thermal-note"><b>备注</b> 燕麦拿铁少冰，杯身写 Ethan</div>}
       {layout.showQrCode && <div className="thermal-qr"><QRCode value="https://miniapp.example/order/TB202607200001" size={112} bordered={false} /><span>扫码查看订单</span></div>}
-      {layout.customFooter && <div className="thermal-footer">{layout.customFooter}</div>}
+      {layout.customFooter && <>
+        <div className="thermal-rule" />
+        <div className="thermal-footer">{layout.customFooter}</div>
+        <div className="thermal-footer">客服电话：18602296557</div>
+        <div className="thermal-feed-line" />
+      </>}
       {layout.showEndMarker && <div className="thermal-end">{endText}</div>}
       {Array.from({ length: layout.feedLines }).map((_, index) => <div className="thermal-feed-line" key={index} />)}
     </div>
