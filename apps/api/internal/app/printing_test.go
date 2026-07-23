@@ -226,9 +226,9 @@ func TestInactiveOrMissingStoreDisablesPrintingWithoutFailingMoneyFlow(t *testin
 		t.Fatal(err)
 	}
 	defer db.Close()
-	query := regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,status,deleted_at FROM stores") + `\s+` + regexp.QuoteMeta("WHERE id=? AND tenant_id=?")
+	query := regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,COALESCE(phone,''),status,deleted_at FROM stores") + `\s+` + regexp.QuoteMeta("WHERE id=? AND tenant_id=?")
 	mock.ExpectQuery(query).WithArgs(int64(9), int64(7)).
-		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "status", "deleted_at"}).AddRow(true, true, "DISABLED", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "phone", "status", "deleted_at"}).AddRow(true, true, "18602296557", "DISABLED", nil))
 	policy, err := loadStorePrintPolicy(context.Background(), db, 7, 9)
 	if err != nil || policy.AutoReceipt || policy.AutoLabel {
 		t.Fatalf("disabled store must yield a no-print policy without error: policy=%+v err=%v", policy, err)
@@ -288,9 +288,9 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	layout := defaultStructuredPrintLayout("MERCHANT")
 	layout["showCustomer"] = true
 	layout["customFooter"] = "谢谢惠顾 {{order_no}}"
-	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, Layout: layout}
+	template := activePrintTemplate{CopyRole: "MERCHANT", PaperWidth: 58, StorePhone: "18602296557", Layout: layout}
 	content := renderStructuredReceipt(template, order, "", false)
-	for _, expected := range []string{"<CB>", "(商)取餐码:0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "商品", "数量", "单价", "金额", "超长名称燕", "麦奶生椰水", "拿铁 超大杯", "少冰", "加料：燕麦奶", "备注：少冰不要吸管", "<L><B>实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "--#0023完--", "<BR>"} {
+	for _, expected := range []string{"<CB>", "(商)取餐码:0023", "码农咖啡", "店内堂食", "露台 B02 B02", "2026-07-20 18:26:00", "商品", "数量", "单价", "金额", "超长名称燕", "麦奶生椰水", "拿铁 超大杯", "少冰", "加料：燕麦奶", "备注：少冰不要吸管", "<L><B>实付", "会生活 / 随行付", "张三 13800000000", "谢谢惠顾 TB202607200001", "客服电话：18602296557", "--#0023完--", "<BR>"} {
 		if !strings.Contains(content, expected) {
 			t.Fatalf("structured receipt missing %q:\n%s", expected, content)
 		}
@@ -306,6 +306,13 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	}
 	if strings.Contains(content, "<CB><BOLD>(商)取餐码") {
 		t.Fatalf("pickup headline must not stack large and bold printer commands:\n%s", content)
+	}
+	if !strings.Contains(content, "</B><BR></L><BR><L>支付：") {
+		t.Fatalf("payment method must have a blank line after the emphasized paid row:\n%s", content)
+	}
+	footerSequence := "<L>" + strings.Repeat("-", 32) + "<BR></L><L>谢谢惠顾 TB202607200001<BR></L><C>客服电话：18602296557<BR></C><BR><CB>"
+	if !strings.Contains(content, footerSequence) {
+		t.Fatalf("footer must be separated, include the store phone and leave space before the end marker:\n%s", content)
 	}
 	if headline := "(商)取餐码:0023"; printDisplayWidth(headline) > printableColumns(58, "LARGE") {
 		t.Fatalf("58mm pickup headline would wrap at large size: %q", headline)
@@ -493,9 +500,9 @@ func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.
 	for index := 0; index < 12; index++ {
 		mock.ExpectExec(defaultInsert).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,status,deleted_at FROM stores")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT auto_print_receipt,auto_print_label,COALESCE(phone,''),status,deleted_at FROM stores")).
 		WithArgs(int64(5), int64(2)).
-		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "status", "deleted_at"}).AddRow(true, false, "ACTIVE", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"auto_print_receipt", "auto_print_label", "phone", "status", "deleted_at"}).AddRow(true, false, "18602296557", "ACTIVE", nil))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status FROM printer_devices")).
 		WithArgs(int64(2), int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "name", "provider", "model", "sn", "paper_width", "label_width_mm", "label_height_mm", "print_trigger", "output_type", "copy_roles", "template_text", "status"}).

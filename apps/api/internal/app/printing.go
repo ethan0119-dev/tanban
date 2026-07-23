@@ -372,15 +372,16 @@ type sqlQueryExecer interface {
 type storePrintPolicy struct {
 	AutoReceipt bool
 	AutoLabel   bool
+	Phone       string
 }
 
 func loadStorePrintPolicy(ctx context.Context, queryer sqlQueryer, tenantID, storeID int64) (storePrintPolicy, error) {
 	var policy storePrintPolicy
 	var status string
 	var deletedAt sql.NullTime
-	err := queryer.QueryRowContext(ctx, `SELECT auto_print_receipt,auto_print_label,status,deleted_at FROM stores
+	err := queryer.QueryRowContext(ctx, `SELECT auto_print_receipt,auto_print_label,COALESCE(phone,''),status,deleted_at FROM stores
 		WHERE id=? AND tenant_id=?`, storeID, tenantID).
-		Scan(&policy.AutoReceipt, &policy.AutoLabel, &status, &deletedAt)
+		Scan(&policy.AutoReceipt, &policy.AutoLabel, &policy.Phone, &status, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Payment recognition is the money fact and must not roll back merely
 		// because the store disappeared from the printable scope meanwhile.
@@ -471,6 +472,7 @@ func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQ
 			renderTemplate.PaperWidth = paperWidth
 			renderTemplate.LabelWidthMM = device.LabelWidthMM
 			renderTemplate.LabelHeightMM = device.LabelHeightMM
+			renderTemplate.StorePhone = policy.Phone
 			contents := renderTemplateContents(device.OutputType, contentTemplate, renderTemplate, order, extra, reprint)
 			for _, content := range contents {
 				for copyNo := 0; copyNo < copies; copyNo++ {
@@ -722,6 +724,7 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 			appendReceiptBodyLines(&output, []string{printTwoColumns("实付", formatPrintAmount(order.PaidCents), width)}, fontSize)
 		}
 		if method := printablePaymentMethod(order.Payment); method != "" {
+			output = append(output, "<BR>")
 			appendReceiptBodyLines(&output, []string{printKeyValue("支付", method, width)}, fontSize)
 		}
 	}
@@ -734,8 +737,19 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	if extra != "" {
 		appendReceiptBodyLines(&output, wrapPrintText(printableText(extra), width), fontSize)
 	}
-	appendReceiptCustomText(&output, layoutString(template.Layout, "customFooter", ""), order, width, fontSize)
+	customFooter := strings.TrimSpace(layoutString(template.Layout, "customFooter", ""))
+	footerPrinted := customFooter != ""
+	if footerPrinted {
+		appendReceiptMarkup(&output, separator, "LEFT", false, false)
+		appendReceiptCustomText(&output, customFooter, order, width, fontSize)
+		if phone := printableText(template.StorePhone); phone != "" {
+			appendReceiptMarkup(&output, "客服电话："+phone, "CENTER", false, false)
+		}
+	}
 	if layoutBool(template.Layout, "showEndMarker", true) {
+		if footerPrinted {
+			output = append(output, "<BR>")
+		}
 		endText := strings.TrimSpace(layoutString(template.Layout, "endMarkerText", ""))
 		if endText != "" {
 			endText = renderOrderTemplate(endText, order, "", "", false)
