@@ -38,6 +38,7 @@ import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNoti
 import { PageHeading } from '../components/PageHeading';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
+import { WechatPayOnboardingCard } from '../components/WechatPayOnboardingCard';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import { merchantSettingsWritePayload, operationSettingsWritePayload } from '../features/settings/payloads';
 import type { MerchantOperationSettings, MerchantOperationSettingsResponse, MerchantPaymentSettings, MerchantSettings } from '../types';
@@ -335,6 +336,7 @@ function PaymentSettings({ payment }: { payment: MerchantPaymentSettings }) {
     REVOKED: '授权已撤销',
   };
   return (
+    <>
     <Row gutter={[16, 16]}>
       <Col xs={24} xl={15}>
         <Card bordered={false} className="content-card settings-card" title={<Space><BankOutlined />收款通道</Space>}>
@@ -369,5 +371,9 @@ function PaymentSettings({ payment }: { payment: MerchantPaymentSettings }) {
         </Card>
       </Col>
     </Row>
+    <div style={{ marginTop: 16 }}>
+      <WechatPayOnboardingCard />
+    </div>
+    </>
   );
 }

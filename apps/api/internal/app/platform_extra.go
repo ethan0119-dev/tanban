@@ -64,24 +64,26 @@ func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 type paymentSettings struct {
-	Provider             string `json:"provider"`
-	Enabled              bool   `json:"enabled"`
-	Environment          string `json:"environment"`
-	OrgID                string `json:"orgId"`
-	APIBaseURL           string `json:"apiBaseUrl"`
-	NotifyURL            string `json:"notifyUrl"`
-	RefundNotifyURL      string `json:"refundNotifyUrl"`
-	ServiceProviderMchID string `json:"spMchId"`
-	ServiceProviderAppID string `json:"spAppId"`
+	Provider                        string `json:"provider"`
+	Enabled                         bool   `json:"enabled"`
+	Environment                     string `json:"environment"`
+	OrgID                           string `json:"orgId"`
+	APIBaseURL                      string `json:"apiBaseUrl"`
+	NotifyURL                       string `json:"notifyUrl"`
+	RefundNotifyURL                 string `json:"refundNotifyUrl"`
+	ServiceProviderMchID            string `json:"spMchId"`
+	ServiceProviderAppID            string `json:"spAppId"`
+	MicroOnboardingPermissionStatus string `json:"microOnboardingPermissionStatus"`
 }
 
 func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Request) {
 	settings := paymentSettings{
 		Provider: s.Payment.Name(), Enabled: true, Environment: "production",
 		OrgID: s.Config.TianQue.OrgID, APIBaseURL: s.Config.TianQue.BaseURL, NotifyURL: s.Config.TianQue.NotifyURL,
-		RefundNotifyURL:      s.Config.WeChatPayPartner.RefundNotifyURL,
-		ServiceProviderMchID: s.Config.WeChatPayPartner.ServiceProviderMchID,
-		ServiceProviderAppID: s.Config.WeChatPayPartner.ServiceProviderAppID,
+		RefundNotifyURL:                 s.Config.WeChatPayPartner.RefundNotifyURL,
+		ServiceProviderMchID:            s.Config.WeChatPayPartner.ServiceProviderMchID,
+		ServiceProviderAppID:            s.Config.WeChatPayPartner.ServiceProviderAppID,
+		MicroOnboardingPermissionStatus: "NOT_APPLIED",
 	}
 	_ = s.loadSettingJSON(r, "payment", &settings)
 	if settings.Provider == "wechat_partner" {
@@ -97,7 +99,8 @@ func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Reque
 		"provider": settings.Provider, "enabled": settings.Enabled, "environment": settings.Environment,
 		"orgId": settings.OrgID, "apiBaseUrl": settings.APIBaseURL, "notifyUrl": settings.NotifyURL,
 		"refundNotifyUrl": settings.RefundNotifyURL, "spMchId": settings.ServiceProviderMchID, "spAppId": settings.ServiceProviderAppID,
-		"effectiveProvider": s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(),
+		"microOnboardingPermissionStatus": settings.MicroOnboardingPermissionStatus,
+		"effectiveProvider":               s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(),
 		"tianqueConfigured":         s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "",
 		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": false,
 		"wechatPartnerConfigured": wechat.ServiceProviderMchID != "" && wechat.ServiceProviderAppID != "" &&
@@ -116,8 +119,16 @@ func (s *Server) updatePlatformPaymentSettings(w http.ResponseWriter, r *http.Re
 		return
 	}
 	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
+	input.MicroOnboardingPermissionStatus = strings.ToUpper(strings.TrimSpace(input.MicroOnboardingPermissionStatus))
 	if !validPaymentProvider(input.Provider) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque or wechat_partner")
+		return
+	}
+	if input.MicroOnboardingPermissionStatus == "" {
+		input.MicroOnboardingPermissionStatus = "NOT_APPLIED"
+	}
+	if !validStatus(input.MicroOnboardingPermissionStatus, "NOT_APPLIED", "APPLYING", "ENABLED", "REJECTED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid micro onboarding permission status")
 		return
 	}
 	if err := s.saveSettingJSON(r, "payment", input); err != nil {

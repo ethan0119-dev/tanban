@@ -450,6 +450,18 @@ export function TenantsPage() {
       <Modal title={`支付配置 · ${selected?.name || ''}`} open={paymentOpen} width={680} okText="保存支付配置" onCancel={() => setPaymentOpen(false)} onOk={() => void savePaymentSettings()} confirmLoading={saving} okButtonProps={{ disabled: paymentLoading }}>
         <Form form={paymentForm} layout="vertical" requiredMark={false}>
           <Alert type="info" showIcon message="商户端无需填写支付密钥" description="服务商证书和 APIv3 密钥由平台统一保管。商户这里只绑定微信支付特约商户号，并记录进件、产品授权和退款授权状态。" style={{ marginBottom: 16 }} />
+          {paymentForm.getFieldValue('onboardingApplication') && <Alert
+            type="info"
+            showIcon
+            message={`商户已提交微信支付预审：${paymentForm.getFieldValue(['onboardingApplication', 'merchantShortName']) || '未命名商户'}`}
+            description={
+              <Space direction="vertical" size={2}>
+                <span>主体：{{ MICRO: '小微商户', INDIVIDUAL: '个体工商户', ENTERPRISE: '企业' }[paymentForm.getFieldValue(['onboardingApplication', 'subjectType']) as string] || '—'}；经营者：{paymentForm.getFieldValue(['onboardingApplication', 'operatorName']) || '—'}</span>
+                <span>申请状态：{paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) || '—'}；提交时间：{paymentForm.getFieldValue(['onboardingApplication', 'submittedAt']) || '—'}</span>
+              </Space>
+            }
+            style={{ marginBottom: 16 }}
+          />}
           <Form.Item label="支付适配器" name="provider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider}>
             {({ getFieldValue }) => getFieldValue('provider') === 'wechat_partner' ? <>

@@ -164,6 +164,18 @@ export function PaymentSettingsPage() {
                   <Col xs={24} md={12}><Form.Item label="服务商商户号（sp_mchid）" name="spMchId" rules={[{ required: true, message: '请输入服务商商户号' }, { pattern: /^\d{8,32}$/, message: '请输入 8 至 32 位数字' }]}><Input placeholder="微信支付分配的服务商商户号" /></Form.Item></Col>
                   <Col xs={24} md={12}><Form.Item label="服务商小程序 AppID（sp_appid）" name="spAppId" rules={[{ required: true, message: '请输入服务商小程序 AppID' }, { pattern: /^wx[a-zA-Z0-9]{16}$/, message: 'AppID 格式不正确' }]}><Input placeholder="须已绑定至服务商商户号" /></Form.Item></Col>
                 </Row>
+                <Form.Item
+                  label="小微商户进件权限"
+                  name="microOnboardingPermissionStatus"
+                  extra="该状态用于控制和提示进件流程，不会替代微信支付实际授权；请以服务商平台或接口权限为准。"
+                >
+                  <Select options={[
+                    { value: 'NOT_APPLIED', label: '尚未申请' },
+                    { value: 'APPLYING', label: '申请／灰度审核中' },
+                    { value: 'ENABLED', label: '微信支付已开通权限' },
+                    { value: 'REJECTED', label: '申请未通过' },
+                  ]} />
+                </Form.Item>
                 <Form.Item label="微信支付 API 地址" name="apiBaseUrl"><Input disabled placeholder="https://api.mch.weixin.qq.com" /></Form.Item>
                 <Form.Item label="支付结果通知地址" name="notifyUrl" rules={[{ required: true, message: '请输入支付通知地址' }, { type: 'url', message: '请输入有效 URL' }]}><Input /></Form.Item>
                 <Form.Item label="退款结果通知地址" name="refundNotifyUrl" rules={[{ required: true, message: '请输入退款通知地址' }, { type: 'url', message: '请输入有效 URL' }]}><Input /></Form.Item>

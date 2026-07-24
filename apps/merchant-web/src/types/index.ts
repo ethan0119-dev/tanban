@@ -431,6 +431,28 @@ export interface MerchantPaymentSettings {
   sensitiveConfigurationManagedByPlatform: boolean;
 }
 
+export interface WechatPayOnboardingApplication {
+  subjectType: 'MICRO' | 'INDIVIDUAL' | 'ENTERPRISE';
+  businessScene: 'STORE' | 'MOBILE';
+  merchantShortName: string;
+  servicePhone: string;
+  businessAddress: string;
+  operatorName: string;
+  contactPhone: string;
+  contactEmail: string;
+  licenseNumber: string;
+  qualificationConfirmed: boolean;
+  identityMaterialReady: boolean;
+  settlementAccountReady: boolean;
+  businessMaterialReady: boolean;
+  applicationStatus: 'DRAFT' | 'PENDING_PLATFORM_REVIEW' | 'NEEDS_INFO' | 'SUBMITTED_TO_WECHAT' | 'FINISHED';
+  platformNote: string;
+  submittedAt: string;
+  updatedAt: string;
+  sensitiveCollectionEnabled: boolean;
+  providerSubmissionEnabled: boolean;
+}
+
 export interface TableBoardTable {
   id: Id;
   areaId: Id;

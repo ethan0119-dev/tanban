@@ -65,12 +65,13 @@ type tenantServiceExpirationInput struct {
 }
 
 type tenantPaymentSettings struct {
-	Provider                   string `json:"provider"`
-	MerchantNo                 string `json:"merchantNo"`
-	SubAppID                   string `json:"subAppId"`
-	OnboardingStatus           string `json:"onboardingStatus"`
-	ProductAuthorizationStatus string `json:"productAuthorizationStatus"`
-	RefundAuthorized           bool   `json:"refundAuthorized"`
+	Provider                   string                       `json:"provider"`
+	MerchantNo                 string                       `json:"merchantNo"`
+	SubAppID                   string                       `json:"subAppId"`
+	OnboardingStatus           string                       `json:"onboardingStatus"`
+	ProductAuthorizationStatus string                       `json:"productAuthorizationStatus"`
+	RefundAuthorized           bool                         `json:"refundAuthorized"`
+	OnboardingApplication      *wechatOnboardingApplication `json:"onboardingApplication,omitempty"`
 }
 
 type storeDTO struct {
@@ -399,6 +400,14 @@ func (s *Server) getTenantPaymentSettings(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		handleSQLError(w, err)
 		return
+	}
+	application, applicationErr := s.loadWechatOnboarding(r, id)
+	if applicationErr != nil {
+		handleSQLError(w, applicationErr)
+		return
+	}
+	if application.UpdatedAt != "" {
+		settings.OnboardingApplication = &application
 	}
 	writeData(w, http.StatusOK, settings)
 }

@@ -118,6 +118,7 @@ export interface PaymentSettings {
   refundNotifyUrl?: string;
   spMchId?: string;
   spAppId?: string;
+  microOnboardingPermissionStatus?: 'NOT_APPLIED' | 'APPLYING' | 'ENABLED' | 'REJECTED';
   publicKeyConfigured?: boolean;
   privateKeyConfigured?: boolean;
   apiCertSerialConfigured?: boolean;
@@ -138,6 +139,16 @@ export interface TenantPaymentSettings {
   onboardingStatus: 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
   productAuthorizationStatus: 'NOT_AUTHORIZED' | 'PENDING' | 'AUTHORIZED' | 'REVOKED';
   refundAuthorized: boolean;
+  onboardingApplication?: {
+    subjectType: 'MICRO' | 'INDIVIDUAL' | 'ENTERPRISE';
+    businessScene: 'STORE' | 'MOBILE';
+    merchantShortName: string;
+    operatorName: string;
+    contactPhone: string;
+    applicationStatus: string;
+    platformNote: string;
+    submittedAt: string;
+  };
 }
 
 export interface SystemSettings {
