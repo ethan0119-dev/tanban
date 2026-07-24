@@ -13,6 +13,24 @@ function MapCenter({ coordinate }: { coordinate: Coordinate }) {
   return null;
 }
 
+function MapSizeSync() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const refreshSize = () => map.invalidateSize({ animate: false, pan: false });
+    const observer = new ResizeObserver(refreshSize);
+    observer.observe(container);
+    const animationFrame = window.requestAnimationFrame(refreshSize);
+    const animationTimeout = window.setTimeout(refreshSize, 300);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(animationTimeout);
+    };
+  }, [map]);
+  return null;
+}
+
 function PointSelector({ value, onChange }: { value: Coordinate; onChange: (coordinate: Coordinate) => void }) {
   useMapEvents({
     click(event) {
@@ -44,6 +62,7 @@ export function StoreMapPicker({ value, address, onChange }: {
         subdomains="1234"
         url="https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
       />
+      <MapSizeSync />
       <MapCenter coordinate={value} />
       <PointSelector value={value} onChange={onChange} />
     </MapContainer>
