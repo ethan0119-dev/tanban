@@ -52,7 +52,7 @@ import { merchantFeatureCopy } from '../features/availability/copy';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
 import { StoreMapPicker } from '../components/StoreMapPicker';
-import { gcj02ToWgs84, roundedCoordinate, wgs84ToGcj02, type Coordinate } from '../features/store/location';
+import { roundedCoordinate, wgs84ToGcj02, type Coordinate } from '../features/store/location';
 import type { MerchantSettings, MerchantStoreProfile, StoreBusinessDay, StoreBusinessHours } from '../types';
 import { beijingNowDateTime, beijingPickerValue, toBeijingRFC3339 } from '../utils/format';
 
@@ -256,7 +256,7 @@ export function SettingsPage() {
     : '', [address, form, latitude, longitude]);
   const openMapPicker = () => {
     if (longitude != null && latitude != null) {
-      setMapPoint(gcj02ToWgs84({ latitude, longitude }));
+      setMapPoint({ latitude, longitude });
     }
     setMapPickerOpen(true);
   };
@@ -465,7 +465,7 @@ export function SettingsPage() {
         cancelText="取消"
         onCancel={() => setMapPickerOpen(false)}
         onOk={() => {
-          const coordinate = roundedCoordinate(wgs84ToGcj02(mapPoint));
+          const coordinate = roundedCoordinate(mapPoint);
           form.setFieldsValue({ storeLatitude: coordinate.latitude, storeLongitude: coordinate.longitude });
           setMapPickerOpen(false);
           messageApi.success(address ? '地图位置已更新，请保存设置' : '地图位置已更新，请填写详细地址后保存');

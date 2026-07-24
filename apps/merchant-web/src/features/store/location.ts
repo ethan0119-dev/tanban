@@ -27,7 +27,7 @@ function transformLongitude(x: number, y: number) {
   return result;
 }
 
-/** Browser/OSM WGS-84 coordinate to the GCJ-02 coordinate used by WeChat and AMap. */
+/** Browser geolocation WGS-84 coordinate to the GCJ-02 coordinate used by WeChat and AMap. */
 export function wgs84ToGcj02({ latitude, longitude }: Coordinate): Coordinate {
   if (outsideChina(latitude, longitude)) return { latitude, longitude };
   let deltaLatitude = transformLatitude(longitude - 105, latitude - 35);

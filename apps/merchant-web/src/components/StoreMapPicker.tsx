@@ -31,7 +31,7 @@ export function StoreMapPicker({ value, address, onChange }: {
     <Alert
       type="info"
       showIcon
-      message="点击地图选择门店入口"
+      message="点击高德地图选择门店入口"
       description="可拖动和缩放地图，再点击门店实际入口。地图选点用于导航和距离判断，顾客看到的文字仍以“详细地址”为准。"
     />
     <div className="store-map-picker-address">
@@ -40,8 +40,9 @@ export function StoreMapPicker({ value, address, onChange }: {
     </div>
     <MapContainer center={[value.latitude, value.longitude]} zoom={16} scrollWheelZoom className="store-map-picker-canvas">
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.amap.com/" target="_blank" rel="noreferrer">高德地图</a>'
+        subdomains="1234"
+        url="https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
       />
       <MapCenter coordinate={value} />
       <PointSelector value={value} onChange={onChange} />
