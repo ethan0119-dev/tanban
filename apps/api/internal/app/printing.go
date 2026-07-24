@@ -741,15 +741,13 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	footerPrinted := customFooter != ""
 	if footerPrinted {
 		appendReceiptMarkup(&output, separator, "LEFT", false, false)
-		appendReceiptCustomText(&output, customFooter, order, width, fontSize)
+		appendReceiptCenteredCustomText(&output, customFooter, order, width, fontSize)
 		if phone := printableText(template.StorePhone); phone != "" {
 			appendReceiptMarkup(&output, "客服电话："+phone, "CENTER", false, false)
 		}
 	}
 	if layoutBool(template.Layout, "showEndMarker", true) {
-		if footerPrinted {
-			output = append(output, "<BR>")
-		}
+		output = append(output, "<BR>")
 		endText := strings.TrimSpace(layoutString(template.Layout, "endMarkerText", ""))
 		if endText != "" {
 			endText = renderOrderTemplate(endText, order, "", "", false)
@@ -954,6 +952,15 @@ func appendReceiptCustomText(output *[]string, custom string, order orderDTO, wi
 	lines := []string{}
 	appendCustomPrintText(&lines, custom, order, width)
 	appendReceiptBodyLines(output, lines, fontSize)
+}
+
+func appendReceiptCenteredCustomText(output *[]string, custom string, order orderDTO, width int, fontSize string) {
+	lines := []string{}
+	appendCustomPrintText(&lines, custom, order, width)
+	large := strings.EqualFold(fontSize, "LARGE")
+	for _, line := range nonEmptyPrintLines(lines) {
+		appendReceiptMarkup(output, line, "CENTER", large, false)
+	}
 }
 
 func appendReceiptProminentLine(output *[]string, value string, paperWidth int, bold bool) {
