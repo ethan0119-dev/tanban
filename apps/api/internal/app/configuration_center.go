@@ -79,8 +79,8 @@ func validCoordinate(latitude, longitude *float64) bool {
 func validateOperationSettings(input storeOperationSettings) error {
 	input.SettlementMode = strings.ToUpper(strings.TrimSpace(input.SettlementMode))
 	input.OrderingMode = strings.ToUpper(strings.TrimSpace(input.OrderingMode))
-	if input.SettlementMode != "PAY_BEFORE" {
-		return errors.New("only PAY_BEFORE is available in the current release")
+	if !validStatus(input.SettlementMode, "PAY_BEFORE", "PAY_AFTER") {
+		return errors.New("settlementMode must be PAY_BEFORE or PAY_AFTER")
 	}
 	if !validStatus(input.OrderingMode, "SINGLE_PERSON", "MULTI_PERSON") {
 		return errors.New("orderingMode must be SINGLE_PERSON or MULTI_PERSON")
@@ -144,7 +144,8 @@ func (s *Server) getMerchantOperationSettings(w http.ResponseWriter, r *http.Req
 			"duplicatePaymentQuarantined":   true,
 			"stockDeductTiming":             "ORDER_CREATED_RESERVE_PAYMENT_SUCCESS_CONFIRM",
 		},
-		"reservedCapabilities": []string{"PAY_AFTER_MEAL", "UNACCEPTED_TIMEOUT_REFUND", "CUSTOMER_REVIEW", "TAKEAWAY_VERIFICATION"},
+		"activeCapabilities":   []string{"PAY_AFTER_MEAL"},
+		"reservedCapabilities": []string{"UNACCEPTED_TIMEOUT_REFUND", "CUSTOMER_REVIEW", "TAKEAWAY_VERIFICATION"},
 	})
 }
 
@@ -174,6 +175,25 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 	defer tx.Rollback()
+	var currentSettlementMode string
+	if err = tx.QueryRowContext(r.Context(), `SELECT settlement_mode FROM store_operation_settings
+		WHERE tenant_id=? AND store_id=? FOR UPDATE`, actor.TenantID, storeID).Scan(&currentSettlementMode); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
+	if currentSettlementMode != "" && currentSettlementMode != input.SettlementMode {
+		var openBills int
+		if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM orders
+			WHERE tenant_id=? AND store_id=? AND order_type='DINE_IN' AND payment_status='UNPAID'
+			  AND status IN ('PAID','ACCEPTED','PREPARING','READY')`, actor.TenantID, storeID).Scan(&openBills); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if openBills > 0 {
+			writeError(w, http.StatusConflict, "OPEN_TABLE_BILLS_EXIST", "请先结清所有桌台未结账订单，再切换堂食结算模式")
+			return
+		}
+	}
 	if err = s.validateManagedMediaURL(r.Context(), tx, actor.TenantID, storeID, input.CustomerServiceQRURL); err != nil {
 		writeError(w, http.StatusConflict, "MEDIA_ASSET_UNAVAILABLE", err.Error())
 		return
@@ -203,12 +223,34 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		handleSQLError(w, err)
 		return
 	}
+	printTrigger := settlementPrintTrigger(input.SettlementMode)
+	if _, err = tx.ExecContext(r.Context(), `UPDATE stores SET default_print_trigger=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, printTrigger, storeID, actor.TenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE print_templates SET trigger_event=?,updated_at=NOW(3)
+		WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL`, printTrigger, actor.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE printer_devices SET print_trigger=?,updated_at=NOW(3)
+		WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL`, printTrigger, actor.TenantID, storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	s.audit(r.Context(), actor, "merchant.operation_settings.update", "store", int64String(storeID), input, r)
 	s.getMerchantOperationSettings(w, r)
+}
+
+func settlementPrintTrigger(settlementMode string) string {
+	if strings.EqualFold(strings.TrimSpace(settlementMode), "PAY_AFTER") {
+		return "ORDER_CREATED"
+	}
+	return "PAYMENT_SUCCESS"
 }
 
 func nullableFloat64(value *float64) any {

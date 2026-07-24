@@ -28,6 +28,8 @@ type orderDTO struct {
 	Source         string                 `json:"source"`
 	Fulfillment    string                 `json:"fulfillment_type"`
 	OrderType      string                 `json:"order_type"`
+	SettlementMode string                 `json:"settlement_mode"`
+	AdditionCount  int                    `json:"addition_count"`
 	BusinessDate   string                 `json:"business_date,omitempty"`
 	PickupSequence int64                  `json:"pickup_sequence,omitempty"`
 	PickupCode     string                 `json:"pickup_code,omitempty"`
@@ -134,7 +136,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -149,7 +151,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		var pickupSequence, fastFoodPlateID sql.NullInt64
 		var fastFoodPublicID, fastFoodName, fastFoodCode string
 		var tablePublicID, tableArea, tableName, tableCode string
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -191,7 +193,7 @@ type sqlQueryer interface {
 }
 
 func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID, id int64, orderNo string) (orderDTO, error) {
-	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders WHERE tenant_id=?`
 	args := []any{tenantID}
 	if id > 0 {
@@ -207,7 +209,7 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	var pickupSequence, fastFoodPlateID sql.NullInt64
 	var fastFoodPublicID, fastFoodName, fastFoodCode string
 	var tablePublicID, tableArea, tableName, tableCode string
-	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
+	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
 	if err != nil {
 		return item, err
 	}
@@ -309,6 +311,103 @@ func useOrderCoupon(ctx context.Context, executor sqlExecer, tenantID, orderID i
 
 type transitionInput struct {
 	Status string `json:"status"`
+}
+
+type settlePayAfterInput struct {
+	Method string `json:"method"`
+	Remark string `json:"remark"`
+}
+
+func (s *Server) settlePayAfterOrder(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "orderID")
+	if !ok {
+		return
+	}
+	var input settlePayAfterInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Method = strings.ToUpper(strings.TrimSpace(input.Method))
+	input.Remark = strings.TrimSpace(input.Remark)
+	if !validStatus(input.Method, "CASH", "EXTERNAL") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "method must be CASH or EXTERNAL")
+		return
+	}
+	if len([]rune(input.Remark)) > 255 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "remark must not exceed 255 characters")
+		return
+	}
+	identity := currentIdentity(r.Context())
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	var storeID, totalCents int64
+	var status, paymentStatus, settlementMode string
+	if err = tx.QueryRowContext(r.Context(), `SELECT store_id,total_cents,status,payment_status,settlement_mode_snapshot,inventory_reserved
+		FROM orders WHERE id=? AND tenant_id=? FOR UPDATE`, id, identity.TenantID).
+		Scan(&storeID, &totalCents, &status, &paymentStatus, &settlementMode, new(int)); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if paymentStatus == "PAID" {
+		if err = tx.Commit(); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		s.getOrderByID(w, r, identity.TenantID, id)
+		return
+	}
+	if settlementMode != "PAY_AFTER" || !validStatus(status, "PAID", "ACCEPTED", "PREPARING", "READY") || paymentStatus != "UNPAID" {
+		writeError(w, http.StatusConflict, "ORDER_NOT_SETTLEABLE", "当前订单不是可结账的后付账堂食订单")
+		return
+	}
+	var pendingPayments int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM payment_transactions
+		WHERE tenant_id=? AND order_id=? AND status IN ('CREATING','PENDING')`, identity.TenantID, id).Scan(&pendingPayments); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if pendingPayments > 0 {
+		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", "顾客正在支付，请确认支付结果后再操作线下结账")
+		return
+	}
+	reference := newBusinessNo("OF")
+	providerName := "external"
+	if input.Method == "CASH" {
+		providerName = "offline_cash"
+	}
+	raw, _ := json.Marshal(map[string]any{"method": input.Method, "remark": input.Remark, "confirmedBy": identity.UserID})
+	paymentResult, err := tx.ExecContext(r.Context(), `INSERT INTO payment_transactions(
+		tenant_id,store_id,order_id,provider,provider_request_no,provider_order_no,amount_cents,status,raw_response,paid_at
+	) VALUES(?,?,?,?,?,?,?,'SUCCESS',?,NOW(3))`, identity.TenantID, storeID, id, providerName, reference, reference, totalCents, string(raw))
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	paymentID, _ := paymentResult.LastInsertId()
+	if _, err = tx.ExecContext(r.Context(), `UPDATE orders SET status='COMPLETED',payment_status='PAID',paid_cents=total_cents,
+		inventory_reserved=0,stock_reserved_at=NULL,paid_at=NOW(3),completed_at=NOW(3)
+		WHERE id=? AND tenant_id=? AND payment_status='UNPAID'`, id, identity.TenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = useOrderCoupon(r.Context(), tx, identity.TenantID, id); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = enqueuePrintOutboxWith(r.Context(), tx, identity.TenantID, storeID, id, "PAYMENT_SUCCESS", paymentPrintDedupeKey(paymentID), identity.UserID, "线下结账："+input.Method); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	s.audit(r.Context(), identity, "order.offline_settle", "order", int64String(id), map[string]any{"method": input.Method, "remark": input.Remark}, r)
+	s.getOrderByID(w, r, identity.TenantID, id)
 }
 
 func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
@@ -580,21 +679,26 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	var orderNo, orderStatus, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus string
+	var orderNo, orderStatus, orderPaymentStatus, settlementMode, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus string
 	var storeID, amount int64
-	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,o.total_cents,o.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
+	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,o.total_cents,o.status,o.payment_status,o.settlement_mode_snapshot,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
 		t.payment_onboarding_status,t.payment_product_authorization_status
 		FROM orders o
 		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
 			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.tenant_id=o.tenant_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		WHERE o.id=? AND o.tenant_id=?`, orderID, tenantID).
-		Scan(&orderNo, &storeID, &amount, &orderStatus, &tenantPaymentProvider, &merchantNo, &subAppID, &storedOpenID, &onboardingStatus, &productAuthorizationStatus)
+		Scan(&orderNo, &storeID, &amount, &orderStatus, &orderPaymentStatus, &settlementMode, &tenantPaymentProvider, &merchantNo, &subAppID, &storedOpenID, &onboardingStatus, &productAuthorizationStatus)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if orderStatus != "PENDING_PAYMENT" {
+	postPay := settlementMode == "PAY_AFTER"
+	payableStatus := orderStatus == "PENDING_PAYMENT"
+	if postPay {
+		payableStatus = validStatus(orderStatus, "PAID", "ACCEPTED", "PREPARING", "READY")
+	}
+	if !payableStatus || orderPaymentStatus != "UNPAID" {
 		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
 		return
 	}
@@ -606,18 +710,22 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		writeError(w, http.StatusConflict, "WECHAT_PAY_MERCHANT_NOT_READY", "WeChat Pay sub-merchant onboarding or product authorization is incomplete")
 		return
 	}
-	newReservation, reserveErr := ensureOrderStockReservationLocked(r.Context(), conn, tenantID, orderID)
-	if errors.Is(reserveErr, errInsufficientStock) {
-		writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "inventory changed while this order was waiting for late payment")
-		return
-	}
-	if errors.Is(reserveErr, errOrderNotPayable) {
-		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
-		return
-	}
-	if reserveErr != nil {
-		handleSQLError(w, reserveErr)
-		return
+	newReservation := false
+	if !postPay {
+		var reserveErr error
+		newReservation, reserveErr = ensureOrderStockReservationLocked(r.Context(), conn, tenantID, orderID)
+		if errors.Is(reserveErr, errInsufficientStock) {
+			writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "inventory changed while this order was waiting for late payment")
+			return
+		}
+		if errors.Is(reserveErr, errOrderNotPayable) {
+			writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
+			return
+		}
+		if reserveErr != nil {
+			handleSQLError(w, reserveErr)
+			return
+		}
 	}
 	if input.OpenID == "" {
 		input.OpenID = storedOpenID
@@ -630,7 +738,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	var existingID int64
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
-	renewReservation := newReservation
+	renewReservation := newReservation && !postPay
 	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? ORDER BY id DESC LIMIT 1", tenantID, orderID).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
 	createAttempt := errors.Is(err, sql.ErrNoRows)
 	if err == nil {
@@ -659,7 +767,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			// and preserving the prior row keeps delayed callbacks auditable.
 			createAttempt = true
 			intent = paymentCreationIntent{}
-			renewReservation = true
+			renewReservation = !postPay
 		default:
 			writeError(w, http.StatusConflict, "PAYMENT_STATE_UNSUPPORTED", "payment is in an unsupported state")
 			return
@@ -670,7 +778,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 	if createAttempt {
-		renewReservation = true
+		renewReservation = !postPay
 		providerRequestNo := newBusinessNo("PY")
 		existingNo = localPaymentReference(providerRequestNo)
 		var dbResult sql.Result
@@ -859,12 +967,12 @@ func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, prov
 	}
 	defer tx.Rollback()
 	var paymentID, tenantID, storeID, orderID int64
-	var paymentStatus, orderStatus, orderPaymentStatus string
+	var paymentStatus, orderStatus, orderPaymentStatus, settlementMode string
 	var inventoryReserved int
-	err = tx.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.inventory_reserved
+	err = tx.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.settlement_mode_snapshot,o.inventory_reserved
 		FROM payment_transactions p JOIN orders o ON o.id=p.order_id
 		WHERE p.provider=? AND p.provider_order_no=? FOR UPDATE`, providerName, providerNo).
-		Scan(&paymentID, &tenantID, &storeID, &orderID, &paymentStatus, &orderStatus, &orderPaymentStatus, &inventoryReserved)
+		Scan(&paymentID, &tenantID, &storeID, &orderID, &paymentStatus, &orderStatus, &orderPaymentStatus, &settlementMode, &inventoryReserved)
 	if err != nil {
 		return err
 	}
@@ -910,10 +1018,13 @@ func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, prov
 	}
 	if orderPaymentStatus == "UNPAID" {
 		targetStatus := "PAID"
+		if settlementMode == "PAY_AFTER" {
+			targetStatus = "COMPLETED"
+		}
 		if orderStatus == "CLOSED" || inventoryReserved != 1 || newerActiveID != 0 {
 			targetStatus = "PAYMENT_EXCEPTION"
 		}
-		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?", targetStatus, paidAt, orderID); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=?,completed_at=IF(?='COMPLETED',?,completed_at) WHERE id=?", targetStatus, paidAt, targetStatus, paidAt, orderID); err != nil {
 			return err
 		}
 		if err = useOrderCoupon(ctx, tx, tenantID, orderID); err != nil {

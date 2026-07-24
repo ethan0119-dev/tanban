@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -21,6 +22,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	r.Get("/orders", s.listOrders)
 	r.Get("/orders/{orderID}", s.getOrder)
 	r.Post("/orders/{orderID}/status", s.transitionOrder)
+	r.Post("/orders/{orderID}/settle", s.settlePayAfterOrder)
 	r.Post("/orders/{orderID}/reprint", s.reprintOrder)
 	r.Get("/print-jobs", s.listPrintJobs)
 	r.Post("/print-jobs/{jobID}/retry", s.retryPrintJob)
@@ -402,6 +404,15 @@ func (s *Server) updateMerchantSettings(w http.ResponseWriter, r *http.Request) 
 	if input.PrintTrigger != "" {
 		currentTrigger = input.PrintTrigger
 	}
+	var settlementMode string
+	if err = tx.QueryRowContext(r.Context(), `SELECT settlement_mode FROM store_operation_settings
+		WHERE tenant_id=? AND store_id=?`, identity.TenantID, storeID).Scan(&settlementMode); errors.Is(err, sql.ErrNoRows) {
+		settlementMode = "PAY_BEFORE"
+	} else if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	currentTrigger = settlementPrintTrigger(settlementMode)
 	if currentTrigger != "ORDER_CREATED" && currentTrigger != "PAYMENT_SUCCESS" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "printTrigger must be ORDER_CREATED or PAYMENT_SUCCESS")
 		return

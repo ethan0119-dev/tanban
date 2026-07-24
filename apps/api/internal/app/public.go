@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -200,17 +201,17 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 	decoration, version := s.publicDecorationConfig(ctx, store)
 	view["decoration"] = decoration
 	view["decorationVersion"] = version
-	var orderingMode, customerServicePhone, customerServiceWechat, customerServiceQRURL, privacyPolicyText, userAgreementText string
+	var settlementMode, orderingMode, customerServicePhone, customerServiceWechat, customerServiceQRURL, privacyPolicyText, userAgreementText string
 	var distanceCheckEnabled, requireCustomerPhone, allowOrderRemark, allowItemRemark bool
 	var distanceLimitM int
 	var storeLatitude, storeLongitude sql.NullFloat64
-	err = s.DB.QueryRowContext(ctx, `SELECT ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,require_customer_phone,
+	err = s.DB.QueryRowContext(ctx, `SELECT settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,require_customer_phone,
 		allow_order_remark,allow_item_remark,customer_service_phone,customer_service_wechat,customer_service_qr_url,
 		privacy_policy_text,user_agreement_text FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
-		Scan(&orderingMode, &distanceCheckEnabled, &distanceLimitM, &storeLatitude, &storeLongitude, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
+		Scan(&settlementMode, &orderingMode, &distanceCheckEnabled, &distanceLimitM, &storeLatitude, &storeLongitude, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
 			&customerServicePhone, &customerServiceWechat, &customerServiceQRURL, &privacyPolicyText, &userAgreementText)
 	if err == nil {
-		view["orderingSettings"] = map[string]any{"orderingMode": orderingMode, "distanceCheckEnabled": distanceCheckEnabled,
+		view["orderingSettings"] = map[string]any{"settlementMode": settlementMode, "orderingMode": orderingMode, "distanceCheckEnabled": distanceCheckEnabled,
 			"distanceLimitM": distanceLimitM, "requireCustomerPhone": requireCustomerPhone, "allowOrderRemark": allowOrderRemark,
 			"allowItemRemark": allowItemRemark}
 		if storeLatitude.Valid && storeLongitude.Valid {
@@ -408,6 +409,26 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	err = s.DB.QueryRowContext(r.Context(), `SELECT order_id,request_fingerprint FROM order_addition_requests
+		WHERE tenant_id=? AND store_id=? AND idempotency_key=?`, store.TenantID, store.ID, idempotencyKey).
+		Scan(&existingID, &existingFingerprint)
+	if err == nil {
+		if existingFingerprint != fingerprint {
+			writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different order request")
+			return
+		}
+		item, loadErr := s.loadOrder(r.Context(), store.TenantID, existingID, "")
+		if loadErr != nil {
+			handleSQLError(w, loadErr)
+			return
+		}
+		writeData(w, http.StatusOK, publicOrderView(item))
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
 	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
@@ -468,6 +489,22 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "INVALID_TABLE_CODE", "table code does not belong to this store or is disabled")
 				return
 			}
+			handleSQLError(w, err)
+			return
+		}
+	}
+	var additionOrderID, additionCurrentTotal int64
+	var additionSequence int
+	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
+		err = tx.QueryRowContext(r.Context(), `SELECT id,total_cents,addition_count+1 FROM orders
+			WHERE tenant_id=? AND store_id=? AND table_id=? AND order_type='DINE_IN'
+			  AND settlement_mode_snapshot='PAY_AFTER' AND payment_status='UNPAID'
+			  AND status IN ('PAID','ACCEPTED','PREPARING','READY')
+			  AND NOT EXISTS (SELECT 1 FROM payment_transactions p WHERE p.tenant_id=orders.tenant_id
+			    AND p.order_id=orders.id AND p.status IN ('CREATING','PENDING','SUCCESS'))
+			ORDER BY id DESC LIMIT 1 FOR UPDATE`, store.TenantID, store.ID, table.ID).
+			Scan(&additionOrderID, &additionCurrentTotal, &additionSequence)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			handleSQLError(w, err)
 			return
 		}
@@ -642,6 +679,81 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	if additionOrderID > 0 {
+		if total > maxCatalogOrderCents-additionCurrentTotal {
+			writeError(w, http.StatusConflict, "ORDER_AMOUNT_LIMIT", "table bill amount exceeds the allowed range")
+			return
+		}
+		additionResult, updateErr := tx.ExecContext(r.Context(), `UPDATE orders SET
+			total_cents=total_cents+?,merchandise_subtotal_cents=merchandise_subtotal_cents+?,
+			store_promotion_discount_cents=store_promotion_discount_cents+?,
+			coupon_discount_cents=coupon_discount_cents+?,addition_count=addition_count+1,
+			store_promotion_id=COALESCE(?,store_promotion_id),
+			store_promotion_name=IF(?<>'',?,store_promotion_name),
+			coupon_campaign_id=COALESCE(?,coupon_campaign_id),
+			coupon_name=IF(?<>'',?,coupon_name),
+			customer_id=COALESCE(customer_id,?),customer_openid=IF(customer_openid='',?,customer_openid),
+			customer_name=IF(customer_name='',?,customer_name),customer_phone=IF(customer_phone='',?,customer_phone),
+			status=IF(status='READY','PAID',status),updated_at=NOW(3)
+			WHERE id=? AND tenant_id=? AND payment_status='UNPAID'
+			  AND settlement_mode_snapshot='PAY_AFTER' AND addition_count=?`,
+			total, merchandiseSubtotal, appliedPromotion.DiscountCents, appliedCoupon.Discount,
+			nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.Name,
+			nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Name,
+			nullableID(customerID), input.OpenID, input.CustomerName, input.CustomerPhone,
+			additionOrderID, store.TenantID, additionSequence-1)
+		if updateErr != nil {
+			handleSQLError(w, updateErr)
+			return
+		}
+		if changed, _ := additionResult.RowsAffected(); changed != 1 {
+			writeError(w, http.StatusConflict, "TABLE_BILL_CHANGED", "桌台账单已更新，请刷新后重新加菜")
+			return
+		}
+		requestResult, requestErr := tx.ExecContext(r.Context(), `INSERT INTO order_addition_requests(
+			tenant_id,store_id,order_id,idempotency_key,request_fingerprint,addition_sequence
+		) VALUES(?,?,?,?,?,?)`, store.TenantID, store.ID, additionOrderID, idempotencyKey, fingerprint, additionSequence)
+		if requestErr != nil {
+			handleSQLError(w, requestErr)
+			return
+		}
+		requestID, _ := requestResult.LastInsertId()
+		if appliedCoupon.RecordID > 0 {
+			couponUpdate, couponErr := tx.ExecContext(r.Context(), `UPDATE customer_coupons SET status='RESERVED',order_id=?
+				WHERE id=? AND tenant_id=? AND status='PROVISIONAL' AND order_id IS NULL`, additionOrderID, appliedCoupon.RecordID, store.TenantID)
+			if couponErr != nil {
+				handleSQLError(w, couponErr)
+				return
+			}
+			if changed, _ := couponUpdate.RowsAffected(); changed != 1 {
+				writeError(w, http.StatusConflict, "COUPON_NOT_AVAILABLE", "coupon was used by another order")
+				return
+			}
+		}
+		for _, row := range resolved {
+			if _, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, additionOrderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity)); err != nil {
+				handleSQLError(w, err)
+				return
+			}
+		}
+		extra := fmt.Sprintf("【加单 #%d】", additionSequence)
+		dedupeKey := fmt.Sprintf("ORDER:%d:ADDITION:%d", additionOrderID, requestID)
+		if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, additionOrderID, "ORDER_CREATED", dedupeKey, 0, extra); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		item, loadErr := s.loadOrder(r.Context(), store.TenantID, additionOrderID, "")
+		if loadErr != nil {
+			handleSQLError(w, loadErr)
+			return
+		}
+		writeData(w, http.StatusCreated, publicOrderView(item))
+		return
+	}
 	orderNo := newBusinessNo("TB")
 	businessDate := businessState.BusinessDate
 	var pickupSequence int64
@@ -653,8 +765,12 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
+	initialStatus := "PENDING_PAYMENT"
+	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
+		initialStatus = "PAID"
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -833,7 +949,7 @@ func publicOrderView(order orderDTO) map[string]any {
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "canAddItems": order.SettlementMode == "PAY_AFTER" && order.PaymentStatus == "UNPAID" && validStatus(order.Status, "PAID", "ACCEPTED", "PREPARING", "READY"), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
 	if order.FastFoodPlate != nil {
 		view["fastFoodPlate"] = map[string]any{"publicId": order.FastFoodPlate.PublicID, "plateName": order.FastFoodPlate.Name, "plateCode": order.FastFoodPlate.PlateCode}
 		view["fastFoodPlatePublicId"] = order.FastFoodPlate.PublicID
