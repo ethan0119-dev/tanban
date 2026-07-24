@@ -25,7 +25,7 @@ import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { isMerchantOwner } from '../auth/permissions';
+import { hasMerchantCapability } from '../auth/permissions';
 import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import { PageHeading } from '../components/PageHeading';
 import { merchantFeatureCopy } from '../features/availability/copy';
@@ -59,7 +59,7 @@ function idempotency() {
 
 export function StoredValuePage() {
   const { user } = useAuth();
-  const owner = isMerchantOwner(user);
+  const canCreateStoredValueRecord = hasMerchantCapability(user, 'CREATE_STORED_VALUE_RECORD');
   const [activeTab, setActiveTab] = useState('rules');
   const [rules, setRules] = useState<StoredValueRule[]>([]);
   const [records, setRecords] = useState<StoredValueRecord[]>([]);
@@ -225,7 +225,7 @@ export function StoredValuePage() {
           },
           {
             key: 'records', label: '储值记录', children: <>
-              <div className="member-filter-bar"><Typography.Text type="secondary">资金记录不可编辑和删除</Typography.Text>{owner ? <Button type="primary" icon={<PlusOutlined />} onClick={() => { recordKey.current = idempotency(); recordForm.resetFields(); recordForm.setFieldsValue({ payment_method: 'CASH' }); setRecordOpen(true); }}>录入手工储值</Button> : <Tag color="warning">仅老板可录入</Tag>}</div>
+              <div className="member-filter-bar"><Typography.Text type="secondary">资金记录不可编辑和删除</Typography.Text>{canCreateStoredValueRecord ? <Button type="primary" icon={<PlusOutlined />} onClick={() => { recordKey.current = idempotency(); recordForm.resetFields(); recordForm.setFieldsValue({ payment_method: 'CASH' }); setRecordOpen(true); }}>录入手工储值</Button> : <Tag color="warning">仅老板可录入</Tag>}</div>
               <Table<StoredValueRecord> rowKey="id" loading={loading} dataSource={records} scroll={{ x: 1050 }} columns={[
                 { title: '储值单号', dataIndex: 'record_no', width: 210 },
                 { title: '顾客', dataIndex: 'customer_name', width: 140 },

@@ -11,6 +11,7 @@ export interface MerchantUser {
   storeId?: Id;
   tenantName?: string;
   roles?: string[];
+  capabilities?: string[];
   serviceExpiresAt?: string;
   serviceExpired?: boolean;
 }

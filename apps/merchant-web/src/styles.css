@@ -501,6 +501,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .role-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; font-size: 19px; }
 .role-title { margin: 13px 0 6px; display: flex; justify-content: space-between; align-items: center; font-size: 16px; }
 .role-card .ant-typography { margin-bottom: 0; min-height: 44px; }
+.role-permissions { align-content: flex-start; }
 
 .settings-card { margin-bottom: 16px; }
 .store-settings-tabs > .ant-card-body > .ant-tabs > .ant-tabs-nav { margin: 0; padding: 0 22px; }
@@ -666,7 +667,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .metric-foot { left: 16px; }
   .category-card { min-height: auto; }
   .role-card .ant-card-body { padding: 15px; }
-  .role-card .ant-typography { display: none; }
   .store-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-day-row { align-items: flex-start; flex-direction: column; }
 }

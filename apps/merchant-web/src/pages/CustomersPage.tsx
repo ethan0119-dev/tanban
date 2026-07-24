@@ -34,7 +34,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { isMerchantOwner } from '../auth/permissions';
+import { hasMerchantCapability } from '../auth/permissions';
 import { PageHeading } from '../components/PageHeading';
 import type { BalanceLedger, Customer, CustomerTag, MemberSummary } from '../member/types';
 import '../member/member.css';
@@ -61,7 +61,8 @@ function newKey(prefix: string) {
 
 export function CustomersPage() {
   const { user } = useAuth();
-  const owner = isMerchantOwner(user);
+  const canArchiveCustomers = hasMerchantCapability(user, 'ARCHIVE_CUSTOMERS');
+  const canAdjustBalance = hasMerchantCapability(user, 'ADJUST_CUSTOMER_BALANCE');
   const [activeTab, setActiveTab] = useState('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [tags, setTags] = useState<CustomerTag[]>([]);
@@ -265,7 +266,7 @@ export function CustomersPage() {
                 { title: '来源', dataIndex: 'source_store_name', width: 130, render: (value) => value || '手工录入' },
                 { title: '状态', width: 100, render: (_, item) => <Tag color={item.status === 'ACTIVE' ? 'success' : item.status === 'BLOCKED' ? 'error' : 'default'}>{item.status === 'ACTIVE' ? '正常' : item.status === 'BLOCKED' ? '已拉黑' : '已停用'}</Tag> },
                 { title: '注册时间', dataIndex: 'registered_at', width: 170, render: dateTime },
-                { title: '操作', fixed: 'right', width: 150, render: (_, item) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => void openCustomer(item)}>编辑</Button><Popconfirm title="归档后不再出现在顾客列表，资金流水仍会保留" onConfirm={() => void archiveCustomer(item)}><Button type="link" danger icon={<DeleteOutlined />} /></Popconfirm></Space> },
+                { title: '操作', fixed: 'right', width: 150, render: (_, item) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => void openCustomer(item)}>编辑</Button>{canArchiveCustomers ? <Popconfirm title="归档后不再出现在顾客列表，资金流水仍会保留" onConfirm={() => void archiveCustomer(item)}><Button type="link" danger icon={<DeleteOutlined />} aria-label={`归档顾客 ${item.name}`} /></Popconfirm> : null}</Space> },
               ]} />
             </>,
           },
@@ -300,7 +301,7 @@ export function CustomersPage() {
         ]} />
       </Card>
 
-      <Drawer title="顾客详情" width={620} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && owner ? <Button icon={<WalletOutlined />} onClick={() => { adjustmentKey.current = newKey('balance'); adjustForm.resetFields(); adjustForm.setFieldsValue({ bucket: 'PRINCIPAL', direction: 'CREDIT' }); setAdjustOpen(true); }}>余额调账</Button> : undefined}>
+      <Drawer title="顾客详情" width={620} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && canAdjustBalance ? <Button icon={<WalletOutlined />} onClick={() => { adjustmentKey.current = newKey('balance'); adjustForm.resetFields(); adjustForm.setFieldsValue({ bucket: 'PRINCIPAL', direction: 'CREDIT' }); setAdjustOpen(true); }}>余额调账</Button> : undefined}>
         {selected && <>
           <Space size={14} style={{ marginBottom: 20 }}><Avatar size={58} src={selected.avatar_url} className="member-avatar">{initials(selected.name)}</Avatar><div><Typography.Title level={4} style={{ margin: 0 }}>{selected.name}</Typography.Title><Typography.Text type="secondary">{selected.phone_masked || selected.phone || '未留手机号'}</Typography.Text></div></Space>
           <div className="member-detail-grid">

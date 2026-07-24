@@ -24,7 +24,7 @@ const provisionalMarketingAssetWarning = "领取记录已保存到当前设备�
 // caller should invoke it from the existing /merchant router.
 func (s *Server) registerMarketingMerchantRoutes(r chi.Router) {
 	r.Group(func(managers chi.Router) {
-		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
+		managers.Use(requireMerchantCapability(capabilityManageMarketing))
 
 		managers.Get("/marketing/apps", s.listMarketingApps)
 

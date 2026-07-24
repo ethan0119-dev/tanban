@@ -24,24 +24,46 @@ import {
   Typography,
   message,
 } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { assignableMerchantRoles, canManageStaffRole } from '../auth/permissions';
+import {
+  assignableMerchantRoles,
+  canManageStaffRole,
+  capabilitiesForMerchantRole,
+  MERCHANT_CAPABILITY_LABELS,
+  MERCHANT_ROLE_NAMES,
+  normalizeMerchantRole,
+  type MerchantCapability,
+  type MerchantRole,
+} from '../auth/permissions';
 import { PageHeading } from '../components/PageHeading';
 import type { Staff } from '../types';
 import { dateTime, initials } from '../utils/format';
 
-const roles = [
-  { key: 'MERCHANT_OWNER', name: '老板', icon: <CrownOutlined />, color: '#9a623b', permissions: ['全部数据', '退款', '员工管理', '门店设置'] },
-  { key: 'MERCHANT_MANAGER', name: '店长', icon: <SafetyCertificateOutlined />, color: '#446b8d', permissions: ['订单管理', '商品库存', '打印管理', '经营数据'] },
-  { key: 'MERCHANT_STAFF', name: '店员', icon: <UserOutlined />, color: '#4b8060', permissions: ['订单查看', '状态流转', '补打小票'] },
+const rolePresentation: Array<{ key: MerchantRole; icon: ReactNode; color: string }> = [
+  { key: 'MERCHANT_OWNER', icon: <CrownOutlined />, color: '#9a623b' },
+  { key: 'MERCHANT_MANAGER', icon: <SafetyCertificateOutlined />, color: '#446b8d' },
+  { key: 'MERCHANT_STAFF', icon: <UserOutlined />, color: '#4b8060' },
 ];
+
+function visibleCapabilities(role: MerchantRole): readonly MerchantCapability[] {
+  const capabilities = capabilitiesForMerchantRole(role);
+  return capabilities.includes('MANAGE_ALL_STAFF')
+    ? capabilities.filter((capability) => capability !== 'MANAGE_STAFF')
+    : capabilities;
+}
+
+const roles = rolePresentation.map((role) => ({
+  ...role,
+  name: MERCHANT_ROLE_NAMES[role.key],
+  permissions: visibleCapabilities(role.key).map((capability) => MERCHANT_CAPABILITY_LABELS[capability]),
+}));
 
 interface StaffFormValues {
   name: string;
   phone: string;
-  role: string;
+  role: MerchantRole;
   password?: string;
   enabled: boolean;
 }
@@ -111,7 +133,7 @@ export function StaffPage() {
       return;
     }
     setEditing(item ?? null);
-    form.setFieldsValue(item ? { name: item.name, phone: item.phone, role: item.role, enabled: item.enabled } : { role: 'MERCHANT_STAFF', enabled: true, name: '', phone: '', password: '' });
+    form.setFieldsValue(item ? { name: item.name, phone: item.phone, role: normalizeMerchantRole(item.role) ?? 'MERCHANT_STAFF', enabled: item.enabled } : { role: 'MERCHANT_STAFF', enabled: true, name: '', phone: '', password: '' });
     setModalOpen(true);
   };
 
@@ -140,12 +162,13 @@ export function StaffPage() {
   };
 
   const toggleStaff = async (item: Staff, enabled: boolean) => {
-    if (!canManageStaffRole(user, item.role)) {
+    const role = normalizeMerchantRole(item.role);
+    if (!role || !canManageStaffRole(user, role)) {
       messageApi.warning('店长只能管理店员账号');
       return;
     }
     try {
-      const updated = normalizeStaff(await api.put<Staff>(`/merchant/staff/${item.id}`, staffPayload({ name: item.name, phone: item.phone, role: item.role, enabled })));
+      const updated = normalizeStaff(await api.put<Staff>(`/merchant/staff/${item.id}`, staffPayload({ name: item.name, phone: item.phone, role, enabled })));
       setStaff((items) => items.map((staffItem) => staffItem.id === item.id ? updated : staffItem));
       messageApi.success(enabled ? '账号已启用' : '账号已停用');
     } catch (error) {
@@ -179,11 +202,13 @@ export function StaffPage() {
       <PageHeading title="员工与角色" description="按岗位分配最小权限，所有关键操作都会记录操作人" extra={<Space><Button icon={<LockOutlined />} onClick={() => { passwordForm.resetFields(); setPasswordOpen(true); }}>修改我的密码</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openStaff()}>新增员工</Button></Space>} />
       <Row gutter={[16, 16]} className="role-grid">
         {roles.map((role) => (
-          <Col xs={12} xl={6} key={role.key}>
+          <Col xs={24} md={12} xl={8} key={role.key}>
             <Card bordered={false} className="role-card">
               <span className="role-icon" style={{ backgroundColor: `${role.color}18`, color: role.color }}>{role.icon}</span>
               <div className="role-title"><strong>{role.name}</strong><Tag>{roleCounts[role.key] ?? 0} 人</Tag></div>
-              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }}>{role.permissions.join(' · ')}</Typography.Paragraph>
+              <Space wrap size={[4, 6]} className="role-permissions">
+                {role.permissions.map((permission) => <Tag key={permission}>{permission}</Tag>)}
+              </Space>
             </Card>
           </Col>
         ))}
@@ -201,7 +226,7 @@ export function StaffPage() {
               render: (_, item) => <Space><Avatar style={{ background: '#d9b18d' }}>{initials(item.name)}</Avatar><div><Typography.Text strong>{item.name}</Typography.Text><div><Typography.Text type="secondary">{item.phone}</Typography.Text></div></div></Space>,
             },
             { title: '角色', dataIndex: 'role', width: 120, render: (value, item) => item.roleName || roles.find((role) => role.key === value)?.name || value },
-            { title: '权限范围', dataIndex: 'role', render: (value) => roles.find((role) => role.key === value)?.permissions.slice(0, 3).map((permission) => <Tag key={permission}>{permission}</Tag>) || '--' },
+            { title: '权限范围', dataIndex: 'role', render: (value) => <Space wrap size={[2, 4]}>{roles.find((role) => role.key === value)?.permissions.map((permission) => <Tag key={permission}>{permission}</Tag>) || '--'}</Space> },
             { title: '最近登录', dataIndex: 'lastLoginAt', width: 180, render: dateTime },
             { title: '状态', dataIndex: 'enabled', width: 100, render: (value: boolean, item) => <Switch checked={value} disabled={item.role === 'MERCHANT_OWNER' || !canManageStaffRole(user, item.role)} onChange={(checked) => void toggleStaff(item, checked)} /> },
             { title: '操作', key: 'action', width: 100, fixed: 'right', render: (_, item) => <Button type="link" icon={<EditOutlined />} disabled={!canManageStaffRole(user, item.role)} onClick={() => openStaff(item)}>编辑</Button> },

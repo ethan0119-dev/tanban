@@ -32,7 +32,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	r.Put("/account/password", s.changeMerchantPassword)
 
 	r.Group(func(managers chi.Router) {
-		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
+		managers.Use(requireMerchantCapability(capabilityManageStore))
 		managers.Get("/settings", s.getMerchantSettings)
 		managers.Put("/settings", s.updateMerchantSettings)
 		managers.Get("/store-profile", s.getMerchantStoreProfile)
@@ -92,7 +92,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 		managers.Put("/media-assets/{assetID}", s.updateMediaAsset)
 		managers.Delete("/media-assets/{assetID}", s.deleteMediaAsset)
 		managers.Post("/orders/{orderID}/pay", s.createPayment)
-		managers.Post("/refunds", s.createRefund)
+		managers.With(requireMerchantCapability(capabilityCreateRefunds)).Post("/refunds", s.createRefund)
 		managers.Get("/refunds", s.listRefunds)
 		managers.Get("/payments", s.listPayments)
 		managers.Get("/printers", s.listPrinters)
@@ -154,7 +154,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	if identity.Role == RoleMerchantStaff {
+	if !roleHasMerchantCapability(identity.Role, capabilityViewFinancials) {
 		var todayOrders, pendingOrders int
 		err = s.DB.QueryRowContext(r.Context(), `SELECT
 			COALESCE(SUM(DATE(created_at)=CURDATE()),0),

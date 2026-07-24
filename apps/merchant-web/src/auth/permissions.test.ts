@@ -5,7 +5,11 @@ import {
   canManageMerchant,
   canManageStaffRole,
   canViewMerchantFinancials,
+  capabilitiesForMerchantRole,
+  hasMerchantCapability,
   isMerchantStaff,
+  MERCHANT_ROLE_CAPABILITIES,
+  normalizeMerchantRole,
   primaryMerchantRole,
 } from './permissions';
 
@@ -39,10 +43,48 @@ describe('merchant role permissions', () => {
     expect(canManageMerchant(user(role))).toBe(true);
   });
 
+  it('grants refunds to owners and managers but not staff', () => {
+    expect(hasMerchantCapability(user('MERCHANT_OWNER'), 'CREATE_REFUNDS')).toBe(true);
+    expect(hasMerchantCapability(user('MERCHANT_MANAGER'), 'CREATE_REFUNDS')).toBe(true);
+    expect(hasMerchantCapability(user('MERCHANT_STAFF'), 'CREATE_REFUNDS')).toBe(false);
+  });
+
+  it('keeps sensitive customer money operations owner-only', () => {
+    const ownerOnlyCapabilities = [
+      'ARCHIVE_CUSTOMERS',
+      'ADJUST_CUSTOMER_BALANCE',
+      'CREATE_STORED_VALUE_RECORD',
+    ] as const;
+
+    for (const capability of ownerOnlyCapabilities) {
+      expect(hasMerchantCapability(user('MERCHANT_OWNER'), capability)).toBe(true);
+      expect(hasMerchantCapability(user('MERCHANT_MANAGER'), capability)).toBe(false);
+      expect(hasMerchantCapability(user('MERCHANT_STAFF'), capability)).toBe(false);
+    }
+  });
+
+  it('uses the centralized matrix for the role permission list', () => {
+    expect(capabilitiesForMerchantRole('MERCHANT_MANAGER')).toBe(MERCHANT_ROLE_CAPABILITIES.MERCHANT_MANAGER);
+    expect(capabilitiesForMerchantRole('manager')).toBe(MERCHANT_ROLE_CAPABILITIES.MERCHANT_MANAGER);
+    expect(capabilitiesForMerchantRole('UNKNOWN')).toEqual([]);
+  });
+
+  it('uses capabilities returned by the API as the authority', () => {
+    const managerWithRestrictedCapabilities = {
+      ...user('MERCHANT_MANAGER'),
+      capabilities: ['VIEW_DASHBOARD'],
+    };
+    expect(hasMerchantCapability(managerWithRestrictedCapabilities, 'VIEW_DASHBOARD')).toBe(true);
+    expect(hasMerchantCapability(managerWithRestrictedCapabilities, 'CREATE_REFUNDS')).toBe(false);
+    expect(canManageMerchant(managerWithRestrictedCapabilities)).toBe(false);
+  });
+
   it('normalizes the primary role and fails closed when role is missing or unknown', () => {
     expect(primaryMerchantRole(user(' merchant_manager '))).toBe('MERCHANT_MANAGER');
+    expect(normalizeMerchantRole(' manager ')).toBe('MERCHANT_MANAGER');
     expect(canManageMerchant(user())).toBe(false);
     expect(canManageMerchant(user('UNKNOWN'))).toBe(false);
     expect(canViewMerchantFinancials(user('UNKNOWN'))).toBe(false);
+    expect(hasMerchantCapability(user('UNKNOWN'), 'MANAGE_ORDERS')).toBe(false);
   });
 });

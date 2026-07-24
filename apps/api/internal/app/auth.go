@@ -21,17 +21,18 @@ const (
 )
 
 type identity struct {
-	UserID           int64  `json:"user_id"`
-	MembershipID     int64  `json:"membership_id,omitempty"`
-	TenantID         int64  `json:"tenant_id"`
-	StoreID          int64  `json:"store_id,omitempty"`
-	Username         string `json:"username"`
-	DisplayName      string `json:"display_name"`
-	TenantName       string `json:"tenant_name,omitempty"`
-	StoreName        string `json:"store_name,omitempty"`
-	Role             string `json:"role"`
-	ServiceExpiresAt string `json:"service_expires_at,omitempty"`
-	ServiceExpired   bool   `json:"service_expired,omitempty"`
+	UserID           int64    `json:"user_id"`
+	MembershipID     int64    `json:"membership_id,omitempty"`
+	TenantID         int64    `json:"tenant_id"`
+	StoreID          int64    `json:"store_id,omitempty"`
+	Username         string   `json:"username"`
+	DisplayName      string   `json:"display_name"`
+	TenantName       string   `json:"tenant_name,omitempty"`
+	StoreName        string   `json:"store_name,omitempty"`
+	Role             string   `json:"role"`
+	Capabilities     []string `json:"capabilities,omitempty"`
+	ServiceExpiresAt string   `json:"service_expires_at,omitempty"`
+	ServiceExpired   bool     `json:"service_expired,omitempty"`
 }
 
 type claims struct {
@@ -216,6 +217,7 @@ func workspaceIdentity(accountID int64, username, displayName string, workspace 
 	return identity{
 		UserID: accountID, MembershipID: workspace.MembershipID, TenantID: workspace.TenantID, StoreID: workspace.StoreID,
 		Username: username, DisplayName: displayName, TenantName: workspace.TenantName, StoreName: workspace.StoreName, Role: workspace.Role,
+		Capabilities:     merchantCapabilitiesForRole(workspace.Role),
 		ServiceExpiresAt: workspace.ServiceExpiresAt, ServiceExpired: workspace.ServiceExpired,
 	}
 }

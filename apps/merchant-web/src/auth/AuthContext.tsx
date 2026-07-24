@@ -54,6 +54,7 @@ function normalizeUser(value: unknown): MerchantUser {
     tenantName: user.tenantName ?? user.tenant_name,
     merchantName: user.merchantName ?? user.tenantName ?? user.tenant_name,
     roles: user.roles ?? (user.role ? [user.role] : undefined),
+    capabilities: user.capabilities,
     serviceExpiresAt: user.serviceExpiresAt ?? user.service_expires_at,
     serviceExpired: Boolean(user.serviceExpired ?? user.service_expired),
   };

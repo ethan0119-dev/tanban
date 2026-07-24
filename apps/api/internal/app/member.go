@@ -19,13 +19,13 @@ import (
 // the whole CRM domain without weakening its existing order/staff boundaries.
 func (s *Server) memberRoutes(r chi.Router) {
 	r.Group(func(managers chi.Router) {
-		managers.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager))
+		managers.Use(requireMerchantCapability(capabilityManageMembers))
 		managers.Get("/member-summary", s.getMemberSummary)
 		managers.Get("/customers", s.listCustomers)
 		managers.Post("/customers", s.createCustomer)
 		managers.Get("/customers/{customerID}", s.getCustomer)
 		managers.Put("/customers/{customerID}", s.updateCustomer)
-		managers.With(requireRoles(RoleMerchantOwner)).Delete("/customers/{customerID}", s.archiveCustomer)
+		managers.With(requireMerchantCapability(capabilityArchiveCustomers)).Delete("/customers/{customerID}", s.archiveCustomer)
 		managers.Put("/customers/{customerID}/tags", s.replaceCustomerTags)
 
 		managers.Get("/customer-tags", s.listCustomerTags)
@@ -45,7 +45,7 @@ func (s *Server) memberRoutes(r chi.Router) {
 		managers.Post("/member-level-orders", s.createMemberLevelOrder)
 
 		managers.Get("/balance-ledger", s.listBalanceLedger)
-		managers.With(requireRoles(RoleMerchantOwner)).Post("/customers/{customerID}/balance-adjustments", s.adjustCustomerBalance)
+		managers.With(requireMerchantCapability(capabilityAdjustCustomerBalance)).Post("/customers/{customerID}/balance-adjustments", s.adjustCustomerBalance)
 
 		managers.Get("/stored-value-rules", s.listStoredValueRules)
 		managers.Post("/stored-value-rules", s.createStoredValueRule)
@@ -54,7 +54,7 @@ func (s *Server) memberRoutes(r chi.Router) {
 		managers.Get("/stored-value-settings", s.getStoredValueSettings)
 		managers.Put("/stored-value-settings", s.updateStoredValueSettings)
 		managers.Get("/stored-value-records", s.listStoredValueRecords)
-		managers.With(requireRoles(RoleMerchantOwner)).Post("/stored-value-records", s.createStoredValueRecord)
+		managers.With(requireMerchantCapability(capabilityCreateStoredValueRecord)).Post("/stored-value-records", s.createStoredValueRecord)
 	})
 }
 
