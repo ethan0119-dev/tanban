@@ -12,18 +12,18 @@ import (
 )
 
 type marketingPlacementInput struct {
-	Name           string     `json:"name"`
-	PlacementCode  string     `json:"placement_code"`
-	ImageURL       string     `json:"image_url"`
-	Title          string     `json:"title"`
-	Subtitle       string     `json:"subtitle"`
-	ActionType     string     `json:"action_type"`
-	ActionTargetID *int64     `json:"action_target_id"`
-	Frequency      string     `json:"frequency"`
-	Priority       int        `json:"priority"`
-	ChannelScope   string     `json:"channel_scope"`
-	ActiveFrom     *time.Time `json:"active_from"`
-	ActiveTo       *time.Time `json:"active_to"`
+	Name           string           `json:"name"`
+	PlacementCode  string           `json:"placement_code"`
+	ImageURL       string           `json:"image_url"`
+	Title          string           `json:"title"`
+	Subtitle       string           `json:"subtitle"`
+	ActionType     string           `json:"action_type"`
+	ActionTargetID *int64           `json:"action_target_id"`
+	Frequency      string           `json:"frequency"`
+	Priority       int              `json:"priority"`
+	ChannelScope   string           `json:"channel_scope"`
+	ActiveFrom     *requestDateTime `json:"active_from"`
+	ActiveTo       *requestDateTime `json:"active_to"`
 }
 
 type marketingPlacementRow struct {
@@ -138,7 +138,7 @@ func normalizeMarketingPlacementInput(input *marketingPlacementInput) error {
 	if input.Priority < -10000 || input.Priority > 10000 {
 		return errors.New("priority must be between -10000 and 10000")
 	}
-	if !marketingWindowValid(input.ActiveFrom, input.ActiveTo) {
+	if !requestDateTimeWindowValid(input.ActiveFrom, input.ActiveTo) {
 		return errors.New("active_from must be before active_to")
 	}
 	return nil
@@ -244,7 +244,7 @@ func (s *Server) createMarketingPlacement(w http.ResponseWriter, r *http.Request
 	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO marketing_placements(tenant_id,store_id,name,placement_code,image_url,title,subtitle,action_type,action_target_id,frequency,priority,channel_scope,active_from,active_to,status,created_by,updated_by)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.PlacementCode, input.ImageURL, input.Title, input.Subtitle, input.ActionType, nullableMarketingID(input.ActionTargetID), input.Frequency,
-		input.Priority, input.ChannelScope, marketingTimeArg(input.ActiveFrom), marketingTimeArg(input.ActiveTo), actor.UserID, actor.UserID)
+		input.Priority, input.ChannelScope, requestDateTimeArg(input.ActiveFrom), requestDateTimeArg(input.ActiveTo), actor.UserID, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -314,7 +314,7 @@ func (s *Server) updateMarketingPlacement(w http.ResponseWriter, r *http.Request
 	}
 	result, err := tx.ExecContext(r.Context(), `UPDATE marketing_placements SET name=?,placement_code=?,image_url=?,title=?,subtitle=?,action_type=?,action_target_id=?,frequency=?,priority=?,channel_scope=?,active_from=?,active_to=?,version=version+1,updated_by=?
 		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE'`, input.Name, input.PlacementCode, input.ImageURL, input.Title, input.Subtitle, input.ActionType, nullableMarketingID(input.ActionTargetID), input.Frequency,
-		input.Priority, input.ChannelScope, marketingTimeArg(input.ActiveFrom), marketingTimeArg(input.ActiveTo), actor.UserID, id, actor.TenantID, storeID)
+		input.Priority, input.ChannelScope, requestDateTimeArg(input.ActiveFrom), requestDateTimeArg(input.ActiveTo), actor.UserID, id, actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

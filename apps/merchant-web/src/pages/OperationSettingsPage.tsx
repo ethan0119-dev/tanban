@@ -46,7 +46,7 @@ export type SettingsSection = 'ORDER' | 'PAYMENT' | 'NOTIFICATION' | 'PRIVACY' |
 
 const sectionMeta: Record<SettingsSection, { title: string; description: string }> = {
   ORDER: { title: '点餐设置', description: '配置堂食结算、多人点餐、距离校验和顾客下单规则' },
-  PAYMENT: { title: '支付设置', description: '查看会生活 / 随行付商户绑定、资金流向、费率和支付确认方式' },
+  PAYMENT: { title: '支付设置', description: '查看当前收款通道、商户绑定、资金流向和支付确认方式' },
   NOTIFICATION: { title: '通知设置', description: '配置商户希望接收的消息类型，并查看微信通知开通状态' },
   PRIVACY: { title: '隐私与客服', description: '维护小程序隐私政策、用户协议和私人客服联系方式' },
   PRINT: { title: '打印设置', description: '配置门店打印总开关与新模板的默认触发点' },
@@ -152,7 +152,9 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
     }
   };
 
-  const heading = sectionMeta[section];
+  const heading = section === 'PAYMENT' && payment
+    ? { title: '支付设置', description: `查看${payment.providerDisplayName}的商户绑定、资金流向和通道状态` }
+    : sectionMeta[section];
   const extra = section === 'PAYMENT' ? <Button onClick={() => void load()}>刷新通道状态</Button> : <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void save()}>保存设置</Button>;
 
   if (loading) return <div className="page-shell"><PageHeading title={heading.title} description={heading.description} /><div className="settings-loading"><Spin size="large" /></div></div>;
@@ -302,31 +304,67 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
 }
 
 function PaymentSettings({ payment }: { payment: MerchantPaymentSettings }) {
-  const bound = payment.bindingStatus === 'BOUND';
+  const wechat = payment.provider === 'wechat_partner';
+  const mock = payment.provider === 'mock';
+  const bound = payment.bindingStatus === 'BOUND' || payment.bindingStatus === 'ACTIVE';
+  const transactionReady = payment.providerActive && payment.adapterImplemented && payment.onboardingReady;
+  const effectiveProviderNames: Record<string, string> = {
+    mock: '模拟支付',
+    tianque: '会生活 · 随行付',
+    wechat_partner: '微信支付（普通服务商）',
+  };
+  const checkoutModeLabels: Record<string, string> = {
+    MOCK: '模拟支付（仅联调）',
+    HALF_SCREEN_CASHIER: '会生活半屏收银台',
+    WECHAT_MINI_PROGRAM: '微信小程序支付',
+  };
+  const bindingLabels: Record<string, string> = {
+    DEVELOPMENT: '开发环境',
+    PENDING_BINDING: '待平台进件绑定',
+    BOUND: '商户已绑定',
+    NOT_APPLIED: '未进件',
+    REVIEWING: '审核中',
+    PENDING_SIGNING: '待签约',
+    ACTIVE: '特约商户已开通',
+    REJECTED: '进件被驳回',
+  };
+  const authorizationLabels: Record<string, string> = {
+    NOT_AUTHORIZED: '未授权',
+    PENDING: '授权处理中',
+    AUTHORIZED: '已授权',
+    REVOKED: '授权已撤销',
+  };
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} xl={15}>
         <Card bordered={false} className="content-card settings-card" title={<Space><BankOutlined />收款通道</Space>}>
           <div className="payment-provider-hero">
             <span className="provider-icon"><BankOutlined /></span>
-            <div><Typography.Title level={4}>{payment.providerDisplayName}</Typography.Title><Tag color={bound ? 'success' : payment.bindingStatus === 'DEVELOPMENT' ? 'blue' : 'warning'}>{bound ? '商户已绑定' : payment.bindingStatus === 'DEVELOPMENT' ? '开发环境' : '待平台进件绑定'}</Tag></div>
+            <div><Typography.Title level={4}>{payment.providerDisplayName}</Typography.Title><Tag color={bound ? 'success' : payment.bindingStatus === 'REJECTED' ? 'error' : payment.bindingStatus === 'DEVELOPMENT' ? 'blue' : 'warning'}>{bindingLabels[payment.bindingStatus] || payment.bindingStatus}</Tag></div>
           </div>
           <Descriptions bordered column={{ xs: 1, md: 2 }}>
-            <Descriptions.Item label="平台商户号">{payment.merchantNoMasked || '未绑定'}</Descriptions.Item>
-            <Descriptions.Item label="小程序子 AppID">{payment.subAppIdConfigured ? '已配置' : '未配置'}</Descriptions.Item>
-            <Descriptions.Item label="支付费率">{payment.feeRatePercent.toFixed(2)}%</Descriptions.Item>
-            <Descriptions.Item label="结算周期">{payment.settlementCycle === 'T1' ? 'T+1' : payment.settlementCycle}</Descriptions.Item>
-            <Descriptions.Item label="收银方式">会生活半屏收银台</Descriptions.Item>
-            <Descriptions.Item label="部分退款">{payment.supportsPartialRefund ? '支持' : '不支持'}</Descriptions.Item>
+            <Descriptions.Item label={mock ? '支付环境' : wechat ? '微信支付特约商户号（sub_mchid）' : '支付商户号'}>{mock ? '开发联调环境' : payment.merchantNoMasked || '未绑定'}</Descriptions.Item>
+            <Descriptions.Item label={mock ? '真实资金' : wechat ? '小程序接入方式' : '小程序子 AppID'}>{mock ? '不产生真实扣款' : wechat && payment.sharedServiceProviderApp ? '共用摊伴小程序，无需商户填写 AppID' : payment.subAppIdConfigured ? '已配置独立 sub_appid' : '未配置'}</Descriptions.Item>
+            {wechat && <Descriptions.Item label="小程序支付产品授权"><Tag color={payment.productAuthorizationStatus === 'AUTHORIZED' ? 'success' : 'warning'}>{authorizationLabels[payment.productAuthorizationStatus] || payment.productAuthorizationStatus}</Tag></Descriptions.Item>}
+            {wechat && <Descriptions.Item label="服务商 API 退款授权"><Tag color={payment.refundAuthorized ? 'success' : 'warning'}>{payment.refundAuthorized ? '已授权' : '未授权'}</Tag></Descriptions.Item>}
+            {!mock && <Descriptions.Item label="支付费率">{payment.feeRatePercent.toFixed(2)}%</Descriptions.Item>}
+            {!mock && <Descriptions.Item label="结算周期">{payment.settlementCycle === 'T1' ? 'T+1' : payment.settlementCycle}</Descriptions.Item>}
+            <Descriptions.Item label="收银方式">{checkoutModeLabels[payment.checkoutMode] || payment.checkoutMode}</Descriptions.Item>
+            <Descriptions.Item label="部分退款">{mock ? '支持模拟退款' : payment.supportsPartialRefund ? '支持' : '未授权'}</Descriptions.Item>
           </Descriptions>
-          <Alert style={{ marginTop: 18 }} type="success" showIcon message="摊伴不经手顾客资金" description="顾客在支付机构收银台完成支付，资金由收单机构按协议结算到商户银行卡；摊伴只凭经签名回调和主动查单结果推进订单状态。" />
+          {!payment.acceptanceEnabled && <Alert style={{ marginTop: 18 }} type="error" showIcon message="平台已暂停在线收款" description="所有商户的在线支付入口当前均不可用，请联系平台管理员恢复支付接收。" />}
+          {payment.acceptanceEnabled && !payment.providerActive && <Alert style={{ marginTop: 18 }} type="error" showIcon message="商户通道与当前运行适配器不一致" description={`本商户配置为${payment.providerDisplayName}，API 当前运行的是${effectiveProviderNames[payment.effectiveProvider] || payment.effectiveProvider}；在两者一致前无法发起支付。`} />}
+          {!payment.adapterImplemented && <Alert style={{ marginTop: 18 }} type="warning" showIcon message={`${payment.providerDisplayName}真实交易适配尚未启用`} description={wechat ? '这里展示的是进件与授权配置。平台完成 API v3 下单、验签解密、查单和退款联调前，不能用于真实收款。' : '当前版本只保留该通道的接口边界，完成官方接口、验签、查单和退款联调前不能用于真实收款。'} />}
+          {mock
+            ? <Alert style={{ marginTop: 18 }} type="info" showIcon message="当前为模拟支付" description="仅用于开发联调，不会向顾客发起真实扣款，也不会产生结算资金。" />
+            : <Alert style={{ marginTop: 18 }} type="success" showIcon message="摊伴不经手顾客资金" description={wechat ? '顾客付款后，资金进入微信支付为该特约商户建立的商户账户，并按商户签约规则结算到其结算账户；摊伴只处理订单与支付状态。' : '顾客付款由支付机构直接受理，并按商户与支付机构的签约规则结算；摊伴只处理订单与支付状态。'} />}
         </Card>
       </Col>
       <Col xs={24} xl={9}>
         <Card bordered={false} className="content-card settings-card" title={<Space><SafetyCertificateOutlined />资金安全边界</Space>}>
-          <SettingRow title="回调验签" description="只有验签、金额、商户号和订单身份全部一致才确认支付。" tag={<CheckCircleOutlined className="safe-text" />} />
-          <SettingRow title="主动查单补偿" description="回调丢失时由对账任务向支付机构查询，不凭小程序前端结果认款。" tag={<CheckCircleOutlined className="safe-text" />} />
-          <SettingRow title="幂等与追加支付尝试" description="支付机构流水唯一，同一订单可安全重试但不会重复推进。" tag={<CheckCircleOutlined className="safe-text" />} />
+          <SettingRow title="回调验签" description="只有验签、金额、商户号和订单身份全部一致才确认支付。" tag={mock ? <Tag color="blue">模拟环境不适用</Tag> : transactionReady ? <CheckCircleOutlined className="safe-text" /> : <Tag color="warning">待通道实现</Tag>} />
+          <SettingRow title="主动查单补偿" description="回调丢失时由对账任务向支付机构查询，不凭小程序前端结果认款。" tag={mock ? <Tag color="blue">模拟环境不适用</Tag> : transactionReady ? <CheckCircleOutlined className="safe-text" /> : <Tag color="warning">待通道实现</Tag>} />
+          <SettingRow title="幂等与追加支付尝试" description="支付机构流水唯一，同一订单可安全重试但不会重复推进。" tag={payment.providerActive ? <CheckCircleOutlined className="safe-text" /> : <Tag color="warning">通道未生效</Tag>} />
           <SettingRow title="敏感参数" description="商户号、密钥和结算卡由平台管理；商户端只显示脱敏状态。" tag={<Tag color="blue">平台管理</Tag>} />
         </Card>
       </Col>

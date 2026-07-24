@@ -282,7 +282,7 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	var activeAssets int
 	var activeBytes int64
-	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM media_assets WHERE tenant_id=? AND store_id=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL`, identity.TenantID, storeID).Scan(&activeAssets, &activeBytes); err != nil {
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM media_assets WHERE tenant_id=? AND store_id=? AND kind='IMAGE' AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL`, identity.TenantID, storeID).Scan(&activeAssets, &activeBytes); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -327,7 +327,7 @@ func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var mimeType string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status='ACTIVE' AND deleted_at IS NULL LIMIT 1`, tenantID, storeID, storageKey).Scan(&mimeType)
+	err := s.DB.QueryRowContext(r.Context(), `SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL LIMIT 1`, tenantID, storeID, storageKey).Scan(&mimeType)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
 		return

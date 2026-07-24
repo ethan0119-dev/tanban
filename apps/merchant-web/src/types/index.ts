@@ -11,6 +11,8 @@ export interface MerchantUser {
   storeId?: Id;
   tenantName?: string;
   roles?: string[];
+  serviceExpiresAt?: string;
+  serviceExpired?: boolean;
 }
 
 export interface MerchantWorkspace {
@@ -21,6 +23,8 @@ export interface MerchantWorkspace {
   storeName: string;
   storeLogoUrl?: string;
   role: string;
+  serviceExpiresAt?: string;
+  serviceExpired?: boolean;
 }
 
 export type OrderStatus =
@@ -404,13 +408,22 @@ export interface MerchantOperationSettingsResponse {
 export interface MerchantPaymentSettings {
   provider: string;
   providerDisplayName: string;
-  bindingStatus: 'DEVELOPMENT' | 'PENDING_BINDING' | 'BOUND';
+  bindingStatus: 'DEVELOPMENT' | 'PENDING_BINDING' | 'BOUND' | 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
   merchantNoMasked?: string;
   subAppIdConfigured: boolean;
+  sharedServiceProviderApp: boolean;
+  onboardingStatus: 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
+  productAuthorizationStatus: 'NOT_AUTHORIZED' | 'PENDING' | 'AUTHORIZED' | 'REVOKED';
+  refundAuthorized: boolean;
+  onboardingReady: boolean;
+  adapterImplemented: boolean;
+  acceptanceEnabled: boolean;
+  effectiveProvider: string;
+  providerActive: boolean;
   feeRatePercent: number;
   settlementCycle: string;
-  checkoutMode: 'HALF_SCREEN_CASHIER';
-  fundsFlow: 'ACQUIRER_TO_MERCHANT_BANK_CARD';
+  checkoutMode: 'MOCK' | 'HALF_SCREEN_CASHIER' | 'WECHAT_MINI_PROGRAM';
+  fundsFlow: 'ACQUIRER_TO_MERCHANT_SETTLEMENT_ACCOUNT';
   platformReceivesFunds: boolean;
   confirmationMode: 'PROVIDER_CALLBACK_WITH_ACTIVE_QUERY_RECONCILIATION';
   supportsPartialRefund: boolean;

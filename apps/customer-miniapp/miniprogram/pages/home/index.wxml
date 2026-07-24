@@ -1,5 +1,4 @@
 <view class="page decorated-page" style="{{appearanceStyle}}" wx:if="{{!loading && store}}">
-  <view class="home-tools"><button bindtap="showStoreInfo">•••<text>门店信息</text></button></view>
   <view class="store-closed-card" wx:if="{{store.businessStatus !== 'OPEN'}}">
     <view><text>门店休息中</text><text>{{store.businessStatusMessage || '当前不在营业时间，暂时不能下单'}}</text></view>
     <text wx:if="{{store.nextOpenAt}}">下次营业：{{store.nextOpenAt}}</text>
@@ -86,21 +85,6 @@
   <view class="platform-credit" bindtap="openCopyright">
     <text>摊伴餐饮系统</text>
     <text>点击了解详情 ›</text>
-  </view>
-</view>
-
-<view class="store-info-mask" style="{{appearanceStyle}}" wx:if="{{storeInfoVisible && store}}" bindtap="closeStoreInfo">
-  <view class="store-info-sheet" catchtap="noop">
-    <view class="store-info-handle" />
-    <view class="store-info-title"><text>{{store.name}}</text><button bindtap="closeStoreInfo">×</button></view>
-    <view class="store-info-section"><text>公告</text><text>{{store.theme.announcement || '商家暂无公告'}}</text></view>
-    <view class="store-info-section"><text>营业时间</text><text>{{store.businessHoursSummary || store.businessHours || '请电话咨询商家'}}</text></view>
-    <view class="store-info-section"><text>门店信息</text><text>联系电话：{{store.phone || store.customerService.phone || '暂未配置'}}</text><text>门店地址：{{store.address || '暂未配置'}}</text></view>
-    <view class="store-info-actions">
-      <button bindtap="copyAddress">复制地址</button>
-      <button wx:if="{{store.location}}" bindtap="openStoreLocation">导航到店</button>
-      <button class="primary" bindtap="callStore">联系商家</button>
-    </view>
   </view>
 </view>
 

@@ -93,6 +93,7 @@ export interface Tenant {
   paymentStatus?: 'unbound' | 'pending' | 'active' | 'rejected';
   createdAt?: string;
   expiresAt?: string;
+  serviceExpired?: boolean;
 }
 
 export interface AuditLog {
@@ -108,18 +109,35 @@ export interface AuditLog {
 }
 
 export interface PaymentSettings {
-  provider: 'mock' | 'tianque';
+  provider: 'mock' | 'tianque' | 'wechat_partner';
   enabled: boolean;
   environment?: 'sandbox' | 'production';
   orgId?: string;
   apiBaseUrl?: string;
   notifyUrl?: string;
+  refundNotifyUrl?: string;
+  spMchId?: string;
+  spAppId?: string;
   publicKeyConfigured?: boolean;
   privateKeyConfigured?: boolean;
-  effectiveProvider?: 'mock' | 'tianque';
+  apiCertSerialConfigured?: boolean;
+  apiV3KeyConfigured?: boolean;
+  wechatPayPublicKeyConfigured?: boolean;
+  effectiveProvider?: 'mock' | 'tianque' | 'wechat_partner';
   restartRequired?: boolean;
   tianqueAdapterImplemented?: boolean;
+  wechatPartnerAdapterImplemented?: boolean;
+  wechatPartnerConfigured?: boolean;
   updatedAt?: string;
+}
+
+export interface TenantPaymentSettings {
+  provider: 'mock' | 'tianque' | 'wechat_partner';
+  merchantNo: string;
+  subAppId: string;
+  onboardingStatus: 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
+  productAuthorizationStatus: 'NOT_AUTHORIZED' | 'PENDING' | 'AUTHORIZED' | 'REVOKED';
+  refundAuthorized: boolean;
 }
 
 export interface SystemSettings {

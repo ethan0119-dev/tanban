@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { addCartItem, changeCartItemQuantity, clearCart, readCart, writeCart } from '../miniprogram/utils/cart';
+import { addCartItem, cartLineKey, changeCartItemQuantity, changeCartLineQuantity, clearCart, readCart, writeCart } from '../miniprogram/utils/cart';
 import {
   CHECKOUT_FLOW_TTL_MS,
   checkoutBlockedByStoreStatus,
@@ -77,6 +77,23 @@ describe('miniapp scoped storage', () => {
     });
 
     expect(readCart('coffee-a')).toHaveLength(2);
+  });
+
+  it('removes only the exact configured cart line when its quantity reaches zero', () => {
+    const plain = { productId: 8, skuId: 81, name: '拿铁', price: 18, quantity: 1 };
+    const configured = {
+      ...plain,
+      quantity: 2,
+      optionValueIds: [102],
+      modifiers: [{ groupId: 3, modifierItemId: 31, quantity: 1 }],
+    };
+    writeCart('coffee-a', [plain, configured]);
+
+    changeCartLineQuantity('coffee-a', cartLineKey(configured), -1);
+    expect(readCart('coffee-a')).toEqual([plain, { ...configured, quantity: 1 }]);
+
+    changeCartLineQuantity('coffee-a', cartLineKey(configured), -1);
+    expect(readCart('coffee-a')).toEqual([plain]);
   });
 
   it('creates a fresh checkout idempotency key when configuration changes', () => {

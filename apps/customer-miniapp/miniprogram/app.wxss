@@ -17,11 +17,14 @@ page {
   --disabled-bg: #efeeea;
   --disabled-border: #c8c5bf;
   --disabled-text: #77736e;
-  --font-caption: 22rpx;
-  --font-body: 26rpx;
-  --font-subtitle: 30rpx;
-  --font-title: 36rpx;
-  --font-display: 44rpx;
+  --font-caption: 24rpx;
+  --font-body: 30rpx;
+  --font-subtitle: 34rpx;
+  --font-title: 40rpx;
+  --font-display: 48rpx;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-strong: 700;
   --page-gutter: 24rpx;
   --section-gap: 20rpx;
   background: var(--paper);
@@ -35,8 +38,8 @@ button::after { border: 0; }
 button[disabled] { opacity: 1; color: var(--disabled-text); background: var(--disabled-bg); border-color: var(--disabled-border); }
 .page { min-height: 100vh; padding-bottom: 40rpx; }
 .card { margin: var(--section-gap) var(--page-gutter); padding: 28rpx; border: 1rpx solid var(--card-border); border-radius: var(--radius, 26rpx); background: var(--surface); box-shadow: var(--card-shadow); }
-.primary { background: var(--green); color: var(--on-primary); border-radius: var(--button-radius); font-weight: 700; }
+.primary { background: var(--green); color: var(--on-primary); border-radius: var(--button-radius); font-weight: var(--font-weight-semibold); }
 .muted { color: var(--muted); }
 .empty { padding: 120rpx 30rpx; color: var(--muted); font-size: var(--font-body); line-height: 1.7; text-align: center; }
-.price { color: var(--coffee); font-weight: 800; }
+.price { color: var(--coffee); font-weight: var(--font-weight-strong); }
 .status { display: inline-flex; padding: 7rpx 16rpx; border-radius: 999rpx; background: var(--surface); color: var(--green); font-size: var(--font-caption); }

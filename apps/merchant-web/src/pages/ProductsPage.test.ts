@@ -40,4 +40,22 @@ describe('product media mapping', () => {
     expect(payload.images[0]).toEqual(expect.objectContaining({ media_asset_id: 21, is_primary: true, sort_order: 0 }));
     expect(payload.images[0]).not.toHaveProperty('id');
   });
+
+  it('keeps an implicit default sku when the product has no visible specifications', () => {
+    const payload = productPayload({
+      ...baseProduct,
+      skus: [],
+      baseSkuId: 4,
+      baseExpectedStock: 20,
+      basePrice: 9.9,
+      baseStock: 20,
+    } as unknown as Parameters<typeof productPayload>[0]);
+    expect(payload.skus).toEqual([expect.objectContaining({
+      id: 4,
+      name: '默认规格',
+      price_cents: 990,
+      stock: 20,
+      expected_stock: 20,
+    })]);
+  });
 });

@@ -14,7 +14,8 @@ npm run build
 
 - `apiBaseUrl`：API 地址，生产环境默认为 `https://tbapi.666qwe.cn/api/v1`。
 - `defaultStoreCode`：开发工具未通过商户小程序码启动时使用的演示门店编码。
-- `paymentMode`：初版使用 `mock`；拿到天阙生产参数后改为 `tianque`。
+
+支付适配器不在小程序中硬编码。小程序发起支付时，由 API 根据平台当前运行的适配器和商户支付绑定选择 `mock`、天阙或微信支付服务商通道；返回微信支付参数时才调用 `wx.requestPayment`。
 
 正式发布前还需在微信公众平台的“开发管理 → 开发设置 → 服务器域名”中配置：
 

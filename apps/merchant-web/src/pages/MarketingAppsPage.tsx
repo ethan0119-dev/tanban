@@ -40,7 +40,7 @@ interface AppDefinition {
 
 const MARKETING_APPS: AppDefinition[] = [
   { key: 'COUPON', name: '优惠券', description: '创建代金券和满减券，统一管理领取、库存与使用规则', icon: <TagsOutlined />, tone: 'amber', route: '/marketing/coupons' },
-  { key: 'FULL_REDUCTION', name: '满额立减', description: '按订单门槛配置满减券，复用优惠券的资格与核销能力', icon: <PercentageOutlined />, tone: 'red', route: '/marketing/coupons' },
+  { key: 'FULL_REDUCTION', name: '满额立减', description: '满足订单门槛后自动减免，可与一张优惠券叠加', icon: <PercentageOutlined />, tone: 'red', route: '/marketing/full-reductions' },
   { key: 'DELIVERY_REDUCTION', name: '配送费满减', description: '按外卖配送金额减免配送费', icon: <CarOutlined />, tone: 'blue', reserved: '随外卖服务开放' },
   { key: 'ORDER_RED_PACKET', name: '下单返红包', description: '订单完成后向顾客返还下一单权益', icon: <GiftOutlined />, tone: 'pink' },
   { key: 'POPUP_COUPON', name: '弹窗优惠券', description: '进入门店时展示领券入口', icon: <NotificationOutlined />, tone: 'purple' },
@@ -100,7 +100,7 @@ export function MarketingAppsPage() {
       <Card bordered={false} className="content-card marketing-intro-card">
         <div>
           <Typography.Title level={4}>营销玩法</Typography.Title>
-          <Typography.Paragraph type="secondary">当前可配置优惠券、满减券、弹窗广告和抽奖活动；金额、库存和参与结果以系统记录为准。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">当前可配置店铺满减、优惠券、弹窗广告和抽奖活动；金额、库存和参与结果以系统记录为准。</Typography.Paragraph>
         </div>
         <Space wrap><Tag color="success">4 个已开放入口</Tag><Tag>更多玩法陆续开放</Tag><Tag color="blue">外卖活动随外卖服务开放</Tag></Space>
       </Card>

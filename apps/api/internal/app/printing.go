@@ -908,6 +908,8 @@ func printablePaymentMethod(value any) string {
 	switch providerName {
 	case "tianque":
 		return "会生活 / 随行付"
+	case "wechat_partner":
+		return "微信支付"
 	case "mock":
 		return "模拟支付"
 	case "":

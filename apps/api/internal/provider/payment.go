@@ -226,3 +226,29 @@ func (t TianQue) Refund(context.Context, RefundRequest) (RefundResult, error) {
 func (t TianQue) QueryRefund(context.Context, string) (QueryRefundResult, error) {
 	return QueryRefundResult{}, ErrNotConfigured
 }
+
+type WeChatPayPartnerConfig struct {
+	BaseURL, ServiceProviderMchID, ServiceProviderAppID, APICertSerialNo   string
+	MerchantPrivateKey, APIV3Key, WeChatPayPublicKeyID, WeChatPayPublicKey string
+	NotifyURL, RefundNotifyURL                                             string
+}
+
+// WeChatPayPartner is the API v3 ordinary service-provider boundary. Real
+// signing, notification decryption and transport remain disabled until the
+// service-provider account and a test sub-merchant are approved.
+type WeChatPayPartner struct{ Config WeChatPayPartnerConfig }
+
+func (w WeChatPayPartner) Name() string { return "wechat_partner" }
+func (w WeChatPayPartner) Create(context.Context, CreatePaymentRequest) (CreatePaymentResult, error) {
+	return CreatePaymentResult{}, ErrNotConfigured
+}
+func (w WeChatPayPartner) Query(context.Context, string) (QueryPaymentResult, error) {
+	return QueryPaymentResult{}, ErrNotConfigured
+}
+func (w WeChatPayPartner) Close(context.Context, string) error { return ErrNotConfigured }
+func (w WeChatPayPartner) Refund(context.Context, RefundRequest) (RefundResult, error) {
+	return RefundResult{}, ErrNotConfigured
+}
+func (w WeChatPayPartner) QueryRefund(context.Context, string) (QueryRefundResult, error) {
+	return QueryRefundResult{}, ErrNotConfigured
+}

@@ -5,7 +5,18 @@
     <view class="coupon-card" wx:for="{{coupons}}" wx:key="id">
       <view class="coupon-value"><view><text>¥</text><text class="coupon-amount">{{item.amountText}}</text></view><text>{{item.thresholdText}}</text></view>
       <view class="coupon-main"><text class="coupon-title">{{item.name}}</text><text class="coupon-desc">{{item.description || item.scopeText}}</text><text class="coupon-validity">{{item.scopeText}} · {{item.validityText}} · {{item.stockText}}</text></view>
-      <button class="coupon-claim" loading="{{item.claiming}}" disabled="{{item.remainingStock <= 0}}" data-id="{{item.id}}" bindtap="claim">{{item.remainingStock > 0 ? '领取' : '领完'}}</button>
+      <view
+        class="coupon-claim {{item.remainingStock <= 0 ? 'is-disabled' : ''}} {{item.claiming ? 'is-loading' : ''}}"
+        hover-class="{{item.remainingStock > 0 && !item.claiming ? 'coupon-claim-hover' : 'none'}}"
+        role="button"
+        aria-label="{{item.claiming ? '领取中' : (item.remainingStock > 0 ? '领取优惠券' : '优惠券已领完')}}"
+        aria-disabled="{{item.remainingStock <= 0 || item.claiming}}"
+        data-id="{{item.id}}"
+        bindtap="claim"
+      >
+        <view class="coupon-claim-spinner" wx:if="{{item.claiming}}"></view>
+        <text>{{item.claiming ? '领取中' : (item.remainingStock > 0 ? '领取' : '领完')}}</text>
+      </view>
     </view>
   </view>
   <view class="empty" wx:elif="{{loading}}">正在加载优惠活动…</view>

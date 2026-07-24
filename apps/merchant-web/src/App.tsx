@@ -23,6 +23,7 @@ import { TableCodesPage } from './pages/TableCodesPage';
 import { BusinessPrintTemplatePage } from './pages/BusinessPrintTemplatePage';
 import { FastFoodPlatesPage } from './pages/FastFoodPlatesPage';
 import { CouponsPage } from './pages/CouponsPage';
+import { FullReductionsPage } from './pages/FullReductionsPage';
 import { LotteryPage } from './pages/LotteryPage';
 import { MarketingAppsPage } from './pages/MarketingAppsPage';
 import { PopupAdsPage } from './pages/PopupAdsPage';
@@ -75,6 +76,7 @@ function AppRoutes() {
         <Route path="/decoration" element={<ManagementOnly><DecorationPage /></ManagementOnly>} />
         <Route path="/marketing" element={<ManagementOnly><MarketingAppsPage /></ManagementOnly>} />
         <Route path="/marketing/coupons" element={<ManagementOnly><CouponsPage /></ManagementOnly>} />
+        <Route path="/marketing/full-reductions" element={<ManagementOnly><FullReductionsPage /></ManagementOnly>} />
         <Route path="/marketing/popup-ads" element={<ManagementOnly><PopupAdsPage /></ManagementOnly>} />
         <Route path="/marketing/lottery" element={<ManagementOnly><LotteryPage /></ManagementOnly>} />
         <Route path="/payments" element={<ManagementOnly><PaymentsPage /></ManagementOnly>} />

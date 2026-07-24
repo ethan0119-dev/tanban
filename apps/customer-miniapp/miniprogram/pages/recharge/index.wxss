@@ -1,19 +1,19 @@
 .recharge-page { min-height: 100vh; padding: 30rpx 28rpx 70rpx; box-sizing: border-box; background: var(--paper); }
 .balance-card { display: flex; flex-direction: column; gap: 12rpx; padding: 38rpx; border: 1rpx solid var(--card-border); border-radius: var(--radius); color: var(--on-primary); background: var(--green); box-shadow: var(--card-shadow); }
-.balance-card > text:first-child { color: rgba(255,255,255,.72); font-size: 23rpx; }
-.balance-card .balance { font-size: 58rpx; font-weight: 900; }
-.balance-card > text:last-child { color: rgba(255,255,255,.64); font-size: 21rpx; }
+.balance-card > text:first-child { color: rgba(255,255,255,.78); font-size: 25rpx; }
+.balance-card .balance { font-size: 58rpx; font-weight: var(--font-weight-strong); }
+.balance-card > text:last-child { color: rgba(255,255,255,.74); font-size: 23rpx; }
 .section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 40rpx 4rpx 20rpx; }
-.section-title text:first-child { font-size: var(--font-title); font-weight: 900; }
-.section-title text:last-child { color: var(--muted); font-size: 21rpx; }
+.section-title text:first-child { font-size: var(--font-title); font-weight: var(--font-weight-semibold); }
+.section-title text:last-child { color: var(--muted); font-size: 24rpx; }
 .rule-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18rpx; }
 .rule { display: flex; flex-direction: column; align-items: center; gap: 8rpx; padding: 30rpx 16rpx; border: 2rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
-.rule text:first-child { font-size: 36rpx; font-weight: 900; }
-.rule text:last-child { color: var(--green); font-size: 21rpx; }
+.rule text:first-child { font-size: 36rpx; font-weight: var(--font-weight-semibold); }
+.rule text:last-child { color: var(--green); font-size: 24rpx; }
 .rule.selected { border-color: var(--green); box-shadow: var(--card-shadow); }
 .unavailable, .safety { display: flex; flex-direction: column; gap: 14rpx; padding: 28rpx; border-radius: var(--radius); background: var(--surface); }
-.unavailable text:first-child, .safety text:first-child { font-size: 29rpx; font-weight: 900; }
-.unavailable text:last-child, .safety text:last-child { color: var(--muted); font-size: 22rpx; line-height: 1.7; }
+.unavailable text:first-child, .safety text:first-child { font-size: 32rpx; font-weight: var(--font-weight-semibold); }
+.unavailable text:last-child, .safety text:last-child { color: var(--muted); font-size: 24rpx; line-height: 1.7; }
 .safety { margin-top: 24rpx; }
 .recharge-button { margin-top: 34rpx; }
 .recharge-button[disabled] { color: var(--disabled-text); background: var(--disabled-bg); }

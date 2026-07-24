@@ -10,7 +10,7 @@ import { clearFastFoodContext } from "../../utils/fast-food-context";
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
-import { orderingEntryOptionsFromScan, parseOrderingEntry } from "../../utils/store-route";
+import { scanAndBindTableCode } from "../../utils/table-scanner";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -35,6 +35,12 @@ function decorateProducts(products: Product[], cart: CartItem[]): MenuProduct[] 
   });
 }
 
+function isRecommendedProduct(product: Product): boolean {
+  const compatible = product as Product & { isRecommended?: unknown; is_recommended?: unknown };
+  const value: unknown = compatible.recommended ?? compatible.isRecommended ?? compatible.is_recommended;
+  return value === true || value === 1 || String(value).toLowerCase() === "true";
+}
+
 function nextOpenLabel(value?: string): string {
   if (!value) return "";
   const time = value.match(/(?:^|\s)(\d{2}:\d{2})(?::\d{2})?$/)?.[1];
@@ -49,6 +55,8 @@ Page({
     categories: [] as Category[],
     products: [] as MenuProduct[],
     recommendedProducts: [] as MenuProduct[],
+    storeInfoVisible: false,
+    cartVisible: false,
     activeCategoryId: 0,
     cart: [] as CartItem[],
     cartQuantity: 0,
@@ -99,7 +107,7 @@ Page({
         nextOpenLabel: nextOpenLabel(catalog.store?.nextOpenAt),
         categories: catalog.categories || [],
         products: decoratedProducts,
-        recommendedProducts: decoratedProducts.filter((product) => product.recommended),
+        recommendedProducts: decoratedProducts.filter(isRecommendedProduct),
         activeCategoryId: decoration.menu.loadMode === "ALL" ? 0 : catalog.categories?.[0]?.id || 0,
         decoration,
         appearanceStyle: decorationStyle(decoration),
@@ -153,47 +161,27 @@ Page({
       showCancel: false,
     });
   },
-  startDineInScan() {
+  async startDineInScan() {
     if (this.data.scanInProgress) return;
     this.setData({ scanInProgress: true });
-    wx.scanCode({
-      onlyFromCamera: false,
-      scanType: ["wxCode", "qrCode"],
-      success: async (result) => {
-        const options = orderingEntryOptionsFromScan(result.path || result.result);
-        if (!options || parseOrderingEntry(options).kind !== "TABLE") {
-          wx.showToast({ title: "这不是本店桌码，请扫描桌面上的点餐码", icon: "none" });
-          return;
-        }
-        const app = getApp<TanbanAppOption>();
-        const previousStoreCode = app.globalData.storeCode;
-        await app.prepareOrderingEntry(options, false);
-        if (app.globalData.routeError) return;
-        const storeCode = app.globalData.storeCode;
-        const tableContext = tableContextForStore(storeCode);
-        if (!tableContext) {
-          wx.showToast({ title: "桌码暂时无法使用，请联系店员", icon: "none" });
-          return;
-        }
-        this.setData({
-          storeCode,
-          orderMode: "DINE_IN",
-          tableContext,
-          fastFoodContext: null,
-          dineInScanPromptVisible: false,
-          routeError: "",
-        });
-        this.setCart(readCart(storeCode));
-        if (storeCode !== previousStoreCode) await this.loadCatalog();
-        wx.showToast({ title: `已绑定${tableContext.tableName}`, icon: "success" });
-      },
-      fail: (error) => {
-        if (!String(error.errMsg || "").includes("cancel")) {
-          wx.showToast({ title: "未能打开扫一扫，请稍后重试", icon: "none" });
-        }
-      },
-      complete: () => this.setData({ scanInProgress: false }),
-    });
+    try {
+      const binding = await scanAndBindTableCode();
+      if (!binding) return;
+      const { context: tableContext, previousStoreCode, storeCode } = binding;
+      this.setData({
+        storeCode,
+        orderMode: "DINE_IN",
+        tableContext,
+        fastFoodContext: null,
+        dineInScanPromptVisible: false,
+        routeError: "",
+      });
+      this.setCart(readCart(storeCode));
+      if (storeCode !== previousStoreCode) await this.loadCatalog();
+      wx.showToast({ title: `已绑定${tableContext.tableName}`, icon: "success" });
+    } finally {
+      this.setData({ scanInProgress: false });
+    }
   },
   addProduct(event: WechatMiniprogram.BaseEvent) {
     if (this.data.store?.businessStatus !== "OPEN") {
@@ -318,17 +306,51 @@ Page({
     const key = String(event.currentTarget.dataset.lineKey || '');
     this.setCart(changeCartLineQuantity(storeCode, key, -1));
   },
+  showCart() {
+    if (!this.data.cartQuantity) {
+      wx.showToast({ title: "购物车还是空的", icon: "none" });
+      return;
+    }
+    this.setData({ cartVisible: true });
+  },
+  closeCart() { this.setData({ cartVisible: false }); },
   closeSkuPicker() {
     this.setData({ selectingProduct: null, selectableSkus: [], selectedSkuId: 0, pickerOptionGroups: [], pickerModifierGroups: [], pickerPrice: 0 });
   },
+  showStoreInfo() { this.setData({ storeInfoVisible: true }); },
+  closeStoreInfo() { this.setData({ storeInfoVisible: false }); },
+  callStore() {
+    const phone = this.data.store?.phone || this.data.store?.customerService?.phone;
+    if (!phone) return wx.showToast({ title: "商家暂未配置电话", icon: "none" });
+    wx.makePhoneCall({ phoneNumber: phone });
+  },
+  copyAddress() {
+    const address = this.data.store?.address || "";
+    if (!address) return wx.showToast({ title: "商家暂未配置地址", icon: "none" });
+    wx.setClipboardData({ data: address });
+  },
+  openStoreLocation() {
+    const store = this.data.store;
+    if (!store?.location) return wx.showToast({ title: "商家暂未配置地图位置", icon: "none" });
+    wx.openLocation({
+      latitude: store.location.latitude,
+      longitude: store.location.longitude,
+      name: store.name,
+      address: store.address || "",
+      scale: 16,
+    });
+  },
   noop() {},
   setCart(cart: CartItem[]) {
+    const cartQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const cartLines = cart.map((item) => ({ ...item, lineKey: cartLineKey(item) }));
     this.setData({
-      cart,
+      cart: cartLines,
       products: decorateProducts(this.data.products, cart),
-      recommendedProducts: decorateProducts(this.data.products.filter((product) => product.recommended), cart),
-      cartQuantity: cart.reduce((sum, item) => sum + item.quantity, 0),
+      recommendedProducts: decorateProducts(this.data.products.filter(isRecommendedProduct), cart),
+      cartQuantity,
       cartAmount: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      cartVisible: this.data.cartVisible && cartQuantity > 0,
     });
   },
   countForProduct(productId: number): number { return this.data.cart.find((item) => item.productId === productId)?.quantity || 0; },

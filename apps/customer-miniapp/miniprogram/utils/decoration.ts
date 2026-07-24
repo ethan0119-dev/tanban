@@ -12,6 +12,7 @@ import { clearFastFoodContext } from "./fast-food-context";
 import { clearTableOrderingContext, tableContextForStore } from "./table-context";
 import { beijingDateKey, beijingEpoch } from "./datetime";
 import { showUnavailableFeature } from "./availability";
+import { scanAndBindTableCode } from "./table-scanner";
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const MODULE_TYPES: DecorationModuleType[] = [
@@ -409,7 +410,9 @@ export function runDecorationAction(action: DecorationAction): void {
       if (tableContextForStore(app.globalData.storeCode)) {
         wx.switchTab({ url: "/pages/menu/index" });
       } else {
-        wx.showModal({ title: "请先扫描桌码", content: "堂食订单需要绑定当前桌台，请扫描桌面上的点餐二维码后继续。", showCancel: false });
+        void scanAndBindTableCode().then((binding) => {
+          if (binding) wx.switchTab({ url: "/pages/menu/index" });
+        });
       }
       break;
     }

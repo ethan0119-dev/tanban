@@ -129,7 +129,7 @@ func TestNormalizeMarketingLotteryOnlyAllowsFreeCouponOrThanksPrizes(t *testing.
 	now := time.Now().UTC()
 	couponID := int64(9)
 	input := marketingLotteryInput{
-		Name: "开业抽奖", ActiveFrom: now, ActiveTo: now.Add(time.Hour), DailyLimit: 1, TotalLimit: 3, Terms: "免费参与，不要求购买。",
+		Name: "开业抽奖", ActiveFrom: requestDateTime{Time: now}, ActiveTo: requestDateTime{Time: now.Add(time.Hour)}, DailyLimit: 1, TotalLimit: 3, Terms: "免费参与，不要求购买。",
 		Prizes: []marketingLotteryPrizeInput{
 			{Name: "谢谢参与", PrizeType: "thanks", Weight: 90},
 			{Name: "5元券", PrizeType: "coupon", CouponCampaignID: &couponID, Weight: 10, TotalStock: 5},

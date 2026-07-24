@@ -81,6 +81,35 @@ paths:
                 display_name: {type: string}
       responses:
         '201': {description: Created merchant owner account; plaintext password is never returned}
+  /platform/tenants/{tenantID}/service-expiration:
+    put:
+      summary: 设置商户服务到期日，空值表示长期有效
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at: {type: string, format: date, nullable: true}
+      responses:
+        '200': {description: Updated tenant}
+  /platform/tenants/{tenantID}/renew-one-year:
+    post:
+      summary: 商户快捷续期一年
+      description: 从当前到期日或今天（取较晚者）起顺延一年。
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Renewed tenant}
         '409': {description: Merchant already has an owner account}
   /merchant/dashboard:
     get:
@@ -968,14 +997,38 @@ paths:
         '409': {description: Store closed or idempotency conflict}
   /public/orders/{orderNo}/payments:
     post:
-      summary: 发起支付
+      summary: 使用平台当前运行且与商户绑定一致的适配器发起支付
       security: []
       parameters:
         - in: path
           name: orderNo
           required: true
           schema: {type: string}
-      responses: {'201': {description: Payment created}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: {type: string, enum: [mock, tianque, wechat_partner], description: 旧客户端兼容字段；建议省略，由服务端选择并校验}
+                openid: {type: string}
+                subAppId: {type: string}
+      responses:
+        '201': {description: Payment created}
+        '503': {description: Platform payment is disabled, provider mismatch, or selected adapter is not implemented/configured}
+  /payments/wechat-partner/callback:
+    post:
+      summary: 微信支付服务商支付结果通知
+      security: []
+      responses:
+        '501': {description: Fail closed until API v3 signature verification and resource decryption are implemented}
+  /payments/wechat-partner/refund-callback:
+    post:
+      summary: 微信支付服务商退款结果通知
+      security: []
+      responses:
+        '501': {description: Fail closed until API v3 refund notification verification is implemented}
 components:
   securitySchemes:
     bearerAuth:

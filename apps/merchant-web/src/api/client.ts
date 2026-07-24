@@ -3,6 +3,7 @@ import type { ListResult, PageMeta } from '../types';
 
 export const TOKEN_KEY = 'tanban_merchant_token';
 export const AUTH_UNAUTHORIZED_EVENT = 'tanban:merchant:unauthorized';
+export const SERVICE_EXPIRED_EVENT = 'tanban:merchant:service-expired';
 
 const baseURL = (import.meta.env.VITE_API_BASE_URL || 'https://tbapi.666qwe.cn/api/v1').replace(/\/$/, '');
 
@@ -94,6 +95,9 @@ http.interceptors.response.use(
     }
     const payload = error.response?.data;
     const serverError = payload?.error;
+    if (error.response?.status === 402 && typeof serverError === 'object' && serverError?.code === 'MERCHANT_SERVICE_EXPIRED') {
+      window.dispatchEvent(new Event(SERVICE_EXPIRED_EVENT));
+    }
     const message = typeof serverError === 'string'
       ? serverError
       : serverError?.message || payload?.message || error.message || '网络异常，请稍后重试';

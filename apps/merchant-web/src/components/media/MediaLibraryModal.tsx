@@ -9,7 +9,7 @@ import { Button, Empty, Form, Image, Input, Modal, Spin, Tag, Typography, Upload
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../../api/client';
 import { mediaApi } from '../../features/media/api';
-import type { MediaAsset, MediaGroup } from '../../features/media/model';
+import { mediaUrlSetKey, type MediaAsset, type MediaGroup } from '../../features/media/model';
 import type { Id } from '../../types';
 import './media-library.css';
 
@@ -44,6 +44,7 @@ export function MediaLibraryModal({
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupForm] = Form.useForm<{ name: string }>();
   const [messageApi, holder] = message.useMessage();
+  const excludedUrlsKey = mediaUrlSetKey(excludeUrls);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -57,19 +58,20 @@ export function MediaLibraryModal({
     if (!open) return;
     setLoading(true);
     try {
+      const excludedUrls = new Set<string>(JSON.parse(excludedUrlsKey));
       const result = await mediaApi.listAssets({
         keyword: keyword.trim() || undefined,
         groupId: groupId === 'ALL' ? undefined : groupId,
         pageSize: 100,
       });
-      setAssets(result.items.filter((item) => item.type === 'IMAGE' && item.url && !excludeUrls.includes(item.url)));
+      setAssets(result.items.filter((item) => item.type === 'IMAGE' && item.url && !excludedUrls.has(item.url)));
       if (groupId === 'ALL' && !keyword.trim()) setAllAssetCount(Number(result.meta.total ?? result.items.length));
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [excludeUrls, groupId, keyword, messageApi, open]);
+  }, [excludedUrlsKey, groupId, keyword, messageApi, open]);
 
   useEffect(() => {
     if (!open) return;

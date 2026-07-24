@@ -14,6 +14,7 @@ import type {
   PrinterProviderSettings,
   PrinterProviderTestResult,
   Tenant,
+  TenantPaymentSettings,
   TrendPoint,
 } from '../types';
 
@@ -87,9 +88,10 @@ function tenantFromRaw(value: unknown): Tenant {
     paymentSubAppId: text(item.payment_sub_appid ?? item.paymentSubAppId) || undefined,
     businessLicenseUrl: text(item.business_license_url ?? item.businessLicenseUrl) || undefined,
     foodBusinessLicenseUrl: text(item.food_business_license_url ?? item.foodBusinessLicenseUrl) || undefined,
-    paymentStatus: text(item.payment_status ?? item.paymentStatus).toLowerCase() as Tenant['paymentStatus'] || (merchantNo ? 'active' : 'unbound'),
+    paymentStatus: text(item.payment_status ?? item.paymentStatus).toLowerCase() as Tenant['paymentStatus'] || (text(item.payment_provider ?? item.paymentProvider) === 'wechat_partner' ? (merchantNo ? 'pending' : 'unbound') : (merchantNo ? 'active' : 'unbound')),
     createdAt: text(item.created_at ?? item.createdAt) || undefined,
-    expiresAt: text(item.expires_at ?? item.expiresAt) || undefined,
+    expiresAt: text(item.service_expires_at ?? item.expires_at ?? item.expiresAt) || undefined,
+    serviceExpired: Boolean(item.service_expired ?? item.serviceExpired),
   };
 }
 
@@ -195,6 +197,7 @@ function tenantPayload(values: TenantCreateValues): RawRecord {
     contact_name: item.contactName || '',
     contact_phone: item.contactPhone || '',
     status: toBackendStatus(item.status),
+    service_expires_at: item.expiresAt || '',
     payment_provider: item.paymentProvider || 'mock',
     payment_merchant_no: item.paymentMerchantNo || '',
     payment_sub_appid: item.paymentSubAppId || '',
@@ -267,6 +270,14 @@ export const tenantService = {
     tenantFromRaw((await http.post<RawRecord>('/platform/tenants', tenantPayload(values))).data),
   update: async (id: string, values: Partial<Tenant>) =>
     tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/`, tenantPayload(values))).data),
+  updateServiceExpiration: async (id: string, expiresAt?: string) =>
+    tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/service-expiration`, { expires_at: expiresAt || '' })).data),
+  renewOneYear: async (id: string) =>
+    tenantFromRaw((await http.post<RawRecord>(`/platform/tenants/${id}/renew-one-year`)).data),
+  getPaymentSettings: async (id: string) =>
+    (await http.get<TenantPaymentSettings>(`/platform/tenants/${id}/payment-settings`)).data,
+  updatePaymentSettings: async (id: string, values: TenantPaymentSettings) =>
+    (await http.put<TenantPaymentSettings>(`/platform/tenants/${id}/payment-settings`, values)).data,
   createOwner: async (id: string, values: { username: string; password?: string; displayName?: string; accountMode?: 'CREATE' | 'EXISTING' }) => {
     await http.post(`/platform/tenants/${id}/owner`, {
       username: values.username,

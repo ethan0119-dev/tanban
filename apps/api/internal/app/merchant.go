@@ -12,6 +12,7 @@ import (
 
 func (s *Server) merchantRoutes(r chi.Router) {
 	r.Use(requireRoles(RoleMerchantOwner, RoleMerchantManager, RoleMerchantStaff))
+	r.Use(requireActiveMerchantService)
 
 	// Store staff can operate the live order queue and recover printing, but
 	// financial, catalog, device and account administration are manager-only.
@@ -133,6 +134,17 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	// Marketing applications are mounted as a separate manager-only module so
 	// staff order permissions never leak into campaign or coupon administration.
 	s.registerMarketingMerchantRoutes(r)
+}
+
+func requireActiveMerchantService(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actor := currentIdentity(r.Context())
+		if actor.ServiceExpired {
+			writeError(w, http.StatusPaymentRequired, "MERCHANT_SERVICE_EXPIRED", "欠费服务暂停，请联系管理员续费")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {

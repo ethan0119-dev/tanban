@@ -87,10 +87,11 @@ func (s *Server) listMarketingApps(w http.ResponseWriter, r *http.Request) {
 			CountArgs:   func(tenantID, storeID int64) []any { return []any{tenantID, storeID, "CASH"} },
 		},
 		{
-			Key: "FULL_REDUCTION", Name: "满额立减", Route: "/marketing/coupons",
-			Description: "创建带消费门槛的满减券，与代金券共用发放和库存能力",
-			CountQuery:  couponCountQuery,
-			CountArgs:   func(tenantID, storeID int64) []any { return []any{tenantID, storeID, "FULL_REDUCTION"} },
+			Key: "FULL_REDUCTION", Name: "满额立减", Route: "/marketing/full-reductions",
+			Description: "达到订单门槛后自动减免，可与一张优惠券叠加",
+			CountQuery: `SELECT status,COUNT(*) FROM store_full_reduction_campaigns
+				WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL GROUP BY status`,
+			CountArgs: func(tenantID, storeID int64) []any { return []any{tenantID, storeID} },
 		},
 		{
 			Key: "POPUP_AD", Name: "弹窗广告", Route: "/marketing/popup-ads",

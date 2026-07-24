@@ -231,31 +231,47 @@ func maskedMerchantNo(value string) string {
 
 func (s *Server) getMerchantPaymentSettings(w http.ResponseWriter, r *http.Request) {
 	actor := currentIdentity(r.Context())
-	var providerName, merchantNo, subAppID, settlementCycle string
+	var providerName, merchantNo, subAppID, settlementCycle, onboardingStatus, productAuthorizationStatus string
 	var feeBPS int
-	err := s.DB.QueryRowContext(r.Context(), `SELECT payment_provider,payment_merchant_no,payment_sub_appid,payment_fee_bps,payment_settlement_cycle
+	var refundAuthorized bool
+	err := s.DB.QueryRowContext(r.Context(), `SELECT payment_provider,payment_merchant_no,payment_sub_appid,payment_fee_bps,payment_settlement_cycle,
+		payment_onboarding_status,payment_product_authorization_status,payment_refund_authorized
 		FROM tenants WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL`, actor.TenantID).
-		Scan(&providerName, &merchantNo, &subAppID, &feeBPS, &settlementCycle)
+		Scan(&providerName, &merchantNo, &subAppID, &feeBPS, &settlementCycle, &onboardingStatus, &productAuthorizationStatus, &refundAuthorized)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	providerDisplayName := "模拟支付（开发环境）"
+	presentation := describePaymentProvider(providerName)
 	bindingStatus := "DEVELOPMENT"
 	if providerName == "tianque" {
-		providerDisplayName = "会生活 · 随行付"
 		bindingStatus = "PENDING_BINDING"
 		if merchantNo != "" {
 			bindingStatus = "BOUND"
 		}
+	} else if providerName == "wechat_partner" {
+		bindingStatus = onboardingStatus
 	}
+	acceptanceEnabled, acceptanceErr := s.paymentAcceptanceEnabled(r.Context())
+	if acceptanceErr != nil {
+		handleSQLError(w, acceptanceErr)
+		return
+	}
+	effectiveProvider := s.Payment.Name()
+	providerActive := acceptanceEnabled && providerName == effectiveProvider
+	onboardingReady := providerName == "mock" || (onboardingStatus == "ACTIVE" && productAuthorizationStatus == "AUTHORIZED" && merchantNo != "")
 	writeData(w, http.StatusOK, map[string]any{
-		"provider": providerName, "providerDisplayName": providerDisplayName, "bindingStatus": bindingStatus,
+		"provider": providerName, "providerDisplayName": presentation.DisplayName, "bindingStatus": bindingStatus,
 		"merchantNoMasked": maskedMerchantNo(merchantNo), "subAppIdConfigured": subAppID != "",
+		"sharedServiceProviderApp": providerName == "wechat_partner" && subAppID == "",
+		"onboardingStatus":         onboardingStatus, "productAuthorizationStatus": productAuthorizationStatus,
+		"refundAuthorized": refundAuthorized, "onboardingReady": onboardingReady, "adapterImplemented": presentation.AdapterImplemented,
+		"acceptanceEnabled": acceptanceEnabled, "effectiveProvider": effectiveProvider, "providerActive": providerActive,
 		"feeRatePercent": float64(feeBPS) / 100, "settlementCycle": settlementCycle,
-		"checkoutMode": "HALF_SCREEN_CASHIER", "fundsFlow": "ACQUIRER_TO_MERCHANT_BANK_CARD",
+		"checkoutMode":          presentation.CheckoutMode,
+		"fundsFlow":             "ACQUIRER_TO_MERCHANT_SETTLEMENT_ACCOUNT",
 		"platformReceivesFunds": false, "confirmationMode": "PROVIDER_CALLBACK_WITH_ACTIVE_QUERY_RECONCILIATION",
-		"supportsPartialRefund": true, "sensitiveConfigurationManagedByPlatform": true,
+		"supportsPartialRefund": providerName != "wechat_partner" || refundAuthorized, "sensitiveConfigurationManagedByPlatform": true,
 	})
 }
 

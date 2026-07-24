@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, AUTH_UNAUTHORIZED_EVENT, TOKEN_KEY } from '../api/client';
+import { api, AUTH_UNAUTHORIZED_EVENT, SERVICE_EXPIRED_EVENT, TOKEN_KEY } from '../api/client';
 import type { Id, MerchantUser, MerchantWorkspace } from '../types';
 
 const SELECTION_TOKEN_KEY = 'tanban_merchant_selection_token';
@@ -41,6 +41,7 @@ function normalizeUser(value: unknown): MerchantUser {
   const user = (source ?? {}) as Partial<MerchantUser> & {
     user_id?: Id; username?: string; nickname?: string; display_name?: string; role?: string;
     tenant_id?: Id; store_id?: Id; tenant_name?: string; store_name?: string;
+    service_expires_at?: string; service_expired?: boolean;
   };
   return {
     id: user.id ?? user.user_id ?? 'current',
@@ -53,12 +54,15 @@ function normalizeUser(value: unknown): MerchantUser {
     tenantName: user.tenantName ?? user.tenant_name,
     merchantName: user.merchantName ?? user.tenantName ?? user.tenant_name,
     roles: user.roles ?? (user.role ? [user.role] : undefined),
+    serviceExpiresAt: user.serviceExpiresAt ?? user.service_expires_at,
+    serviceExpired: Boolean(user.serviceExpired ?? user.service_expired),
   };
 }
 
 function normalizeWorkspace(value: unknown): MerchantWorkspace {
   const item = (value ?? {}) as Partial<MerchantWorkspace> & {
     membership_id?: Id; tenant_id?: Id; tenant_name?: string; store_id?: Id; store_name?: string; store_logo_url?: string;
+    service_expires_at?: string; service_expired?: boolean;
   };
   return {
     membershipId: item.membershipId ?? item.membership_id ?? '',
@@ -68,6 +72,8 @@ function normalizeWorkspace(value: unknown): MerchantWorkspace {
     storeName: item.storeName ?? item.store_name ?? '',
     storeLogoUrl: item.storeLogoUrl ?? item.store_logo_url,
     role: item.role ?? 'MERCHANT_OWNER',
+    serviceExpiresAt: item.serviceExpiresAt ?? item.service_expires_at,
+    serviceExpired: Boolean(item.serviceExpired ?? item.service_expired),
   };
 }
 
@@ -132,12 +138,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     void bootstrap();
+    const refreshServiceState = () => void refreshMe().catch(() => undefined);
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, logout);
+    window.addEventListener(SERVICE_EXPIRED_EVENT, refreshServiceState);
     return () => {
       active = false;
       window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, logout);
+      window.removeEventListener(SERVICE_EXPIRED_EVENT, refreshServiceState);
     };
-  }, [logout]);
+  }, [logout, refreshMe]);
 
   const login = useCallback(async (account: string, password: string) => {
     localStorage.removeItem(TOKEN_KEY);

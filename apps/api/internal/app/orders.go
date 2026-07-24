@@ -499,14 +499,18 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 		Amount:     intent.Amount,
 		OpenID:     intent.OpenID,
 		SubAppID:   intent.SubAppID,
-		NotifyURL:  s.Config.TianQue.NotifyURL,
+		NotifyURL:  s.paymentNotifyURL(),
 	})
 	if err == nil && strings.TrimSpace(result.ProviderOrderNo) == "" {
 		err = errors.New("provider returned an empty payment number")
 	}
 	if err != nil {
 		raw, _ := json.Marshal(map[string]string{"phase": "creating", "last_error": truncateError(err)})
-		_, _ = conn.ExecContext(ctx, "UPDATE payment_transactions SET raw_response=?,updated_at=NOW(3) WHERE id=? AND tenant_id=? AND status='CREATING'", string(raw), intent.ID, intent.TenantID)
+		if errors.Is(err, provider.ErrNotConfigured) {
+			_, _ = conn.ExecContext(ctx, "UPDATE payment_transactions SET status='FAILED',raw_response=?,updated_at=NOW(3) WHERE id=? AND tenant_id=? AND status='CREATING'", string(raw), intent.ID, intent.TenantID)
+		} else {
+			_, _ = conn.ExecContext(ctx, "UPDATE payment_transactions SET raw_response=?,updated_at=NOW(3) WHERE id=? AND tenant_id=? AND status='CREATING'", string(raw), intent.ID, intent.TenantID)
+		}
 		return result, err
 	}
 	rawResponse, _ := json.Marshal(result.PayParams)
@@ -524,6 +528,13 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 		}
 	}
 	return result, nil
+}
+
+func (s *Server) paymentNotifyURL() string {
+	if s.Payment.Name() == "wechat_partner" {
+		return s.Config.WeChatPayPartner.NotifyURL
+	}
+	return s.Config.TianQue.NotifyURL
 }
 
 func (s *Server) createPayment(w http.ResponseWriter, r *http.Request) {
@@ -569,20 +580,30 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	var orderNo, orderStatus, merchantNo, subAppID, storedOpenID string
+	var orderNo, orderStatus, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus string
 	var storeID, amount int64
-	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,o.total_cents,o.status,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid
+	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,o.total_cents,o.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
+		t.payment_onboarding_status,t.payment_product_authorization_status
 		FROM orders o
-		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
+		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
+			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.tenant_id=o.tenant_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		WHERE o.id=? AND o.tenant_id=?`, orderID, tenantID).
-		Scan(&orderNo, &storeID, &amount, &orderStatus, &merchantNo, &subAppID, &storedOpenID)
+		Scan(&orderNo, &storeID, &amount, &orderStatus, &tenantPaymentProvider, &merchantNo, &subAppID, &storedOpenID, &onboardingStatus, &productAuthorizationStatus)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	if orderStatus != "PENDING_PAYMENT" {
 		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
+		return
+	}
+	if tenantPaymentProvider != s.Payment.Name() {
+		writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "merchant payment provider is not active on the platform")
+		return
+	}
+	if tenantPaymentProvider == "wechat_partner" && (merchantNo == "" || onboardingStatus != "ACTIVE" || productAuthorizationStatus != "AUTHORIZED") {
+		writeError(w, http.StatusConflict, "WECHAT_PAY_MERCHANT_NOT_READY", "WeChat Pay sub-merchant onboarding or product authorization is incomplete")
 		return
 	}
 	newReservation, reserveErr := ensureOrderStockReservationLocked(r.Context(), conn, tenantID, orderID)
@@ -679,6 +700,10 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	}
 	result, submitErr := s.submitPaymentIntent(r.Context(), conn, intent)
 	if submitErr != nil {
+		if errors.Is(submitErr, provider.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_NOT_CONFIGURED", "the selected payment provider is not ready for transactions")
+			return
+		}
 		s.Logger.Warn("payment creation outcome is pending reconciliation", "payment_id", existingID, "order_id", orderID, "error", submitErr)
 		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"})
 		return
@@ -789,6 +814,26 @@ func (s *Server) tianQueCallback(w http.ResponseWriter, r *http.Request) {
 	// Production implementation must verify TianQue's RSA signature before
 	// reading these fields. The route is retained now so DNS/contract remain stable.
 	writeError(w, http.StatusNotImplemented, "TIANQUE_NOT_CONFIGURED", "callback signature verification awaits partner credentials")
+}
+
+func (s *Server) wechatPayCallback(w http.ResponseWriter, r *http.Request) {
+	if s.Payment.Name() != "wechat_partner" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
+		return
+	}
+	// Never acknowledge a payment notification before API v3 signature
+	// verification, resource decryption and payment identity checks exist.
+	writeError(w, http.StatusNotImplemented, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay notification verification is not implemented")
+}
+
+func (s *Server) wechatPayRefundCallback(w http.ResponseWriter, r *http.Request) {
+	if s.Payment.Name() != "wechat_partner" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
+		return
+	}
+	// Refund notifications have the same fail-closed boundary as payment
+	// notifications. Returning a non-success response prevents false success.
+	writeError(w, http.StatusNotImplemented, "WECHAT_PAY_REFUND_NOT_CONFIGURED", "WeChat Pay refund notification verification is not implemented")
 }
 
 func (s *Server) markPaymentPaid(ctx context.Context, providerName, providerNo string, paidAt time.Time) error {

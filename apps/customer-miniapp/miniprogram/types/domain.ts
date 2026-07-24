@@ -199,6 +199,18 @@ export interface MarketingCoupon {
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
 }
 
+export interface StoreFullReduction {
+  id: number;
+  name: string;
+  description?: string;
+  threshold_cents: number;
+  discount_cents: number;
+  order_types?: Array<"DINE_IN" | "TAKEOUT" | "DELIVERY">;
+  active_from?: string;
+  active_to?: string;
+  status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
+}
+
 export interface MarketingPlacement {
   id: number;
   name: string;

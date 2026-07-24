@@ -57,6 +57,15 @@ export function bestEligibleCoupon(
   orderType: "DINE_IN" | "TAKEOUT",
   now = Date.now(),
 ): LocalCouponAsset | null {
+  return eligibleCoupons(storeCode, subtotalCents, orderType, now)[0] || null;
+}
+
+export function eligibleCoupons(
+  storeCode: string,
+  subtotalCents: number,
+  orderType: "DINE_IN" | "TAKEOUT",
+  now = Date.now(),
+): LocalCouponAsset[] {
   return localCouponAssets(storeCode)
     .filter((coupon) =>
       coupon.status === "ACTIVE" &&
@@ -64,5 +73,5 @@ export function bestEligibleCoupon(
       subtotalCents >= coupon.threshold_cents &&
       (!coupon.order_types?.length || coupon.order_types.includes(orderType)) &&
       couponValidAt(coupon, now))
-    .sort((a, b) => b.discount_cents - a.discount_cents || a.threshold_cents - b.threshold_cents || a.id - b.id)[0] || null;
+    .sort((a, b) => b.discount_cents - a.discount_cents || a.threshold_cents - b.threshold_cents || a.id - b.id);
 }

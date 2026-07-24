@@ -64,18 +64,50 @@ func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 type paymentSettings struct {
-	Provider    string `json:"provider"`
-	Enabled     bool   `json:"enabled"`
-	Environment string `json:"environment"`
-	OrgID       string `json:"orgId"`
-	APIBaseURL  string `json:"apiBaseUrl"`
-	NotifyURL   string `json:"notifyUrl"`
+	Provider             string `json:"provider"`
+	Enabled              bool   `json:"enabled"`
+	Environment          string `json:"environment"`
+	OrgID                string `json:"orgId"`
+	APIBaseURL           string `json:"apiBaseUrl"`
+	NotifyURL            string `json:"notifyUrl"`
+	RefundNotifyURL      string `json:"refundNotifyUrl"`
+	ServiceProviderMchID string `json:"spMchId"`
+	ServiceProviderAppID string `json:"spAppId"`
 }
 
 func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Request) {
-	settings := paymentSettings{Provider: s.Payment.Name(), Enabled: true, Environment: "sandbox", OrgID: s.Config.TianQue.OrgID, APIBaseURL: s.Config.TianQue.BaseURL, NotifyURL: s.Config.TianQue.NotifyURL}
+	settings := paymentSettings{
+		Provider: s.Payment.Name(), Enabled: true, Environment: "production",
+		OrgID: s.Config.TianQue.OrgID, APIBaseURL: s.Config.TianQue.BaseURL, NotifyURL: s.Config.TianQue.NotifyURL,
+		RefundNotifyURL:      s.Config.WeChatPayPartner.RefundNotifyURL,
+		ServiceProviderMchID: s.Config.WeChatPayPartner.ServiceProviderMchID,
+		ServiceProviderAppID: s.Config.WeChatPayPartner.ServiceProviderAppID,
+	}
 	_ = s.loadSettingJSON(r, "payment", &settings)
-	writeData(w, http.StatusOK, map[string]any{"provider": settings.Provider, "enabled": settings.Enabled, "environment": settings.Environment, "orgId": settings.OrgID, "apiBaseUrl": settings.APIBaseURL, "notifyUrl": settings.NotifyURL, "effectiveProvider": s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(), "tianqueConfigured": s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "", "tianqueAdapterImplemented": false, "mockEnabled": s.AllowMockConfirmation, "publicKeyConfigured": s.Config.TianQue.PublicKey != "", "privateKeyConfigured": s.Config.TianQue.PrivateKey != ""})
+	if settings.Provider == "wechat_partner" {
+		if settings.APIBaseURL == "" {
+			settings.APIBaseURL = s.Config.WeChatPayPartner.BaseURL
+		}
+		if settings.NotifyURL == "" {
+			settings.NotifyURL = s.Config.WeChatPayPartner.NotifyURL
+		}
+	}
+	wechat := s.Config.WeChatPayPartner
+	writeData(w, http.StatusOK, map[string]any{
+		"provider": settings.Provider, "enabled": settings.Enabled, "environment": settings.Environment,
+		"orgId": settings.OrgID, "apiBaseUrl": settings.APIBaseURL, "notifyUrl": settings.NotifyURL,
+		"refundNotifyUrl": settings.RefundNotifyURL, "spMchId": settings.ServiceProviderMchID, "spAppId": settings.ServiceProviderAppID,
+		"effectiveProvider": s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(),
+		"tianqueConfigured":         s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "",
+		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": false,
+		"wechatPartnerConfigured": wechat.ServiceProviderMchID != "" && wechat.ServiceProviderAppID != "" &&
+			wechat.APICertSerialNo != "" && wechat.MerchantPrivateKey != "" && wechat.APIV3Key != "" &&
+			wechat.WeChatPayPublicKeyID != "" && wechat.WeChatPayPublicKey != "" && wechat.NotifyURL != "",
+		"apiCertSerialConfigured": wechat.APICertSerialNo != "", "apiV3KeyConfigured": wechat.APIV3Key != "",
+		"wechatPayPublicKeyConfigured": wechat.WeChatPayPublicKeyID != "" && wechat.WeChatPayPublicKey != "",
+		"mockEnabled":                  s.AllowMockConfirmation, "publicKeyConfigured": s.Config.TianQue.PublicKey != "",
+		"privateKeyConfigured": choosePaymentPrivateKeyConfigured(settings.Provider, s),
+	})
 }
 
 func (s *Server) updatePlatformPaymentSettings(w http.ResponseWriter, r *http.Request) {
@@ -83,8 +115,9 @@ func (s *Server) updatePlatformPaymentSettings(w http.ResponseWriter, r *http.Re
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if input.Provider != "mock" && input.Provider != "tianque" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock or tianque")
+	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
+	if !validPaymentProvider(input.Provider) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque or wechat_partner")
 		return
 	}
 	if err := s.saveSettingJSON(r, "payment", input); err != nil {
@@ -93,6 +126,13 @@ func (s *Server) updatePlatformPaymentSettings(w http.ResponseWriter, r *http.Re
 	}
 	s.audit(r.Context(), currentIdentity(r.Context()), "settings.payment.update", "settings", "payment", map[string]any{"provider": input.Provider, "enabled": input.Enabled}, r)
 	s.getPlatformPaymentSettings(w, r)
+}
+
+func choosePaymentPrivateKeyConfigured(providerName string, s *Server) bool {
+	if providerName == "wechat_partner" {
+		return s.Config.WeChatPayPartner.MerchantPrivateKey != ""
+	}
+	return s.Config.TianQue.PrivateKey != ""
 }
 
 type systemSettings struct {

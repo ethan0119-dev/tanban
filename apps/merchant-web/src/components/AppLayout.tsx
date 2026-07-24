@@ -19,7 +19,7 @@ import {
   TransactionOutlined,
   UsergroupAddOutlined,
 } from '@ant-design/icons';
-import { App as AntApp, Avatar, Badge, Button, Dropdown, Layout, Menu, Tooltip, Typography, type MenuProps } from 'antd';
+import { App as AntApp, Avatar, Badge, Button, Dropdown, Layout, Menu, Result, Tooltip, Typography, type MenuProps } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import tanbanIcon from '../assets/brand/tanban-icon.png';
@@ -68,6 +68,7 @@ const managementNavigationItems: MenuProps['items'] = [
     key: 'marketing-domain', label: '营销应用', icon: <GiftOutlined />,
     children: [
       { key: '/marketing', label: '应用中心' },
+      { key: '/marketing/full-reductions', label: '满额立减' },
       { key: '/marketing/coupons', label: '优惠券' },
       { key: '/marketing/popup-ads', label: '弹窗广告' },
       { key: '/marketing/lottery', label: '抽奖活动' },
@@ -236,7 +237,16 @@ export function AppLayout() {
             </button>
           </Dropdown>
         </Header>
-        <Content className="merchant-content"><div className="merchant-content-inner"><Outlet /></div></Content>
+        <Content className="merchant-content"><div className="merchant-content-inner">
+          {user?.serviceExpired ? (
+            <Result
+              status="warning"
+              title="欠费服务暂停"
+              subTitle={`当前商户服务已于 ${user.serviceExpiresAt || '此前'} 到期，请联系管理员续费。续费完成后刷新页面即可恢复使用。`}
+              extra={<Button type="primary" onClick={() => window.location.reload()}>刷新服务状态</Button>}
+            />
+          ) : <Outlet />}
+        </div></Content>
       </Layout>
     </Layout>
   );

@@ -13,21 +13,21 @@ import (
 )
 
 type marketingCouponInput struct {
-	Name             string     `json:"name"`
-	Description      string     `json:"description"`
-	CouponType       string     `json:"coupon_type"`
-	ThresholdCents   int64      `json:"threshold_cents"`
-	DiscountCents    int64      `json:"discount_cents"`
-	DistributionMode string     `json:"distribution_mode"`
-	TotalStock       int64      `json:"total_stock"`
-	PerSubjectLimit  int        `json:"per_subject_limit"`
-	ClaimStartAt     *time.Time `json:"claim_start_at"`
-	ClaimEndAt       *time.Time `json:"claim_end_at"`
-	ValidityMode     string     `json:"validity_mode"`
-	ValidFrom        *time.Time `json:"valid_from"`
-	ValidTo          *time.Time `json:"valid_to"`
-	ValidDays        int        `json:"valid_days"`
-	OrderTypes       []string   `json:"order_types"`
+	Name             string           `json:"name"`
+	Description      string           `json:"description"`
+	CouponType       string           `json:"coupon_type"`
+	ThresholdCents   int64            `json:"threshold_cents"`
+	DiscountCents    int64            `json:"discount_cents"`
+	DistributionMode string           `json:"distribution_mode"`
+	TotalStock       int64            `json:"total_stock"`
+	PerSubjectLimit  int              `json:"per_subject_limit"`
+	ClaimStartAt     *requestDateTime `json:"claim_start_at"`
+	ClaimEndAt       *requestDateTime `json:"claim_end_at"`
+	ValidityMode     string           `json:"validity_mode"`
+	ValidFrom        *requestDateTime `json:"valid_from"`
+	ValidTo          *requestDateTime `json:"valid_to"`
+	ValidDays        int              `json:"valid_days"`
+	OrderTypes       []string         `json:"order_types"`
 }
 
 type marketingCouponRow struct {
@@ -136,12 +136,12 @@ func normalizeMarketingCouponInput(input *marketingCouponInput) (string, error) 
 	if input.TotalStock <= 0 || input.TotalStock > 1_000_000_000 || input.PerSubjectLimit <= 0 || int64(input.PerSubjectLimit) > input.TotalStock {
 		return "", errors.New("total_stock and per_subject_limit are outside the supported range")
 	}
-	if !marketingWindowValid(input.ClaimStartAt, input.ClaimEndAt) {
+	if !requestDateTimeWindowValid(input.ClaimStartAt, input.ClaimEndAt) {
 		return "", errors.New("claim_start_at must be before claim_end_at")
 	}
 	switch input.ValidityMode {
 	case "FIXED_RANGE":
-		if input.ValidFrom == nil || input.ValidTo == nil || input.ValidFrom.IsZero() || input.ValidTo.IsZero() || !input.ValidFrom.Before(*input.ValidTo) {
+		if input.ValidFrom == nil || input.ValidTo == nil || !requestDateTimeWindowValid(input.ValidFrom, input.ValidTo) {
 			return "", errors.New("FIXED_RANGE requires valid_from before valid_to")
 		}
 		input.ValidDays = 0
@@ -245,8 +245,8 @@ func (s *Server) createMarketingCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO coupon_campaigns(tenant_id,store_id,name,description,coupon_type,threshold_cents,discount_cents,distribution_mode,total_stock,per_subject_limit,claim_start_at,claim_end_at,validity_mode,valid_from,valid_to,valid_days,order_types_json,status,created_by,updated_by)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.Description, input.CouponType, input.ThresholdCents, input.DiscountCents,
-		input.DistributionMode, input.TotalStock, input.PerSubjectLimit, marketingTimeArg(input.ClaimStartAt), marketingTimeArg(input.ClaimEndAt), input.ValidityMode,
-		marketingTimeArg(input.ValidFrom), marketingTimeArg(input.ValidTo), input.ValidDays, orderTypesJSON, actor.UserID, actor.UserID)
+		input.DistributionMode, input.TotalStock, input.PerSubjectLimit, requestDateTimeArg(input.ClaimStartAt), requestDateTimeArg(input.ClaimEndAt), input.ValidityMode,
+		requestDateTimeArg(input.ValidFrom), requestDateTimeArg(input.ValidTo), input.ValidDays, orderTypesJSON, actor.UserID, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -296,7 +296,7 @@ func (s *Server) updateMarketingCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE coupon_campaigns SET name=?,description=?,coupon_type=?,threshold_cents=?,discount_cents=?,distribution_mode=?,total_stock=?,per_subject_limit=?,claim_start_at=?,claim_end_at=?,validity_mode=?,valid_from=?,valid_to=?,valid_days=?,order_types_json=?,version=version+1,updated_by=?
 		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE'`, input.Name, input.Description, input.CouponType, input.ThresholdCents, input.DiscountCents, input.DistributionMode,
-		input.TotalStock, input.PerSubjectLimit, marketingTimeArg(input.ClaimStartAt), marketingTimeArg(input.ClaimEndAt), input.ValidityMode, marketingTimeArg(input.ValidFrom), marketingTimeArg(input.ValidTo), input.ValidDays,
+		input.TotalStock, input.PerSubjectLimit, requestDateTimeArg(input.ClaimStartAt), requestDateTimeArg(input.ClaimEndAt), input.ValidityMode, requestDateTimeArg(input.ValidFrom), requestDateTimeArg(input.ValidTo), input.ValidDays,
 		orderTypesJSON, actor.UserID, id, actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)

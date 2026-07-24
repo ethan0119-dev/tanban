@@ -1,10 +1,11 @@
-import { CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import { BankOutlined, CalendarOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
   Alert,
   Card,
   Col,
   Descriptions,
+  DatePicker,
   Drawer,
   Empty,
   Form,
@@ -26,11 +27,12 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadProps } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import dayjs, { type Dayjs } from 'dayjs';
 import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
 import { generateInitialPassword, generatedOwnerUsername, type OwnerUsernameMode } from '../features/tenants/credentials';
 import { tenantService } from '../lib/services';
-import type { PageMeta, Tenant } from '../types';
+import type { PageMeta, Tenant, TenantPaymentSettings } from '../types';
 import { formatBeijingDate, formatBeijingDateTime } from '../utils/datetime';
 
 interface TenantFormValues {
@@ -39,7 +41,7 @@ interface TenantFormValues {
   contactName: string;
   contactPhone: string;
   status: 'active' | 'pending';
-  paymentProvider: 'mock' | 'tianque';
+  paymentProvider: 'mock' | 'tianque' | 'wechat_partner';
   paymentMerchantNo?: string;
   paymentSubAppId?: string;
   initialStoreCode: string;
@@ -48,6 +50,7 @@ interface TenantFormValues {
   ownerDisplayName: string;
   ownerUsernameMode: OwnerUsernameMode;
   ownerAccountMode: 'CREATE' | 'EXISTING';
+  serviceExpiresAt: Dayjs;
 }
 
 interface OwnerFormValues {
@@ -94,8 +97,13 @@ export function TenantsPage() {
   const [documentUploading, setDocumentUploading] = useState<string>();
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult>();
   const [ownerOpen, setOwnerOpen] = useState(false);
+  const [expirationOpen, setExpirationOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
   const [ownerForm] = Form.useForm<OwnerFormValues>();
+  const [expirationForm] = Form.useForm<{ expiresAt?: Dayjs }>();
+  const [paymentForm] = Form.useForm<TenantPaymentSettings>();
   const [messageApi, contextHolder] = message.useMessage();
 
   const load = useCallback(async (page = meta.page, pageSize = meta.pageSize) => {
@@ -117,7 +125,7 @@ export function TenantsPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      const tenant = await tenantService.create(values);
+      const tenant = await tenantService.create({ ...values, expiresAt: values.serviceExpiresAt?.format('YYYY-MM-DD') });
       setProvisioningResult({ tenant, username: values.ownerUsername, password: values.ownerAccountMode === 'CREATE' ? values.ownerPassword : undefined, storeName: values.name, storeCode: values.initialStoreCode });
       messageApi.success(values.ownerAccountMode === 'EXISTING' ? '新店已开通，并关联到已有老板账号' : '商户、店铺和老板账号已一并创建');
       setCreateOpen(false);
@@ -139,7 +147,7 @@ export function TenantsPage() {
 
   const openCreateTenant = () => {
     form.resetFields();
-    form.setFieldsValue({ status: 'active', paymentProvider: 'mock', ownerAccountMode: 'CREATE', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword() });
+    form.setFieldsValue({ status: 'active', paymentProvider: 'mock', ownerAccountMode: 'CREATE', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword(), serviceExpiresAt: dayjs().add(1, 'year') });
     setCreateOpen(true);
   };
 
@@ -199,6 +207,75 @@ export function TenantsPage() {
     }
   };
 
+  const renewOneYear = async (record: Tenant) => {
+    setSaving(true);
+    try {
+      const updated = await tenantService.renewOneYear(record.id);
+      setSelected((current) => current?.id === updated.id ? updated : current);
+      messageApi.success(`已续期至 ${formatBeijingDate(updated.expiresAt)}`);
+      await load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '续期失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openExpiration = (record: Tenant) => {
+    setSelected(record);
+    expirationForm.setFieldsValue({ expiresAt: record.expiresAt ? dayjs(record.expiresAt) : undefined });
+    setExpirationOpen(true);
+  };
+
+  const saveExpiration = async () => {
+    if (!selected) return;
+    const values = await expirationForm.validateFields();
+    setSaving(true);
+    try {
+      const updated = await tenantService.updateServiceExpiration(selected.id, values.expiresAt?.format('YYYY-MM-DD'));
+      setSelected(updated);
+      setExpirationOpen(false);
+      messageApi.success(values.expiresAt ? '商户有效期已更新' : '已设为长期有效');
+      await load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '有效期更新失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openPaymentSettings = async (record: Tenant) => {
+    setSelected(record);
+    setPaymentOpen(true);
+    setPaymentLoading(true);
+    paymentForm.resetFields();
+    try {
+      paymentForm.setFieldsValue(await tenantService.getPaymentSettings(record.id));
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '支付配置加载失败');
+      setPaymentOpen(false);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const savePaymentSettings = async () => {
+    if (!selected) return;
+    const values = await paymentForm.validateFields();
+    setSaving(true);
+    try {
+      const updated = await tenantService.updatePaymentSettings(selected.id, values);
+      setSelected({ ...selected, paymentProvider: updated.provider, paymentMerchantNo: updated.merchantNo, paymentSubAppId: updated.subAppId, paymentStatus: updated.onboardingStatus === 'ACTIVE' && updated.productAuthorizationStatus === 'AUTHORIZED' ? 'active' : updated.onboardingStatus === 'REJECTED' ? 'rejected' : updated.onboardingStatus === 'NOT_APPLIED' ? 'unbound' : 'pending' });
+      setPaymentOpen(false);
+      messageApi.success('商户支付配置已保存');
+      await load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '支付配置保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const uploadDocument = async (type: 'business-license' | 'food-business-license', file: File) => {
     if (!selected) return;
     if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
@@ -244,12 +321,17 @@ export function TenantsPage() {
     { title: '累计订单', dataIndex: 'orderCount', key: 'orderCount', width: 120, align: 'right', render: (value) => Number(value || 0).toLocaleString('zh-CN') },
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
     { title: '经营证照', key: 'documents', width: 110, render: (_, row) => <Tag color={row.businessLicenseUrl && row.foodBusinessLicenseUrl ? 'success' : 'warning'}>{Number(Boolean(row.businessLicenseUrl)) + Number(Boolean(row.foodBusinessLicenseUrl))}/2</Tag> },
+    { title: '服务有效期', key: 'expiration', width: 140, render: (_, row) => row.expiresAt ? <div>{formatBeijingDate(row.expiresAt)}<small className="table-subtext">{row.serviceExpired ? <Tag color="error">已到期</Tag> : '有效'}</small></div> : <Tag color="success">长期有效</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
     { title: '入驻时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatBeijingDateTime },
     {
-      title: '操作', key: 'actions', fixed: 'right', width: 190,
+      title: '操作', key: 'actions', fixed: 'right', width: 300,
       render: (_, record) => <Space>
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setSelected(record)}>查看</Button>
+        <Button type="link" size="small" icon={<CalendarOutlined />} onClick={() => openExpiration(record)}>有效期</Button>
+        <Popconfirm title="确认续期 1 年？" description="从当前到期日或今天（取较晚者）起顺延一年。" onConfirm={() => void renewOneYear(record)}>
+          <Button type="link" size="small" loading={saving}>续期1年</Button>
+        </Popconfirm>
         <Popconfirm
           title={record.status === 'disabled' ? '启用该商户？' : '停用该商户？'}
           description={record.status === 'disabled' ? '启用后商户可恢复经营。' : '停用后商户后台与点单服务将受限。'}
@@ -274,7 +356,7 @@ export function TenantsPage() {
           columns={columns}
           dataSource={rows}
           loading={loading}
-          scroll={{ x: 1480 }}
+          scroll={{ x: 1720 }}
           pagination={{ current: meta.page, pageSize: meta.pageSize, total: meta.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 家商户`, onChange: (page, pageSize) => void load(page, pageSize) }}
         />
       </Card>
@@ -285,6 +367,9 @@ export function TenantsPage() {
             <Col span={15}><Form.Item label="店铺 / 商户名称" name="name" rules={[{ required: true, message: '请输入店铺名称' }]}><Input placeholder="例如：码农咖啡鼓楼店" onChange={(event) => { if (form.getFieldValue('ownerUsernameMode') === 'PINYIN') form.setFieldValue('ownerUsername', generatedOwnerUsername('PINYIN', event.target.value, '', form.getFieldValue('code') || 'shop')); }} /></Form.Item></Col>
             <Col span={9}><Form.Item label="商户编号" name="code" rules={[{ required: true, message: '请输入商户编号' }, { pattern: /^[A-Za-z0-9_-]+$/, message: '仅支持字母、数字、下划线和短横线' }]}><Input placeholder="例如：MNKF001" /></Form.Item></Col>
           </Row>
+          <Form.Item label="商户有效期" name="serviceExpiresAt" rules={[{ required: true, message: '请选择商户有效期' }]} extra="到期日当天仍可正常使用，次日自动进入服务暂停阶段。">
+            <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+          </Form.Item>
           <Row gutter={12}>
             <Col span={12}><Form.Item label="联系人" name="contactName" rules={[{ required: true, message: '请输入联系人' }]}><Input onChange={(event) => form.setFieldValue('ownerDisplayName', event.target.value)} /></Form.Item></Col>
             <Col span={12}><Form.Item label="联系电话" name="contactPhone" rules={[{ required: true, message: '请输入联系电话' }, { pattern: /^1\d{10}$/, message: '请输入有效手机号' }]}><Input onChange={(event) => { if (form.getFieldValue('ownerUsernameMode') === 'PHONE') form.setFieldValue('ownerUsername', event.target.value.replace(/\D/g, '')); }} /></Form.Item></Col>
@@ -307,10 +392,10 @@ export function TenantsPage() {
           </Form.Item>
           <Row gutter={12}>
             <Col span={8}><Form.Item label="初始状态" name="status" rules={[{ required: true }]}><Select options={[{ value: 'active', label: '正常运营' }, { value: 'pending', label: '待完善资料' }]} /></Form.Item></Col>
-            <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }]} /></Form.Item></Col>
-            <Col span={8}><Form.Item label="随行付商户号" name="paymentMerchantNo"><Input placeholder="联调阶段可留空" /></Form.Item></Col>
+            <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item></Col>
+            <Col span={8}><Form.Item label="支付商户号" name="paymentMerchantNo"><Input placeholder="可创建后在支付配置中维护" /></Form.Item></Col>
           </Row>
-          <Form.Item label="微信支付子 AppID" name="paymentSubAppId"><Input placeholder="由支付渠道为该商户绑定后填写；联调阶段可留空" /></Form.Item>
+          <Form.Item label="独立子 AppID（可选）" name="paymentSubAppId" extra="微信普通服务商共用摊伴小程序时留空；只有商户使用自己的小程序时才填写 sub_appid。"><Input placeholder="wx..." /></Form.Item>
         </Form>
       </Modal>
 
@@ -326,10 +411,16 @@ export function TenantsPage() {
             {selected.hasOwner && <Descriptions.Item label="账号姓名 / 状态">{selected.ownerDisplayName || '—'} · <StatusTag status={selected.ownerStatus || 'active'} /></Descriptions.Item>}
             <Descriptions.Item label="累计订单">{selected.orderCount || 0} 单</Descriptions.Item>
             <Descriptions.Item label="支付状态"><Tag color={paymentStatusColor[selected.paymentStatus || 'unbound']}>{paymentStatusText[selected.paymentStatus || 'unbound']}</Tag></Descriptions.Item>
-            <Descriptions.Item label="随行付商户号">{selected.paymentMerchantNo ? `${selected.paymentMerchantNo.slice(0, 4)}****${selected.paymentMerchantNo.slice(-4)}` : '未绑定'}</Descriptions.Item>
+            <Descriptions.Item label="支付商户号">{selected.paymentMerchantNo ? `${selected.paymentMerchantNo.slice(0, 4)}****${selected.paymentMerchantNo.slice(-4)}` : '未绑定'}</Descriptions.Item>
             <Descriptions.Item label="入驻时间">{formatBeijingDateTime(selected.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="服务到期">{selected.expiresAt ? formatBeijingDate(selected.expiresAt) : '未设置'}</Descriptions.Item>
+            <Descriptions.Item label="服务状态">{selected.serviceExpired ? <Tag color="error">欠费暂停</Tag> : <Tag color="success">正常</Tag>}</Descriptions.Item>
           </Descriptions>
+          <Space style={{ marginTop: 16, marginBottom: 8 }}>
+            <Button icon={<CalendarOutlined />} onClick={() => openExpiration(selected)}>设置有效期</Button>
+            <Button icon={<BankOutlined />} onClick={() => void openPaymentSettings(selected)}>支付配置</Button>
+            <Popconfirm title="确认续期 1 年？" onConfirm={() => void renewOneYear(selected)}><Button type="primary">续期 1 年</Button></Popconfirm>
+          </Space>
           <Typography.Title level={5} className="tenant-document-title"><FileImageOutlined /> 商户经营证照</Typography.Title>
           <Typography.Paragraph type="secondary">仅平台管理员可上传或更换；商户后台只能查看，不可删除或修改。</Typography.Paragraph>
           <Row gutter={[12, 12]}>
@@ -355,6 +446,34 @@ export function TenantsPage() {
           </Row>
         </>}
       </Drawer>
+
+      <Modal title={`支付配置 · ${selected?.name || ''}`} open={paymentOpen} width={680} okText="保存支付配置" onCancel={() => setPaymentOpen(false)} onOk={() => void savePaymentSettings()} confirmLoading={saving} okButtonProps={{ disabled: paymentLoading }}>
+        <Form form={paymentForm} layout="vertical" requiredMark={false}>
+          <Alert type="info" showIcon message="商户端无需填写支付密钥" description="服务商证书和 APIv3 密钥由平台统一保管。商户这里只绑定微信支付特约商户号，并记录进件、产品授权和退款授权状态。" style={{ marginBottom: 16 }} />
+          <Form.Item label="支付适配器" name="provider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider}>
+            {({ getFieldValue }) => getFieldValue('provider') === 'wechat_partner' ? <>
+              <Form.Item label="微信支付特约商户号（sub_mchid）" name="merchantNo" rules={[{ pattern: /^\d{8,32}$/, message: '请输入 8 至 32 位数字' }]}><Input placeholder="进件通过后由微信支付分配" /></Form.Item>
+              <Form.Item label="商户独立小程序 AppID（sub_appid，可选）" name="subAppId" rules={[{ pattern: /^$|^wx[a-zA-Z0-9]{16}$/, message: 'AppID 格式不正确' }]} extra="商户共用摊伴小程序时留空；不要重复填写平台的 sp_appid。"><Input placeholder="共用摊伴小程序时留空" /></Form.Item>
+              <Row gutter={12}>
+                <Col xs={24} md={12}><Form.Item label="特约商户进件状态" name="onboardingStatus" rules={[{ required: true }]}><Select options={[{ value: 'NOT_APPLIED', label: '未进件' }, { value: 'REVIEWING', label: '审核中' }, { value: 'PENDING_SIGNING', label: '待商户签约' }, { value: 'ACTIVE', label: '已开通' }, { value: 'REJECTED', label: '已驳回' }]} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item label="小程序支付产品授权" name="productAuthorizationStatus" rules={[{ required: true }]}><Select options={[{ value: 'NOT_AUTHORIZED', label: '未授权' }, { value: 'PENDING', label: '授权处理中' }, { value: 'AUTHORIZED', label: '已授权' }, { value: 'REVOKED', label: '已撤销' }]} /></Form.Item></Col>
+              </Row>
+              <Form.Item label="服务商 API 退款授权" name="refundAuthorized" valuePropName="checked"><Switch checkedChildren="已授权" unCheckedChildren="未授权" /></Form.Item>
+            </> : <>
+              <Form.Item label="支付商户号" name="merchantNo"><Input /></Form.Item>
+              <Form.Item label="子 AppID" name="subAppId"><Input /></Form.Item>
+            </>}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title={`设置有效期 · ${selected?.name || ''}`} open={expirationOpen} okText="保存" onCancel={() => setExpirationOpen(false)} onOk={() => void saveExpiration()} confirmLoading={saving}>
+        <Alert type="info" showIcon message="到期日当天仍可正常使用，次日自动暂停服务；清空日期表示长期有效。" style={{ marginBottom: 16 }} />
+        <Form form={expirationForm} layout="vertical">
+          <Form.Item label="服务到期日" name="expiresAt"><DatePicker allowClear format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item>
+        </Form>
+      </Modal>
 
       <Modal title="创建首个老板账号" open={ownerOpen} okText="创建账号" onCancel={() => setOwnerOpen(false)} onOk={() => void createOwner()} confirmLoading={saving}>
         <Form form={ownerForm} layout="vertical" requiredMark={false}>

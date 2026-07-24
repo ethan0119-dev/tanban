@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 )
@@ -113,5 +114,16 @@ func TestMockPaymentCreateAndRefundAreProviderIdempotent(t *testing.T) {
 	second, err := mock.Refund(context.Background(), refundRequest)
 	if err != nil || second != first {
 		t.Fatalf("repeated refund must preserve the provider result: first=%+v second=%+v err=%v", first, second, err)
+	}
+}
+
+func TestWeChatPayPartnerStaysDisabledUntilAPIv3TransportIsImplemented(t *testing.T) {
+	t.Parallel()
+	adapter := WeChatPayPartner{Config: WeChatPayPartnerConfig{ServiceProviderMchID: "1900000001"}}
+	if adapter.Name() != "wechat_partner" {
+		t.Fatalf("unexpected provider name %q", adapter.Name())
+	}
+	if _, err := adapter.Create(context.Background(), CreatePaymentRequest{}); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("expected ErrNotConfigured, got %v", err)
 	}
 }

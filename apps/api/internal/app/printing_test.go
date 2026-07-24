@@ -26,6 +26,20 @@ func plainPrintLine(value string) string {
 	return strings.TrimSpace(printMarkupPattern.ReplaceAllString(value, ""))
 }
 
+func TestPrintablePaymentMethodSupportsAllPaymentAdapters(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"mock":           "模拟支付",
+		"tianque":        "会生活 / 随行付",
+		"wechat_partner": "微信支付",
+	}
+	for providerName, expected := range tests {
+		if got := printablePaymentMethod(map[string]any{"provider": providerName}); got != expected {
+			t.Fatalf("printablePaymentMethod(%q)=%q, want %q", providerName, got, expected)
+		}
+	}
+}
+
 func printContentLines(value string) []string {
 	value = strings.ReplaceAll(value, "<BR>", "\n")
 	return strings.Split(value, "\n")

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -37,4 +39,38 @@ func parseBeijingDateTime(value string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return parsed.In(beijingLocation), nil
+}
+
+// requestDateTime keeps JSON request decoding aligned with Tanban's public
+// date-time contract. Go's time.Time decoder only accepts RFC3339, while our
+// APIs also document and expose Beijing wall-clock strings.
+type requestDateTime struct {
+	time.Time
+}
+
+func (value *requestDateTime) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("date-time must be a string: %w", err)
+	}
+	parsed, err := parseBeijingDateTime(raw)
+	if err != nil {
+		return fmt.Errorf("date-time must use %s or RFC3339: %w", beijingDateTimeLayout, err)
+	}
+	value.Time = parsed
+	return nil
+}
+
+func requestDateTimeArg(value *requestDateTime) any {
+	if value == nil {
+		return nil
+	}
+	return formatBeijingDateTime(value.Time)
+}
+
+func requestDateTimeWindowValid(from, to *requestDateTime) bool {
+	if (from != nil && from.IsZero()) || (to != nil && to.IsZero()) {
+		return false
+	}
+	return from == nil || to == nil || from.Time.Before(to.Time)
 }

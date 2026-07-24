@@ -244,7 +244,8 @@ func (s *Server) publicResolveFastFoodPlate(w http.ResponseWriter, r *http.Reque
 		FROM fast_food_plates p JOIN stores s ON s.id=p.store_id AND s.tenant_id=p.tenant_id
 		JOIN tenants t ON t.id=p.tenant_id
 		WHERE p.public_scene=? AND p.status='ACTIVE' AND p.deleted_at IS NULL
-		AND s.status='ACTIVE' AND s.deleted_at IS NULL AND t.status='ACTIVE' AND t.deleted_at IS NULL`, publicID).
+		AND s.status='ACTIVE' AND s.deleted_at IS NULL AND t.status='ACTIVE'
+		AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL`, publicID).
 		Scan(&item.ID, &item.StoreID, &item.Name, &item.PlateCode, &item.PublicID, &item.Remark, &item.SortOrder, &item.Status, &storeCode, &storeName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

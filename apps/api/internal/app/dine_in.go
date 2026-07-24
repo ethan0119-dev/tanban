@@ -529,7 +529,7 @@ func (s *Server) publicResolveTableCode(w http.ResponseWriter, r *http.Request) 
 		JOIN stores st ON st.id=c.store_id AND st.tenant_id=c.tenant_id JOIN tenants t ON t.id=c.tenant_id
 		WHERE c.public_scene=? AND c.status='ACTIVE' AND c.deleted_at IS NULL
 		AND a.status='ACTIVE' AND a.deleted_at IS NULL AND st.status='ACTIVE' AND st.deleted_at IS NULL
-		AND t.status='ACTIVE' AND t.deleted_at IS NULL`, publicID).
+		AND t.status='ACTIVE' AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL`, publicID).
 		Scan(&storeID, &tenantID, &storeCode, &storeName, &table.ID, &table.PublicID, &table.AreaName, &table.Name, &table.TableCode, &capacity, &remark)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

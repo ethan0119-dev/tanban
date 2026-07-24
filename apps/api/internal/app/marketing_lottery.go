@@ -29,8 +29,8 @@ type marketingLotteryInput struct {
 	Name         string                       `json:"name"`
 	Description  string                       `json:"description"`
 	ChannelScope string                       `json:"channel_scope"`
-	ActiveFrom   time.Time                    `json:"active_from"`
-	ActiveTo     time.Time                    `json:"active_to"`
+	ActiveFrom   requestDateTime              `json:"active_from"`
+	ActiveTo     requestDateTime              `json:"active_to"`
 	DailyLimit   int                          `json:"daily_limit"`
 	TotalLimit   int                          `json:"total_limit"`
 	Terms        string                       `json:"terms"`
@@ -137,7 +137,7 @@ func normalizeMarketingLotteryInput(input *marketingLotteryInput) error {
 	if input.Name == "" || len([]rune(input.Name)) > 100 || len([]rune(input.Description)) > 500 || input.Terms == "" || len([]rune(input.Terms)) > 5000 {
 		return errors.New("lottery name and terms are required and text must stay within its limit")
 	}
-	if input.ActiveFrom.IsZero() || input.ActiveTo.IsZero() || !input.ActiveFrom.Before(input.ActiveTo) {
+	if input.ActiveFrom.IsZero() || input.ActiveTo.IsZero() || !input.ActiveFrom.Time.Before(input.ActiveTo.Time) {
 		return errors.New("active_from must be before active_to")
 	}
 	if input.DailyLimit <= 0 || input.DailyLimit > 100 || input.TotalLimit <= 0 || input.TotalLimit > 10000 || input.DailyLimit > input.TotalLimit {
@@ -312,7 +312,7 @@ func (s *Server) createMarketingLottery(w http.ResponseWriter, r *http.Request) 
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO lottery_campaigns(tenant_id,store_id,name,description,channel_scope,active_from,active_to,daily_limit,total_limit,terms,status,created_by,updated_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom), formatBeijingDateTime(input.ActiveTo), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, actor.UserID)
+		VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',?,?)`, actor.TenantID, storeID, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom.Time), formatBeijingDateTime(input.ActiveTo.Time), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -380,7 +380,7 @@ func (s *Server) updateMarketingLottery(w http.ResponseWriter, r *http.Request) 
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(r.Context(), `UPDATE lottery_campaigns SET name=?,description=?,channel_scope=?,active_from=?,active_to=?,daily_limit=?,total_limit=?,terms=?,version=version+1,updated_by=?
-		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE' AND draw_count=0`, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom), formatBeijingDateTime(input.ActiveTo), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, id, actor.TenantID, storeID)
+		WHERE id=? AND tenant_id=? AND store_id=? AND deleted_at IS NULL AND status<>'ACTIVE' AND draw_count=0`, input.Name, input.Description, input.ChannelScope, formatBeijingDateTime(input.ActiveFrom.Time), formatBeijingDateTime(input.ActiveTo.Time), input.DailyLimit, input.TotalLimit, input.Terms, actor.UserID, id, actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

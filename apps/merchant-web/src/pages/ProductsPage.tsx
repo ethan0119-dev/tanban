@@ -64,6 +64,10 @@ interface ProductFormValues {
   autoRestock: boolean;
   dailyStock?: number;
   skus: Sku[];
+  baseSkuId?: string | number;
+  baseExpectedStock?: number;
+  basePrice?: number;
+  baseStock?: number;
   optionGroups: Array<{
     name: string;
     selectionMode: 'SINGLE' | 'MULTIPLE';
@@ -127,6 +131,14 @@ interface ProductConfiguration {
   resource_ids: number[];
 }
 
+const DEFAULT_SKU_NAME = '默认规格';
+
+function isImplicitDefaultSku(skus?: Sku[]): boolean {
+  return skus?.length === 1
+    && skus[0].name === DEFAULT_SKU_NAME
+    && Object.keys(skus[0].attributes || {}).length === 0;
+}
+
 function normalizeCategory(value: Category): Category {
   const raw = value as unknown as Record<string, unknown>;
   return {
@@ -188,6 +200,15 @@ export function productPayload(values: ProductFormValues | Product, enabled = va
     is_primary: index === 0,
     sort_order: index,
   }));
+  const formValues = values as ProductFormValues;
+  const submittedSkus = values.skus.length > 0 ? values.skus : [{
+    id: formValues.baseSkuId,
+    name: DEFAULT_SKU_NAME,
+    price: Number(formValues.basePrice || 0),
+    stock: Number(formValues.baseStock || 0),
+    expectedStock: formValues.baseExpectedStock,
+    attributes: {},
+  }];
   return {
     category_id: Number(values.categoryId),
     name: values.name,
@@ -199,7 +220,7 @@ export function productPayload(values: ProductFormValues | Product, enabled = va
     delivery_enabled: Boolean(values.deliveryEnabled),
     sort_order: 0,
     status: enabled ? 'ACTIVE' : 'DISABLED',
-    skus: values.skus.map((sku) => ({
+    skus: submittedSkus.map((sku) => ({
       id: Number(sku.id ?? 0),
       name: sku.name,
       attributes: sku.attributes ?? {},
@@ -285,6 +306,8 @@ export function ProductsPage() {
     setConfigurationLoadError('');
     setEditing(product ?? null);
     form.resetFields();
+    const implicitDefault = product && isImplicitDefaultSku(product.skus);
+    const baseSku = product?.skus?.[0];
     form.setFieldsValue(product ? {
       name: product.name,
       categoryId: product.categoryId,
@@ -297,7 +320,11 @@ export function ProductsPage() {
       deliveryEnabled: Boolean(product.deliveryEnabled),
       autoRestock: product.autoRestock ?? false,
       dailyStock: product.dailyStock,
-      skus: product.skus?.length ? product.skus : [{ name: '默认规格', price: product.price, stock: product.stock }],
+      skus: implicitDefault ? [] : (product.skus?.length ? product.skus : []),
+      baseSkuId: implicitDefault ? baseSku?.id : undefined,
+      baseExpectedStock: implicitDefault ? baseSku?.expectedStock ?? baseSku?.stock : undefined,
+      basePrice: implicitDefault ? baseSku?.price : product.price,
+      baseStock: implicitDefault ? baseSku?.stock : product.stock,
       optionGroups: [],
       attributeGroupIds: [],
       modifierGroupIds: [],
@@ -309,7 +336,9 @@ export function ProductsPage() {
       deliveryEnabled: false,
       autoRestock: false,
       images: [],
-      skus: [{ name: '默认规格', price: 0, stock: 0 }],
+      skus: [],
+      basePrice: 0,
+      baseStock: 0,
       optionGroups: [],
       attributeGroupIds: [],
       modifierGroupIds: [],
@@ -659,7 +688,7 @@ export function ProductsPage() {
                   ),
                 },
                 { title: '价格', dataIndex: 'price', width: 120, render: (value, product) => <strong>{yuan(value ?? product.skus?.[0]?.price)}</strong> },
-                { title: '规格', key: 'skus', width: 100, render: (_, product) => `${product.skus?.length || 1} 个` },
+                { title: '规格', key: 'skus', width: 100, render: (_, product) => isImplicitDefaultSku(product.skus) ? '无规格' : `${product.skus?.length || 0} 个` },
                 {
                   title: '库存', dataIndex: 'stock', width: 130,
                   render: (value: number) => <Space><strong className={value <= 5 ? 'stock-low' : ''}>{value}</strong>{value <= 0 ? <Tag color="error">售罄</Tag> : null}</Space>,
@@ -766,8 +795,35 @@ export function ProductsPage() {
           <Form.List name="skus">
             {(fields, { add, remove }) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                {fields.length === 0 ? (
+                  <Card size="small" title="无规格商品">
+                    <Typography.Paragraph type="secondary">当前商品不区分规格，使用统一售价和库存。需要区分杯型、尺寸等时可增加规格。</Typography.Paragraph>
+                    <Form.Item name="baseSkuId" hidden><Input /></Form.Item>
+                    <Form.Item name="baseExpectedStock" hidden><InputNumber /></Form.Item>
+                    <Row gutter={12}>
+                      <Col span={12}><Form.Item label="售价" name="basePrice" rules={[{ required: true, message: '请输入售价' }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col>
+                      <Col span={12}><Form.Item label="库存" name="baseStock" rules={[{ required: true, message: '请输入库存' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+                    </Row>
+                  </Card>
+                ) : null}
                 {fields.map((field, index) => (
-                  <Card size="small" key={field.key} title={`规格 ${index + 1}`} extra={fields.length > 1 && <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />}>
+                  <Card
+                    size="small"
+                    key={field.key}
+                    title={`规格 ${index + 1}`}
+                    extra={<Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除规格 ${index + 1}`} onClick={() => {
+                      if (fields.length === 1) {
+                        const sku = form.getFieldValue(['skus', field.name]) as Sku | undefined;
+                        form.setFieldsValue({
+                          baseSkuId: sku?.id,
+                          baseExpectedStock: sku?.expectedStock ?? sku?.stock,
+                          basePrice: sku?.price,
+                          baseStock: sku?.stock,
+                        });
+                      }
+                      remove(field.name);
+                    }} />}
+                  >
                     <Form.Item name={[field.name, 'expectedStock']} hidden><InputNumber /></Form.Item>
                     <Row gutter={12}>
                       <Col span={10}><Form.Item label="规格名称" name={[field.name, 'name']} rules={[{ required: true, message: '请输入名称' }]}><Input placeholder="如：大杯 / 冰" /></Form.Item></Col>
@@ -776,7 +832,11 @@ export function ProductsPage() {
                     </Row>
                   </Card>
                 ))}
-                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ name: '', price: 0, stock: 0 })}>增加规格</Button>
+                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({
+                  name: '',
+                  price: fields.length === 0 ? form.getFieldValue('basePrice') || 0 : 0,
+                  stock: fields.length === 0 ? form.getFieldValue('baseStock') || 0 : 0,
+                })}>增加规格</Button>
               </Space>
             )}
           </Form.List>

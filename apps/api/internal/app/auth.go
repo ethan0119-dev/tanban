@@ -21,15 +21,17 @@ const (
 )
 
 type identity struct {
-	UserID       int64  `json:"user_id"`
-	MembershipID int64  `json:"membership_id,omitempty"`
-	TenantID     int64  `json:"tenant_id"`
-	StoreID      int64  `json:"store_id,omitempty"`
-	Username     string `json:"username"`
-	DisplayName  string `json:"display_name"`
-	TenantName   string `json:"tenant_name,omitempty"`
-	StoreName    string `json:"store_name,omitempty"`
-	Role         string `json:"role"`
+	UserID           int64  `json:"user_id"`
+	MembershipID     int64  `json:"membership_id,omitempty"`
+	TenantID         int64  `json:"tenant_id"`
+	StoreID          int64  `json:"store_id,omitempty"`
+	Username         string `json:"username"`
+	DisplayName      string `json:"display_name"`
+	TenantName       string `json:"tenant_name,omitempty"`
+	StoreName        string `json:"store_name,omitempty"`
+	Role             string `json:"role"`
+	ServiceExpiresAt string `json:"service_expires_at,omitempty"`
+	ServiceExpired   bool   `json:"service_expired,omitempty"`
 }
 
 type claims struct {
@@ -57,13 +59,15 @@ type tenantSwitchRequest struct {
 }
 
 type merchantWorkspace struct {
-	MembershipID int64  `json:"membership_id"`
-	TenantID     int64  `json:"tenant_id"`
-	TenantName   string `json:"tenant_name"`
-	StoreID      int64  `json:"store_id"`
-	StoreName    string `json:"store_name"`
-	StoreLogoURL string `json:"store_logo_url"`
-	Role         string `json:"role"`
+	MembershipID     int64  `json:"membership_id"`
+	TenantID         int64  `json:"tenant_id"`
+	TenantName       string `json:"tenant_name"`
+	StoreID          int64  `json:"store_id"`
+	StoreName        string `json:"store_name"`
+	StoreLogoURL     string `json:"store_logo_url"`
+	Role             string `json:"role"`
+	ServiceExpiresAt string `json:"service_expires_at,omitempty"`
+	ServiceExpired   bool   `json:"service_expired"`
 }
 
 type changeMerchantPasswordRequest struct {
@@ -212,11 +216,13 @@ func workspaceIdentity(accountID int64, username, displayName string, workspace 
 	return identity{
 		UserID: accountID, MembershipID: workspace.MembershipID, TenantID: workspace.TenantID, StoreID: workspace.StoreID,
 		Username: username, DisplayName: displayName, TenantName: workspace.TenantName, StoreName: workspace.StoreName, Role: workspace.Role,
+		ServiceExpiresAt: workspace.ServiceExpiresAt, ServiceExpired: workspace.ServiceExpired,
 	}
 }
 
 func (s *Server) loadMerchantWorkspaces(ctx context.Context, accountID int64) ([]merchantWorkspace, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT m.id,m.tenant_id,t.name,s.id,s.name,s.logo_url,m.role
+	rows, err := s.DB.QueryContext(ctx, `SELECT m.id,m.tenant_id,t.name,s.id,s.name,s.logo_url,m.role,
+		COALESCE(DATE_FORMAT(t.service_expires_at,'%Y-%m-%d'),''),(t.service_expires_at IS NOT NULL AND t.service_expires_at < CURRENT_DATE)
 		FROM tenant_memberships m
 		JOIN tenants t ON t.id=m.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
 		JOIN stores s ON s.id=(SELECT s2.id FROM stores s2 WHERE s2.tenant_id=t.id AND s2.deleted_at IS NULL ORDER BY s2.id LIMIT 1)
@@ -229,7 +235,7 @@ func (s *Server) loadMerchantWorkspaces(ctx context.Context, accountID int64) ([
 	items := []merchantWorkspace{}
 	for rows.Next() {
 		var item merchantWorkspace
-		if err = rows.Scan(&item.MembershipID, &item.TenantID, &item.TenantName, &item.StoreID, &item.StoreName, &item.StoreLogoURL, &item.Role); err != nil {
+		if err = rows.Scan(&item.MembershipID, &item.TenantID, &item.TenantName, &item.StoreID, &item.StoreName, &item.StoreLogoURL, &item.Role, &item.ServiceExpiresAt, &item.ServiceExpired); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -239,12 +245,13 @@ func (s *Server) loadMerchantWorkspaces(ctx context.Context, accountID int64) ([
 
 func (s *Server) loadMerchantWorkspace(ctx context.Context, accountID, tenantID int64) (merchantWorkspace, error) {
 	var item merchantWorkspace
-	err := s.DB.QueryRowContext(ctx, `SELECT m.id,m.tenant_id,t.name,s.id,s.name,s.logo_url,m.role
+	err := s.DB.QueryRowContext(ctx, `SELECT m.id,m.tenant_id,t.name,s.id,s.name,s.logo_url,m.role,
+		COALESCE(DATE_FORMAT(t.service_expires_at,'%Y-%m-%d'),''),(t.service_expires_at IS NOT NULL AND t.service_expires_at < CURRENT_DATE)
 		FROM tenant_memberships m
 		JOIN tenants t ON t.id=m.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
 		JOIN stores s ON s.id=(SELECT s2.id FROM stores s2 WHERE s2.tenant_id=t.id AND s2.deleted_at IS NULL ORDER BY s2.id LIMIT 1)
 		WHERE m.account_id=? AND m.tenant_id=? AND m.status='ACTIVE' AND m.deleted_at IS NULL`, accountID, tenantID).
-		Scan(&item.MembershipID, &item.TenantID, &item.TenantName, &item.StoreID, &item.StoreName, &item.StoreLogoURL, &item.Role)
+		Scan(&item.MembershipID, &item.TenantID, &item.TenantName, &item.StoreID, &item.StoreName, &item.StoreLogoURL, &item.Role, &item.ServiceExpiresAt, &item.ServiceExpired)
 	return item, err
 }
 

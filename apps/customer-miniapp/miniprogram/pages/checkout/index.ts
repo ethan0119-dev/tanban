@@ -1,6 +1,6 @@
 import { env } from "../../config/env";
 import type { TanbanAppOption } from "../../app";
-import type { CartItem, FastFoodOrderingContext, MarketingCoupon, Order, Store, TableOrderingContext } from "../../types/domain";
+import type { CartItem, FastFoodOrderingContext, MarketingCoupon, Order, Store, StoreFullReduction, TableOrderingContext } from "../../types/domain";
 import { cartLineKey, clearCart, readCart } from "../../utils/cart";
 import { checkoutBlockedByStoreStatus, checkoutFlowFor, checkoutNeedsFreshOrder, checkoutOrderIsClosed, clearCheckoutFlow, markCheckoutSubmitted, rememberCheckoutDetails, rememberCheckoutOrder } from "../../utils/checkout";
 import { customerGuestKey } from "../../utils/customer";
@@ -11,10 +11,20 @@ import { fastFoodContextForStore, revalidateFastFoodContext, sameFastFoodContext
 import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
-import { bestEligibleCoupon, forgetClaimedCoupon } from "../../utils/coupon-wallet";
+import { bestEligibleCoupon, eligibleCoupons, forgetClaimedCoupon } from "../../utils/coupon-wallet";
 
-interface PaymentResult { id: number; provider: string; status: string; wxPayParams?: WechatMiniprogram.RequestPaymentOption; }
+interface PaymentResult {
+  id: number;
+  provider: "mock" | "tianque" | "wechat_partner";
+  status: string;
+  wxPayParams?: WechatMiniprogram.RequestPaymentOption;
+}
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
+interface CouponChoiceEvent { currentTarget: { dataset: { id?: number | string } } }
+
+function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): value is WechatMiniprogram.RequestPaymentOption {
+  return Boolean(value?.timeStamp && value.nonceStr && value.package && value.signType && value.paySign);
+}
 
 function customerLocation(): Promise<{ customerLatitude: number; customerLongitude: number }> {
   return new Promise((resolve, reject) => wx.getLocation({
@@ -25,7 +35,7 @@ function customerLocation(): Promise<{ customerLatitude: number; customerLongitu
 }
 
 Page({
-  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], subtotalAmount: 0, discountAmount: 0, amount: 0, selectedCoupon: null as MarketingCoupon | null, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", paymentMode: env.paymentMode, appearanceStyle: "" },
+  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], subtotalAmount: 0, discountAmount: 0, promotionDiscountAmount: 0, couponDiscountAmount: 0, amount: 0, selectedCoupon: null as MarketingCoupon | null, eligibleCoupons: [] as MarketingCoupon[], couponSheetOpen: false, storePromotion: null as StoreFullReduction | null, promotionEnabled: true, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", appearanceStyle: "" },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -56,8 +66,20 @@ Page({
     }
     const flow = checkoutFlowFor(storeCode, cart, tableContext, fastFoodContext);
     const subtotalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const selectedCoupon = bestEligibleCoupon(storeCode, subtotalAmount, tableContext ? "DINE_IN" : "TAKEOUT");
-    const discountAmount = Math.min(subtotalAmount, selectedCoupon?.discount_cents || 0);
+    const orderType = tableContext ? "DINE_IN" : "TAKEOUT";
+    const coupons = eligibleCoupons(storeCode, subtotalAmount, orderType);
+    const selectedCoupon = bestEligibleCoupon(storeCode, subtotalAmount, orderType);
+    let storePromotion: StoreFullReduction | null = null;
+    try {
+      const response = await request<{ items?: StoreFullReduction[] }>({ url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/full-reductions?channel_scope=${orderType}`, method: "GET" });
+      storePromotion = (response.items || []).filter((item) => subtotalAmount >= item.threshold_cents)
+        .sort((a, b) => b.discount_cents - a.discount_cents || a.threshold_cents - b.threshold_cents || a.id - b.id)[0] || null;
+    } catch {
+      // 下单时服务端仍会重新检查当前有效的店铺满减。
+    }
+    const promotionDiscountAmount = Math.min(subtotalAmount, storePromotion?.discount_cents || 0);
+    const couponDiscountAmount = Math.min(subtotalAmount - promotionDiscountAmount, selectedCoupon?.discount_cents || 0);
+    const discountAmount = promotionDiscountAmount + couponDiscountAmount;
     this.setData({
       storeCode,
       store,
@@ -66,8 +88,12 @@ Page({
       cart: cart.map((item) => ({ ...item, lineKey: cartLineKey(item) })),
       subtotalAmount,
       discountAmount,
+      promotionDiscountAmount,
+      couponDiscountAmount,
       amount: subtotalAmount - discountAmount,
       selectedCoupon,
+      eligibleCoupons: coupons,
+      storePromotion,
       fulfillmentType: flow.fulfillmentType,
       remark: flow.remark,
       detailsLocked: flow.submitted,
@@ -76,6 +102,31 @@ Page({
       orderNo: flow.orderNo,
     });
     if (flow.orderNo) void this.restoreExistingOrder(flow.idempotencyKey, flow.orderNo);
+  },
+  recalculateDiscount() {
+    const promotionDiscountAmount = this.data.promotionEnabled ? Math.min(this.data.subtotalAmount, this.data.storePromotion?.discount_cents || 0) : 0;
+    const couponDiscountAmount = Math.min(this.data.subtotalAmount - promotionDiscountAmount, this.data.selectedCoupon?.discount_cents || 0);
+    const discountAmount = promotionDiscountAmount + couponDiscountAmount;
+    this.setData({ promotionDiscountAmount, couponDiscountAmount, discountAmount, amount: this.data.subtotalAmount - discountAmount });
+  },
+  toggleStorePromotion() {
+    if (this.data.detailsLocked || !this.data.storePromotion) return;
+    this.setData({ promotionEnabled: !this.data.promotionEnabled });
+    this.recalculateDiscount();
+  },
+  openCouponSheet() {
+    if (this.data.detailsLocked) return;
+    this.setData({ couponSheetOpen: true });
+  },
+  closeCouponSheet() {
+    this.setData({ couponSheetOpen: false });
+  },
+  stopCouponSheet() {},
+  chooseCoupon(event: CouponChoiceEvent) {
+    const id = Number(event.currentTarget.dataset.id || 0);
+    const selectedCoupon = this.data.eligibleCoupons.find((item) => item.id === id) || null;
+    this.setData({ selectedCoupon, couponSheetOpen: false });
+    this.recalculateDiscount();
   },
   async restoreExistingOrder(flowKey: string, orderNo: string) {
     try {
@@ -196,7 +247,7 @@ Page({
           order = await request<Order>({
             url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
             header: { "Idempotency-Key": flow.idempotencyKey },
-            data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
+            data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
           });
           rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
           this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -205,7 +256,7 @@ Page({
         order = await request<Order>({
           url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
           header: { "Idempotency-Key": flow.idempotencyKey },
-          data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
+          data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
         });
         rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
         this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -235,11 +286,15 @@ Page({
         wx.redirectTo({ url: `/pages/order-detail/index?orderNo=${encodeURIComponent(order.orderNo)}` });
         return;
       }
-      const payment = await request<PaymentResult>({ url: `/public/orders/${order.orderNo}/payments`, method: "POST", data: { provider: env.paymentMode } });
+      // 支付通道由服务端根据平台当前运行适配器和商户绑定选择；
+      // 小程序不缓存通道名，避免平台切换后继续请求旧通道。
+      const payment = await request<PaymentResult>({ url: `/public/orders/${order.orderNo}/payments`, method: "POST", data: {} });
       if (payment.provider === "mock") {
         await request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" });
-      } else if (payment.wxPayParams) {
+      } else if (payment.provider === "wechat_partner" && validWechatPayParams(payment.wxPayParams)) {
         await new Promise<void>((resolve, reject) => wx.requestPayment({ ...payment.wxPayParams!, success: () => resolve(), fail: reject }));
+      } else if (payment.provider === "tianque") {
+        throw new Error("会生活收银台尚未完成小程序接入");
       } else {
         throw new Error("支付参数缺失，请稍后重试");
       }
@@ -276,19 +331,5 @@ Page({
         });
       }
     } finally { this.setData({ submitting: false }); }
-  },
-  clearAllCart() {
-    wx.showModal({
-      title: "清空购物车？",
-      content: "已选择的规格、口味和加料都会被移除。",
-      confirmText: "清空",
-      confirmColor: "#c6564e",
-      success: (result) => {
-        if (!result.confirm) return;
-        clearCart(this.data.storeCode);
-        if (this.data.checkoutKey) clearCheckoutFlow(this.data.checkoutKey);
-        wx.switchTab({ url: "/pages/menu/index" });
-      },
-    });
   },
 });

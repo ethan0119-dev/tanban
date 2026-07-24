@@ -255,7 +255,7 @@ function PaperPreview({ section, businessType }: { section: PrintTemplateSection
           <div className="thermal-pair"><span>商品金额</span><b>37.00</b></div>
           <div className={layout.emphasizePaid ? 'thermal-total is-emphasized' : 'thermal-total'}><span>实付</span><strong>37.00</strong></div>
           <div className="thermal-feed-line" />
-          <div className="thermal-pair"><span>支付方式</span><b>会生活聚合支付</b></div>
+          <div className="thermal-pair"><span>支付方式</span><b>在线支付</b></div>
         </>
       )}
       {layout.showRemark && <div className="thermal-note"><b>备注</b> 燕麦拿铁少冰，杯身写 Ethan</div>}

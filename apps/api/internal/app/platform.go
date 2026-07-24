@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -16,6 +17,8 @@ type tenantDTO struct {
 	ContactName            string `json:"contact_name"`
 	ContactPhone           string `json:"contact_phone"`
 	Status                 string `json:"status"`
+	ServiceExpiresAt       string `json:"service_expires_at"`
+	ServiceExpired         bool   `json:"service_expired"`
 	PaymentProvider        string `json:"payment_provider"`
 	PaymentMerchantNo      string `json:"payment_merchant_no"`
 	PaymentSubAppID        string `json:"payment_sub_appid"`
@@ -38,6 +41,7 @@ type tenantInput struct {
 	ContactName       string `json:"contact_name"`
 	ContactPhone      string `json:"contact_phone"`
 	Status            string `json:"status"`
+	ServiceExpiresAt  string `json:"service_expires_at"`
 	PaymentProvider   string `json:"payment_provider"`
 	PaymentMerchantNo string `json:"payment_merchant_no"`
 	PaymentSubAppID   string `json:"payment_sub_appid"`
@@ -54,6 +58,19 @@ type tenantOwnerInput struct {
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
 	AccountMode string `json:"account_mode"`
+}
+
+type tenantServiceExpirationInput struct {
+	ExpiresAt string `json:"expires_at"`
+}
+
+type tenantPaymentSettings struct {
+	Provider                   string `json:"provider"`
+	MerchantNo                 string `json:"merchantNo"`
+	SubAppID                   string `json:"subAppId"`
+	OnboardingStatus           string `json:"onboardingStatus"`
+	ProductAuthorizationStatus string `json:"productAuthorizationStatus"`
+	RefundAuthorized           bool   `json:"refundAuthorized"`
 }
 
 type storeDTO struct {
@@ -111,6 +128,10 @@ func (s *Server) platformRoutes(r chi.Router) {
 	r.Route("/tenants/{tenantID}", func(t chi.Router) {
 		t.Get("/", s.getTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/", s.updateTenant)
+		t.With(requireRoles(RolePlatformAdmin)).Put("/service-expiration", s.updateTenantServiceExpiration)
+		t.Get("/payment-settings", s.getTenantPaymentSettings)
+		t.With(requireRoles(RolePlatformAdmin)).Put("/payment-settings", s.updateTenantPaymentSettings)
+		t.With(requireRoles(RolePlatformAdmin)).Post("/renew-one-year", s.renewTenantOneYear)
 		t.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deleteTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/owner", s.createTenantOwner)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/documents/{documentType}", s.uploadTenantDocument)
@@ -149,7 +170,9 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT m.status FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
+		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),
+		DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s'),COALESCE(DATE_FORMAT(t.service_expires_at,'%Y-%m-%d'),''),
+		(t.service_expires_at IS NOT NULL AND t.service_expires_at < CURRENT_DATE)
 		FROM tenants t WHERE t.deleted_at IS NULL AND (t.name LIKE ? OR t.code LIKE ?) AND (?='' OR t.status=?) ORDER BY t.id DESC LIMIT ? OFFSET ?`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, search, search, status, status, size, offset)
 	if err != nil {
 		handleSQLError(w, err)
@@ -159,7 +182,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantDTO{}
 	for rows.Next() {
 		var item tenantDTO
-		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -189,8 +212,8 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		input.PaymentProvider = "mock"
 	}
 	input.PaymentProvider = strings.ToLower(input.PaymentProvider)
-	if input.PaymentProvider != "mock" && input.PaymentProvider != "tianque" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock or tianque")
+	if !validPaymentProvider(input.PaymentProvider) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque or wechat_partner")
 		return
 	}
 	input.OwnerUsername = strings.TrimSpace(input.OwnerUsername)
@@ -213,14 +236,20 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "initial_store_code and initial_store_name are required")
 		return
 	}
+	if input.ServiceExpiresAt != "" {
+		if _, err := time.Parse("2006-01-02", input.ServiceExpiresAt); err != nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "service_expires_at must use YYYY-MM-DD")
+			return
+		}
+	}
 	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO tenants(code,name,contact_name,contact_phone,status,payment_provider,payment_merchant_no,payment_sub_appid)
-		VALUES(?,?,?,?,?,?,?,?)`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO tenants(code,name,contact_name,contact_phone,status,service_expires_at,payment_provider,payment_merchant_no,payment_sub_appid)
+		VALUES(?,?,?,?,?,NULLIF(?,''),?,?,?)`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), input.ServiceExpiresAt, strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -302,9 +331,11 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT m.status FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
-		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
+		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),
+		DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s'),COALESCE(DATE_FORMAT(t.service_expires_at,'%Y-%m-%d'),''),
+		(t.service_expires_at IS NOT NULL AND t.service_expires_at < CURRENT_DATE)
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
-		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
+		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -329,6 +360,11 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be ACTIVE, PENDING or DISABLED")
 		return
 	}
+	input.PaymentProvider = strings.ToLower(strings.TrimSpace(input.PaymentProvider))
+	if !validPaymentProvider(input.PaymentProvider) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque or wechat_partner")
+		return
+	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET code=?,name=?,contact_name=?,contact_phone=?,status=?,payment_provider=?,payment_merchant_no=?,payment_sub_appid=?
 		WHERE id=? AND deleted_at IS NULL`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID, id)
 	if err != nil {
@@ -343,6 +379,145 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		"code": input.Code, "name": input.Name, "status": input.Status,
 		"payment_provider": input.PaymentProvider, "payment_merchant_no_configured": input.PaymentMerchantNo != "",
 	}, r)
+	s.getTenantByID(w, r, id)
+}
+
+func validPaymentProvider(value string) bool {
+	return value == "mock" || value == "tianque" || value == "wechat_partner"
+}
+
+func (s *Server) getTenantPaymentSettings(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var settings tenantPaymentSettings
+	err := s.DB.QueryRowContext(r.Context(), `SELECT payment_provider,payment_merchant_no,payment_sub_appid,
+		payment_onboarding_status,payment_product_authorization_status,payment_refund_authorized
+		FROM tenants WHERE id=? AND deleted_at IS NULL`, id).
+		Scan(&settings.Provider, &settings.MerchantNo, &settings.SubAppID, &settings.OnboardingStatus, &settings.ProductAuthorizationStatus, &settings.RefundAuthorized)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	writeData(w, http.StatusOK, settings)
+}
+
+func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var input tenantPaymentSettings
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
+	input.MerchantNo = strings.TrimSpace(input.MerchantNo)
+	input.SubAppID = strings.TrimSpace(input.SubAppID)
+	input.OnboardingStatus = strings.ToUpper(strings.TrimSpace(input.OnboardingStatus))
+	input.ProductAuthorizationStatus = strings.ToUpper(strings.TrimSpace(input.ProductAuthorizationStatus))
+	if !validPaymentProvider(input.Provider) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque or wechat_partner")
+		return
+	}
+	if !validStatus(input.OnboardingStatus, "NOT_APPLIED", "REVIEWING", "PENDING_SIGNING", "ACTIVE", "REJECTED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid onboarding status")
+		return
+	}
+	if !validStatus(input.ProductAuthorizationStatus, "NOT_AUTHORIZED", "PENDING", "AUTHORIZED", "REVOKED") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid product authorization status")
+		return
+	}
+	if input.Provider == "wechat_partner" {
+		if input.MerchantNo != "" && (!digitsOnly(input.MerchantNo) || len(input.MerchantNo) < 8 || len(input.MerchantNo) > 32) {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "微信支付特约商户号必须为 8 至 32 位数字")
+			return
+		}
+		if input.OnboardingStatus == "ACTIVE" && input.MerchantNo == "" {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "进件状态为已开通时必须填写微信支付特约商户号")
+			return
+		}
+		if input.SubAppID != "" && (len(input.SubAppID) != 18 || !strings.HasPrefix(input.SubAppID, "wx")) {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "sub_appid 格式不正确")
+			return
+		}
+	}
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET payment_provider=?,payment_merchant_no=?,payment_sub_appid=?,
+		payment_onboarding_status=?,payment_product_authorization_status=?,payment_refund_authorized=?
+		WHERE id=? AND deleted_at IS NULL`, input.Provider, input.MerchantNo, input.SubAppID,
+		input.OnboardingStatus, input.ProductAuthorizationStatus, input.RefundAuthorized, id)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tenant not found")
+		return
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.payment_settings.update", "tenant", int64String(id), map[string]any{
+		"provider": input.Provider, "merchant_no_configured": input.MerchantNo != "",
+		"sub_appid_configured": input.SubAppID != "", "onboarding_status": input.OnboardingStatus,
+		"product_authorization_status": input.ProductAuthorizationStatus, "refund_authorized": input.RefundAuthorized,
+	}, r)
+	s.getTenantPaymentSettings(w, r)
+}
+
+func digitsOnly(value string) bool {
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func (s *Server) updateTenantServiceExpiration(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var input tenantServiceExpirationInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.ExpiresAt = strings.TrimSpace(input.ExpiresAt)
+	if input.ExpiresAt != "" {
+		if _, err := time.Parse("2006-01-02", input.ExpiresAt); err != nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "expires_at must use YYYY-MM-DD")
+			return
+		}
+	}
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET service_expires_at=NULLIF(?,'') WHERE id=? AND deleted_at IS NULL`, input.ExpiresAt, id)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tenant not found")
+		return
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.service_expiration.update", "tenant", int64String(id), map[string]any{"service_expires_at": input.ExpiresAt}, r)
+	s.getTenantByID(w, r, id)
+}
+
+func (s *Server) renewTenantOneYear(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants
+		SET service_expires_at=DATE_ADD(GREATEST(COALESCE(service_expires_at,CURRENT_DATE),CURRENT_DATE),INTERVAL 1 YEAR)
+		WHERE id=? AND deleted_at IS NULL`, id)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "tenant not found")
+		return
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.service_expiration.renew_one_year", "tenant", int64String(id), nil, r)
 	s.getTenantByID(w, r, id)
 }
 

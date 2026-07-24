@@ -30,6 +30,7 @@ import {
   Image,
   Input,
   InputNumber,
+  Modal,
   Radio,
   QRCode,
   Row,
@@ -50,6 +51,8 @@ import { DeveloperOnlyNote } from '../components/DeveloperOnlyNote';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import { MediaLibraryModal } from '../components/media/MediaLibraryModal';
 import { ImagePickerField } from '../components/media/ImagePickerField';
+import { StoreMapPicker } from '../components/StoreMapPicker';
+import { gcj02ToWgs84, roundedCoordinate, wgs84ToGcj02, type Coordinate } from '../features/store/location';
 import type { MerchantSettings, MerchantStoreProfile, StoreBusinessDay, StoreBusinessHours } from '../types';
 import { beijingNowDateTime, beijingPickerValue, toBeijingRFC3339 } from '../utils/format';
 
@@ -142,6 +145,8 @@ export function SettingsPage() {
   const [environmentImages, setEnvironmentImages] = useState<string[]>([]);
   const [foodSafetyImages, setFoodSafetyImages] = useState<string[]>([]);
   const [locatingStore, setLocatingStore] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [mapPoint, setMapPoint] = useState<Coordinate>({ latitude: 39.9042, longitude: 116.4074 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -242,32 +247,38 @@ export function SettingsPage() {
     setWeeklySchedule((current) => current.map((day) => day.weekday === weekday ? updater(day) : day));
   };
 
-  const location = Form.useWatch(['storeLongitude'], form);
+  const longitude = Form.useWatch(['storeLongitude'], form);
   const latitude = Form.useWatch(['storeLatitude'], form);
   const address = Form.useWatch(['address'], form);
   const visible = Form.useWatch(['visibleInMiniapp'], form);
-  const mapURL = useMemo(() => location != null && latitude != null
-    ? `https://uri.amap.com/marker?position=${location},${latitude}&name=${encodeURIComponent(address || form.getFieldValue('storeName') || '门店位置')}`
-    : '', [address, form, latitude, location]);
+  const mapURL = useMemo(() => longitude != null && latitude != null
+    ? `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(address || form.getFieldValue('storeName') || '门店位置')}`
+    : '', [address, form, latitude, longitude]);
+  const openMapPicker = () => {
+    if (longitude != null && latitude != null) {
+      setMapPoint(gcj02ToWgs84({ latitude, longitude }));
+    }
+    setMapPickerOpen(true);
+  };
   const locateStore = () => {
     if (!navigator.geolocation) {
-      messageApi.error('当前浏览器不支持定位，请手动填写经纬度');
+      messageApi.error('当前浏览器不支持定位，请使用地图选点');
       return;
     }
     setLocatingStore(true);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        form.setFieldsValue({
-          storeLatitude: Number(coords.latitude.toFixed(7)),
-          storeLongitude: Number(coords.longitude.toFixed(7)),
-        });
+        const browserPoint = { latitude: coords.latitude, longitude: coords.longitude };
+        const storePoint = roundedCoordinate(wgs84ToGcj02(browserPoint));
+        form.setFieldsValue({ storeLatitude: storePoint.latitude, storeLongitude: storePoint.longitude });
+        setMapPoint(browserPoint);
         setLocatingStore(false);
-        messageApi.success('已选择当前位置，请核对地图后保存');
+        messageApi.success(address ? '已获取当前位置，请确认地址后保存' : '已获取当前位置，请继续填写门店详细地址');
       },
       (error) => {
         setLocatingStore(false);
         const denied = error.code === error.PERMISSION_DENIED;
-        messageApi.error(denied ? '定位权限未开启，请在浏览器地址栏允许位置权限后重试' : '暂时无法获取当前位置，请手动填写经纬度');
+        messageApi.error(denied ? '定位权限未开启，请在浏览器地址栏允许位置权限，或改用地图选点' : '暂时无法获取当前位置，请改用地图选点');
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
@@ -305,17 +316,21 @@ export function SettingsPage() {
           <Col xs={24} lg={12}><Form.Item label="详细地址" name="address" rules={[{ max: 255 }]}><Input prefix={<EnvironmentOutlined />} placeholder="街道、商场、楼层或摊位位置" /></Form.Item></Col>
         </Row>
         <div className="store-location-box">
-          <div className="store-location-copy"><GlobalOutlined /><div><strong>门店地图定位</strong><Typography.Text type="secondary">在门店现场可直接选择当前位置，也可以手动填写经纬度；保存后顾客可在小程序中导航到店。</Typography.Text></div></div>
-          <Row gutter={12} className="store-coordinate-row">
-            <Col xs={24} sm={9}><Form.Item name="storeLongitude" label="经度" dependencies={['storeLatitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLatitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('经纬度需同时填写')); } })]}><InputNumber min={-180} max={180} precision={7} placeholder="117.1714700" style={{ width: '100%' }} /></Form.Item></Col>
-            <Col xs={24} sm={9}><Form.Item name="storeLatitude" label="纬度" dependencies={['storeLongitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLongitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('经纬度需同时填写')); } })]}><InputNumber min={-90} max={90} precision={7} placeholder="39.1435280" style={{ width: '100%' }} /></Form.Item></Col>
-            <Col xs={24} sm={6} className="store-map-action">
-              <Space wrap>
-                <Button icon={<EnvironmentOutlined />} loading={locatingStore} onClick={locateStore}>选择当前位置</Button>
-                <Button href={mapURL || undefined} target="_blank" disabled={!mapURL}>地图核对</Button>
-              </Space>
-            </Col>
-          </Row>
+          <Form.Item name="storeLongitude" hidden dependencies={['storeLatitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLatitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('门店地图位置不完整，请重新定位')); } })]}><InputNumber /></Form.Item>
+          <Form.Item name="storeLatitude" hidden dependencies={['storeLongitude']} rules={[({ getFieldValue }) => ({ validator(_, value) { const other = getFieldValue('storeLongitude'); return (value == null) === (other == null) ? Promise.resolve() : Promise.reject(new Error('门店地图位置不完整，请重新定位')); } })]}><InputNumber /></Form.Item>
+          <div className="store-location-copy"><GlobalOutlined /><div><strong>门店位置</strong><Typography.Text type="secondary">顾客看到的是门店详细地址；定位点仅用于小程序导航和到店距离判断，不再展示经纬度。</Typography.Text></div></div>
+          <Alert className="store-location-permission" type="info" showIcon message="获取当前位置需要浏览器位置权限" description="点击后请在浏览器提示中选择“允许”。如果不方便授权，可以直接使用地图选点。" />
+          <div className="store-location-address">
+            <EnvironmentOutlined />
+            <div><Typography.Text type="secondary">当前门店地址</Typography.Text><strong>{address || '尚未填写详细地址'}</strong><Typography.Text type="secondary">{longitude != null && latitude != null ? '导航位置已设置' : '导航位置尚未设置'}</Typography.Text></div>
+          </div>
+          <div className="store-map-action">
+            <Space wrap>
+              <Button icon={<EnvironmentOutlined />} loading={locatingStore} onClick={locateStore}>获取当前位置</Button>
+              <Button type="primary" ghost icon={<GlobalOutlined />} onClick={openMapPicker}>地图选点</Button>
+              <Button href={mapURL || undefined} target="_blank" disabled={!mapURL}>在地图中核对</Button>
+            </Space>
+          </div>
         </div>
         <Form.Item label="店铺公告" name="announcement" rules={[{ max: 500 }]}><Input.TextArea rows={3} maxLength={120} showCount placeholder="营业提醒、取餐说明等内容，将展示在顾客端" /></Form.Item>
       </Card>
@@ -442,6 +457,23 @@ export function SettingsPage() {
           setGalleryTarget(null);
         }}
       />
+      <Modal
+        title="地图选点"
+        open={mapPickerOpen}
+        width={760}
+        okText="使用这个位置"
+        cancelText="取消"
+        onCancel={() => setMapPickerOpen(false)}
+        onOk={() => {
+          const coordinate = roundedCoordinate(wgs84ToGcj02(mapPoint));
+          form.setFieldsValue({ storeLatitude: coordinate.latitude, storeLongitude: coordinate.longitude });
+          setMapPickerOpen(false);
+          messageApi.success(address ? '地图位置已更新，请保存设置' : '地图位置已更新，请填写详细地址后保存');
+        }}
+        destroyOnHidden
+      >
+        <StoreMapPicker value={mapPoint} address={address || ''} onChange={setMapPoint} />
+      </Modal>
     </div>
   );
 }

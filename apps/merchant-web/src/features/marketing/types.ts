@@ -111,6 +111,28 @@ export interface CouponCampaignPayload {
   order_types: string[];
 }
 
+export interface FullReductionCampaign {
+  id: Id;
+  name: string;
+  description: string;
+  thresholdCents: number;
+  discountCents: number;
+  orderTypes: string[];
+  activeFrom?: string;
+  activeTo?: string;
+  status: MarketingCampaignStatus;
+}
+
+export interface FullReductionPayload {
+  name: string;
+  description: string;
+  threshold_cents: number;
+  discount_cents: number;
+  order_types: string[];
+  active_from?: string;
+  active_to?: string;
+}
+
 export interface MarketingPlacementPayload {
   name: string;
   title: string;

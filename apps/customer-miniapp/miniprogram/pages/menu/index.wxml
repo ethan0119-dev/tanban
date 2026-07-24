@@ -1,23 +1,35 @@
 <view class="page menu-page {{menuLayoutClass}} {{store && store.businessStatus !== 'OPEN' ? 'store-closed' : ''}}" style="{{appearanceStyle}}" wx:if="{{!loading && !routeError}}">
-  <view class="order-mode-bar"><view class="{{orderMode === 'DINE_IN' ? 'active' : ''}}" data-mode="DINE_IN" bindtap="chooseMode">堂食</view><view class="{{orderMode === 'TAKEOUT' ? 'active' : ''}}" data-mode="TAKEOUT" bindtap="chooseMode">自取</view><view class="disabled" data-mode="DELIVERY" bindtap="chooseMode">外卖</view></view>
-  <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view class="closed-summary"><text class="closed-label">暂停接单</text><text>门店休息中</text></view><text class="closed-next" wx:if="{{nextOpenLabel}}">{{nextOpenLabel}}</text></view>
+  <view class="menu-overview">
+    <view class="menu-store-row">
+      <view class="menu-store-identity">
+        <image src="/assets/icons/star.png" mode="aspectFit" />
+        <view><text>{{store.name}}</text><text>{{store.address || '欢迎光临，现点现做'}}</text></view>
+      </view>
+      <view class="order-mode-bar"><view class="{{orderMode === 'DINE_IN' ? 'active' : ''}}" data-mode="DINE_IN" bindtap="chooseMode">堂食</view><view class="{{orderMode === 'TAKEOUT' ? 'active' : ''}}" data-mode="TAKEOUT" bindtap="chooseMode">自取</view><view class="disabled" data-mode="DELIVERY" bindtap="chooseMode">外卖</view></view>
+    </view>
+    <view class="menu-notice-row">
+      <view><image src="/assets/icons/file-text.png" mode="aspectFit" /><text>{{store.theme.announcement || '商家暂无公告'}}</text></view>
+      <button bindtap="showStoreInfo">更多</button>
+    </view>
+    <view class="menu-closed-banner" wx:if="{{store && store.businessStatus !== 'OPEN'}}"><view class="closed-summary"><text class="closed-label">暂停接单</text><text>门店休息中</text></view><text class="closed-next" wx:if="{{nextOpenLabel}}">{{nextOpenLabel}}</text></view>
+  </view>
+  <view class="recommended-section" wx:if="{{recommendedProducts.length}}">
+    <scroll-view class="recommended-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="recommended-track">
+        <view class="recommended-card" wx:for="{{recommendedProducts}}" wx:key="id">
+          <view class="recommended-image-wrap"><image src="{{item.imageUrl || '/assets/tanban-product-fallback.png'}}" mode="aspectFill" /><text>推荐</text></view>
+          <text class="recommended-name">{{item.name}}</text>
+          <view class="recommended-card-footer"><text class="price">¥{{item.price / 100}}</text><button class="{{item.requiresConfiguration ? 'with-text' : 'icon-only'}}" disabled="{{item.soldOut || (store && store.businessStatus !== 'OPEN')}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选择' : '＋'}}</button></view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  <view class="menu-catalog">
   <scroll-view class="categories" scroll-y="{{decoration.menu.categoryLayout === 'LEFT'}}" scroll-x="{{decoration.menu.categoryLayout === 'TOP'}}" enhanced>
     <view wx:if="{{decoration.menu.loadMode === 'ALL'}}" class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
     <view wx:for="{{categories}}" wx:key="id" class="category {{activeCategoryId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
   </scroll-view>
   <scroll-view class="products" scroll-y enhanced>
-    <view class="recommended-section" wx:if="{{recommendedProducts.length}}">
-      <view class="recommended-heading"><text>店长推荐</text><text>人气好味道</text></view>
-      <scroll-view class="recommended-scroll" scroll-x enhanced show-scrollbar="{{false}}">
-        <view class="recommended-track">
-          <view class="recommended-card" wx:for="{{recommendedProducts}}" wx:key="id">
-            <view class="recommended-image-wrap"><image src="{{item.imageUrl || '/assets/tanban-product-fallback.png'}}" mode="aspectFill" /><text>推荐</text></view>
-            <text class="recommended-name">{{item.name}}</text>
-            <view><text class="price">¥{{item.price / 100}}</text><button disabled="{{item.soldOut || (store && store.businessStatus !== 'OPEN')}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选择' : '＋'}}</button></view>
-          </view>
-        </view>
-      </scroll-view>
-    </view>
     <view class="menu-title"><view><text>今晚菜单</text><text class="table-inline" wx:if="{{tableContext}}">堂食 · {{tableContext.tableName}}</text><text class="fast-food-inline" wx:elif="{{fastFoodContext}}">快餐 · {{fastFoodContext.plateName}}</text></view><text class="muted">现点现做</text></view>
     <view class="product-list">
       <view class="product" wx:for="{{products}}" wx:key="id" wx:if="{{activeCategoryId === 0 || item.categoryId === activeCategoryId}}">
@@ -38,17 +50,37 @@
           </view>
           <view class="product-purchase">
             <text wx:if="{{item.selectedQuantity}}">已选 {{item.selectedQuantity}}</text>
-            <view class="product-action" wx:if="{{!item.soldOut}}"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration || (store && store.businessStatus !== 'OPEN') ? 'with-text' : ''}}" data-id="{{item.id}}" bindtap="addProduct"><icon wx:if="{{store && store.businessStatus !== 'OPEN'}}" type="cancel" size="14" color="#77736e"/><text>{{store && store.businessStatus !== 'OPEN' ? '暂停' : (item.requiresConfiguration ? '选规格/口味' : '＋')}}</text></button></view>
+            <view class="product-action" wx:if="{{!item.soldOut}}"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" class="plus {{item.requiresConfiguration || (store && store.businessStatus !== 'OPEN') ? 'with-text' : 'icon-only'}}" data-id="{{item.id}}" bindtap="addProduct"><icon wx:if="{{store && store.businessStatus !== 'OPEN'}}" type="cancel" size="14" color="#77736e"/><text>{{store && store.businessStatus !== 'OPEN' ? '暂停' : (item.requiresConfiguration ? '选规格/口味' : '＋')}}</text></button></view>
             <text wx:else class="sold-out">售罄</text>
           </view>
         </view>
       </view>
     </view>
   </scroll-view>
-  <view class="cart-bar"><view class="cart-summary"><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text></view><view class="cart-action"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">去结算</button><text wx:if="{{store && store.businessStatus !== 'OPEN'}}">门店休息中，暂不可下单</text></view></view>
+  </view>
+  <view class="cart-bar"><view class="cart-summary {{cartQuantity ? 'can-open' : ''}}" role="button" aria-label="查看购物车" bindtap="showCart"><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text><text class="cart-expand" wx:if="{{cartQuantity}}">查看</text></view><view class="cart-action"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">去结算</button><text wx:if="{{store && store.businessStatus !== 'OPEN'}}">门店休息中，暂不可下单</text></view></view>
 </view>
 <view class="empty" wx:elif="{{routeError}}"><text>{{routeError}}</text><text>请重新扫描有效二维码</text></view>
 <view class="empty" wx:else>正在准备菜单…</view>
+<view class="cart-sheet-mask" style="{{appearanceStyle}}" wx:if="{{cartVisible}}" bindtap="closeCart">
+  <view class="cart-sheet" catchtap="noop">
+    <view class="cart-sheet-handle" />
+    <view class="cart-sheet-header"><view><text>购物车</text><text>共 {{cartQuantity}} 件</text></view><button aria-label="关闭购物车" bindtap="closeCart">×</button></view>
+    <scroll-view class="cart-sheet-list" scroll-y enhanced>
+      <view class="cart-sheet-item" wx:for="{{cart}}" wx:key="lineKey">
+        <view class="cart-item-copy"><text>{{item.name}}</text><text>{{item.optionSummary || item.skuName || '默认规格'}}</text></view>
+        <view class="cart-item-control">
+          <text>¥{{item.price * item.quantity / 100}}</text>
+          <view class="cart-sheet-stepper">
+            <button aria-label="减少一份" data-line-key="{{item.lineKey}}" bindtap="decreaseCartItem">−</button>
+            <text>{{item.quantity}}</text>
+            <button aria-label="增加一份" data-line-key="{{item.lineKey}}" bindtap="incrementCartItem">＋</button>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</view>
 <view class="dine-in-scan-mask" style="{{appearanceStyle}}" wx:if="{{dineInScanPromptVisible}}" bindtap="closeDineInScanPrompt">
   <view class="dine-in-scan-sheet" catchtap="noop">
     <view class="sheet-handle" />
@@ -101,6 +133,20 @@
       </view>
     </scroll-view>
     <view class="configuration-confirm"><view><text>本份预计</text><text class="configuration-price">¥{{pickerPrice / 100}}</text></view><button bindtap="confirmConfiguredProduct">加入购物车</button></view>
+  </view>
+</view>
+<view class="store-info-mask" style="{{appearanceStyle}}" wx:if="{{storeInfoVisible && store}}" bindtap="closeStoreInfo">
+  <view class="store-info-sheet" catchtap="noop">
+    <view class="store-info-handle" />
+    <view class="store-info-title"><text>{{store.name}}</text><button bindtap="closeStoreInfo">×</button></view>
+    <view class="store-info-section"><text>公告</text><text>{{store.theme.announcement || '商家暂无公告'}}</text></view>
+    <view class="store-info-section"><text>营业时间</text><text>{{store.businessHoursSummary || store.businessHours || '请电话咨询商家'}}</text></view>
+    <view class="store-info-section"><text>门店信息</text><text>联系电话：{{store.phone || store.customerService.phone || '暂未配置'}}</text><text>门店地址：{{store.address || '暂未配置'}}</text></view>
+    <view class="store-info-actions">
+      <button bindtap="copyAddress">复制地址</button>
+      <button wx:if="{{store.location}}" bindtap="openStoreLocation">导航到店</button>
+      <button class="primary" bindtap="callStore">联系商家</button>
+    </view>
   </view>
 </view>
 <marketing-popup appearance-style="{{appearanceStyle}}" store-code="{{storeCode}}" placement-code="MENU_POPUP" channel-scope="{{tableContext ? 'DINE_IN' : 'TAKEOUT'}}" />

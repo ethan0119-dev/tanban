@@ -679,7 +679,7 @@ func (s *Server) validateManagedMediaURL(ctx context.Context, tx *sql.Tx, tenant
 		return fmt.Errorf("%w: image belongs to a different store", errDecorationAssetUnavailable)
 	}
 	var assetID int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND url=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey, rawURL).Scan(&assetID)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND url=? AND kind='IMAGE' AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey, rawURL).Scan(&assetID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: image has been deleted or is unavailable", errDecorationAssetUnavailable)
 	}
@@ -701,7 +701,7 @@ func (s *Server) validateManagedDecorationAssets(ctx context.Context, tx *sql.Tx
 			return fmt.Errorf("%w: image belongs to a different store", errDecorationAssetUnavailable)
 		}
 		var assetID int64
-		err = tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind='IMAGE' AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey).Scan(&assetID)
+		err = tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind='IMAGE' AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL FOR UPDATE`, tenantID, storeID, storageKey).Scan(&assetID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s", errDecorationAssetUnavailable, storageKey)
 		}
@@ -1178,7 +1178,7 @@ func (s *Server) listMediaAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, size, offset := pagination(r)
-	where := ` WHERE a.tenant_id=? AND a.store_id=? AND a.kind='IMAGE' AND a.deleted_at IS NULL`
+	where := ` WHERE a.tenant_id=? AND a.store_id=? AND a.kind='IMAGE' AND a.status='ACTIVE' AND a.deleted_at IS NULL`
 	args := []any{identity.TenantID, storeID}
 	if raw := strings.TrimSpace(r.URL.Query().Get("group_id")); raw != "" {
 		groupID, parseErr := strconv.ParseInt(raw, 10, 64)
@@ -1472,6 +1472,7 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	retainForDecorationHistory := false
 	for versionRows.Next() {
 		var versionJSON string
 		if err = versionRows.Scan(&versionJSON); err != nil {
@@ -1487,9 +1488,7 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if referenced {
-			versionRows.Close()
-			writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from all decoration versions before deleting it")
-			return
+			retainForDecorationHistory = true
 		}
 	}
 	if err = versionRows.Err(); err != nil {
@@ -1507,7 +1506,12 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "MEDIA_ASSET_IN_USE", "remove the image from "+referenceKind+" before deleting it")
 		return
 	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, id, identity.TenantID, storeID)
+	var result sql.Result
+	if retainForDecorationHistory {
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET status='ARCHIVED',group_id=NULL WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, id, identity.TenantID, storeID)
+	} else {
+		result, err = tx.ExecContext(r.Context(), `UPDATE media_assets SET status='DELETED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND store_id=? AND kind='IMAGE' AND deleted_at IS NULL`, id, identity.TenantID, storeID)
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1521,14 +1525,14 @@ func (s *Server) deleteMediaAsset(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	if isLocalMediaStorageKey(storageKey) {
+	if !retainForDecorationHistory && isLocalMediaStorageKey(storageKey) {
 		if target, pathErr := localMediaPath(s.Config.MediaStorageDir, storageKey); pathErr != nil {
 			s.Logger.Error("resolve deleted media path", "error", pathErr, "asset_id", id, "storage_key", storageKey)
 		} else if removeErr := os.Remove(target); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			s.Logger.Error("remove deleted media file", "error", removeErr, "asset_id", id, "storage_key", storageKey)
 		}
 	}
-	s.audit(r.Context(), identity, "media_asset.delete", "media_asset", int64String(id), nil, r)
+	s.audit(r.Context(), identity, "media_asset.delete", "media_asset", int64String(id), map[string]any{"retainedForDecorationHistory": retainForDecorationHistory}, r)
 	writeData(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 

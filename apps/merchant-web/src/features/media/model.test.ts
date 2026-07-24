@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeMediaAsset, normalizeMediaGroup } from './model';
+import { mediaUrlSetKey, normalizeMediaAsset, normalizeMediaGroup } from './model';
 
 describe('media model', () => {
   it('normalizes snake case asset metadata', () => {
@@ -15,5 +15,14 @@ describe('media model', () => {
 
   it('normalizes group counters', () => {
     expect(normalizeMediaGroup({ id: 3, name: '商品', sort_order: 10, asset_count: 6 })).toEqual(expect.objectContaining({ id: 3, name: '商品', sortOrder: 10, assetCount: 6 }));
+  });
+
+  it('keeps excluded URL dependencies stable when callers recreate the same list', () => {
+    expect(mediaUrlSetKey(['https://cdn.test/b.png', 'https://cdn.test/a.png']))
+      .toBe(mediaUrlSetKey(['https://cdn.test/a.png', 'https://cdn.test/b.png']));
+    expect(mediaUrlSetKey(['https://cdn.test/a.png', 'https://cdn.test/a.png']))
+      .toBe(mediaUrlSetKey(['https://cdn.test/a.png']));
+    expect(mediaUrlSetKey(['https://cdn.test/a.png']))
+      .not.toBe(mediaUrlSetKey(['https://cdn.test/b.png']));
   });
 });

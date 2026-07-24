@@ -1,9 +1,6 @@
-export type PaymentMode = "mock" | "tianque";
-
 export interface MiniappEnvironment {
   apiBaseUrl: string;
   defaultStoreCode: string;
-  paymentMode: PaymentMode;
   requestTimeoutMs: number;
 }
 
@@ -11,6 +8,5 @@ export interface MiniappEnvironment {
 export const env: MiniappEnvironment = {
   apiBaseUrl: "https://tbapi.666qwe.cn/api/v1",
   defaultStoreCode: "manong-coffee-gulou",
-  paymentMode: "mock",
   requestTimeoutMs: 10_000,
 };

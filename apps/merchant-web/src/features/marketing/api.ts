@@ -4,6 +4,8 @@ import type {
   CouponCampaignPayload,
   CouponDistributionChannel,
   CouponType,
+  FullReductionCampaign,
+  FullReductionPayload,
   LotteryCampaign,
   LotteryCampaignPayload,
   LotteryPrize,
@@ -97,6 +99,21 @@ export function normalizeCouponCampaign(raw: unknown): CouponCampaign {
   };
 }
 
+export function normalizeFullReduction(raw: unknown): FullReductionCampaign {
+  const source = record(raw);
+  return {
+    id: (source.id ?? '') as string | number,
+    name: text(source.name),
+    description: text(source.description),
+    thresholdCents: number(value(source, 'thresholdCents', 'threshold_cents')),
+    discountCents: number(value(source, 'discountCents', 'discount_cents')),
+    orderTypes: Array.isArray(value(source, 'orderTypes', 'order_types')) ? value(source, 'orderTypes', 'order_types') as string[] : [],
+    activeFrom: text(value(source, 'activeFrom', 'active_from')) || undefined,
+    activeTo: text(value(source, 'activeTo', 'active_to')) || undefined,
+    status: campaignStatus(source.status),
+  };
+}
+
 export function normalizeMarketingPlacement(raw: unknown): MarketingPlacement {
   const source = record(raw);
   const frequency = text(source.frequency).toUpperCase();
@@ -174,6 +191,14 @@ export const marketingApi = {
   updateCoupon: (id: string | number, payload: CouponCampaignPayload) => api.put(`/merchant/marketing/coupons/${id}`, payload),
   activateCoupon: (id: string | number) => api.post(`/merchant/marketing/coupons/${id}/activate`),
   pauseCoupon: (id: string | number) => api.post(`/merchant/marketing/coupons/${id}/pause`),
+  async listFullReductions(): Promise<FullReductionCampaign[]> {
+    const response = await api.get<unknown>('/merchant/marketing/full-reductions');
+    return list(response).map(normalizeFullReduction);
+  },
+  createFullReduction: (payload: FullReductionPayload) => api.post('/merchant/marketing/full-reductions', payload),
+  updateFullReduction: (id: string | number, payload: FullReductionPayload) => api.put(`/merchant/marketing/full-reductions/${id}`, payload),
+  activateFullReduction: (id: string | number) => api.post(`/merchant/marketing/full-reductions/${id}/activate`),
+  pauseFullReduction: (id: string | number) => api.post(`/merchant/marketing/full-reductions/${id}/pause`),
   async listPlacements(): Promise<MarketingPlacement[]> {
     const response = await api.get<unknown>('/merchant/marketing/placements', { page_size: 100 });
     return list(response).map(normalizeMarketingPlacement);

@@ -30,6 +30,7 @@ import { api, ApiError, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
 import type { PaymentRecord, RefundRecord } from '../types';
 import { dateTime, toBeijingRFC3339, yuan } from '../utils/format';
+import { paymentProviderName } from '../utils/payment';
 
 const { RangePicker } = DatePicker;
 const paymentStatus: Record<string, { text: string; color: string }> = {
@@ -56,7 +57,7 @@ function normalizePayment(value: PaymentRecord): PaymentRecord {
     paymentNo: value.paymentNo ?? String(raw.payment_no ?? raw.provider_order_no ?? ''),
     amount: paidCents !== undefined ? Number(paidCents) / 100 : Number(value.amount ?? 0),
     refundableAmount: value.refundableAmount ?? (paidCents !== undefined ? (Number(paidCents) - refundedCents) / 100 : Number(value.amount ?? 0)),
-    method: value.method ?? String(raw.provider ?? '聚合支付'),
+    method: paymentProviderName(value.method ?? raw.provider),
     status: value.status ?? String(raw.payment_status ?? raw.status ?? ''),
     paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
   };
@@ -198,7 +199,7 @@ export function PaymentsPage() {
                   columns={[
                     { title: '订单号', dataIndex: 'orderNo', width: 190 },
                     { title: '支付单号', dataIndex: 'paymentNo', width: 210, render: (value, record) => value || record.providerOrderNo || '--' },
-                    { title: '支付方式', dataIndex: 'method', width: 120, render: (value) => value || '聚合支付' },
+                    { title: '支付方式', dataIndex: 'method', width: 120, render: (value) => paymentProviderName(value) },
                     { title: '支付金额', dataIndex: 'amount', width: 125, render: (value) => <strong>{yuan(value)}</strong> },
                     { title: '可退金额', dataIndex: 'refundableAmount', width: 125, render: (value, record) => yuan(value ?? record.amount) },
                     { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => { const info = paymentStatus[value] ?? { text: value, color: 'default' }; return <Tag color={info.color}>{info.text}</Tag>; } },

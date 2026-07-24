@@ -16,6 +16,19 @@ type TianQue struct {
 	NotifyURL  string
 }
 
+type WeChatPayPartner struct {
+	BaseURL              string
+	ServiceProviderMchID string
+	ServiceProviderAppID string
+	APICertSerialNo      string
+	MerchantPrivateKey   string
+	APIV3Key             string
+	WeChatPayPublicKeyID string
+	WeChatPayPublicKey   string
+	NotifyURL            string
+	RefundNotifyURL      string
+}
+
 type WeChatMiniApp struct {
 	AppID     string
 	AppSecret string
@@ -52,6 +65,7 @@ type Config struct {
 	DemoMerchantUser      string
 	DemoMerchantPass      string
 	TianQue               TianQue
+	WeChatPayPartner      WeChatPayPartner
 	WeChatMiniApp         WeChatMiniApp
 	WeChatOfficialAccount WeChatOfficialAccount
 	XPYun                 XPYun
@@ -83,6 +97,18 @@ func Load() (Config, error) {
 			PublicKey:  os.Getenv("TB_TIANQUE_PUBLIC_KEY"),
 			NotifyURL:  os.Getenv("TB_TIANQUE_NOTIFY_URL"),
 		},
+		WeChatPayPartner: WeChatPayPartner{
+			BaseURL:              strings.TrimRight(env("TB_WECHAT_PAY_BASE_URL", "https://api.mch.weixin.qq.com"), "/"),
+			ServiceProviderMchID: strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_SP_MCH_ID")),
+			ServiceProviderAppID: strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_SP_APP_ID")),
+			APICertSerialNo:      strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_CERT_SERIAL_NO")),
+			MerchantPrivateKey:   strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PRIVATE_KEY")),
+			APIV3Key:             strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_V3_KEY")),
+			WeChatPayPublicKeyID: strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PUBLIC_KEY_ID")),
+			WeChatPayPublicKey:   strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PUBLIC_KEY")),
+			NotifyURL:            strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_NOTIFY_URL")),
+			RefundNotifyURL:      strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_REFUND_NOTIFY_URL")),
+		},
 		WeChatMiniApp: WeChatMiniApp{
 			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_ID")),
 			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_SECRET")),
@@ -102,6 +128,9 @@ func Load() (Config, error) {
 	}
 	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("TB_JWT_SECRET must contain at least 32 characters")
+	}
+	if cfg.PaymentProvider != "mock" && cfg.PaymentProvider != "tianque" && cfg.PaymentProvider != "wechat_partner" {
+		return Config{}, fmt.Errorf("TB_PAYMENT_PROVIDER must be mock, tianque or wechat_partner")
 	}
 	if (cfg.WeChatMiniApp.AppID == "") != (cfg.WeChatMiniApp.AppSecret == "") {
 		return Config{}, fmt.Errorf("TB_WECHAT_MINIAPP_APP_ID and TB_WECHAT_MINIAPP_APP_SECRET must be configured together")

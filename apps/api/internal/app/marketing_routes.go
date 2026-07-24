@@ -36,6 +36,11 @@ func (s *Server) registerMarketingMerchantRoutes(r chi.Router) {
 		managers.Post("/marketing/coupons/{couponID}/activate", s.activateMarketingCoupon)
 		managers.Post("/marketing/coupons/{couponID}/pause", s.pauseMarketingCoupon)
 		managers.Get("/marketing/coupon-records", s.listMarketingCouponRecords)
+		managers.Get("/marketing/full-reductions", s.listFullReductions)
+		managers.Post("/marketing/full-reductions", s.createFullReduction)
+		managers.Put("/marketing/full-reductions/{campaignID}", s.updateFullReduction)
+		managers.Post("/marketing/full-reductions/{campaignID}/activate", s.activateFullReduction)
+		managers.Post("/marketing/full-reductions/{campaignID}/pause", s.pauseFullReduction)
 
 		managers.Get("/marketing/placements", s.listMarketingPlacements)
 		managers.Post("/marketing/placements", s.createMarketingPlacement)
@@ -62,6 +67,7 @@ func (s *Server) registerMarketingMerchantRoutes(r chi.Router) {
 func (s *Server) registerPublicMarketingRoutes(r chi.Router) {
 	r.Get("/stores/{storeCode}/marketing/coupons", s.publicListMarketingCoupons)
 	r.Post("/stores/{storeCode}/marketing/coupons/{couponID}/claim", s.publicClaimMarketingCoupon)
+	r.Get("/stores/{storeCode}/marketing/full-reductions", s.publicListFullReductions)
 	r.Get("/stores/{storeCode}/marketing/popup", s.publicMarketingPopup)
 	r.Post("/stores/{storeCode}/marketing/events", s.publicRecordMarketingEvent)
 	r.Get("/stores/{storeCode}/marketing/lotteries", s.publicListMarketingLotteries)
@@ -98,20 +104,6 @@ func marketingTime(value sql.NullTime) *string {
 	}
 	formatted := formatBeijingDateTime(value.Time)
 	return &formatted
-}
-
-func marketingTimeArg(value *time.Time) any {
-	if value == nil {
-		return nil
-	}
-	return formatBeijingDateTime(*value)
-}
-
-func marketingWindowValid(from, to *time.Time) bool {
-	if (from != nil && from.IsZero()) || (to != nil && to.IsZero()) {
-		return false
-	}
-	return from == nil || to == nil || from.Before(*to)
 }
 
 func normalizeMarketingOrderTypes(values []string) ([]string, string, error) {

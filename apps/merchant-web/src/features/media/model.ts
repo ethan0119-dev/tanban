@@ -32,6 +32,10 @@ export interface MediaAssetQuery {
   pageSize?: number;
 }
 
+export function mediaUrlSetKey(urls: readonly string[]): string {
+  return JSON.stringify([...new Set(urls)].sort());
+}
+
 export function normalizeMediaGroup(payload: unknown): MediaGroup {
   const value = record(payload);
   return {

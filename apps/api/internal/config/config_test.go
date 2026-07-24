@@ -51,3 +51,13 @@ func TestLoadRejectsPartialWeChatOfficialAccountCredentials(t *testing.T) {
 		t.Fatalf("expected paired official-account credential validation error, got %v", err)
 	}
 }
+
+func TestLoadRejectsUnknownPaymentProvider(t *testing.T) {
+	setRequiredConfig(t)
+	t.Setenv("TB_PAYMENT_PROVIDER", "unknown-provider")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "TB_PAYMENT_PROVIDER must be") {
+		t.Fatalf("expected payment provider validation error, got %v", err)
+	}
+}

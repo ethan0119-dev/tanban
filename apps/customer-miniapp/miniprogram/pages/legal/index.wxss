@@ -4,6 +4,6 @@
 .tabs button::after { border: 0; }
 .tabs button.active { color: var(--on-primary); background: var(--green); }
 .card { margin-top: 20rpx; padding: 34rpx; border-radius: var(--radius); background: var(--surface); }
-.title { display: block; margin-bottom: 28rpx; font-size: 32rpx; font-weight: 800; }
+.title { display: block; margin-bottom: 28rpx; font-size: 34rpx; font-weight: var(--font-weight-semibold); }
 .content { color: var(--ink); font-size: 26rpx; line-height: 1.85; white-space: pre-wrap; }
 .loading { padding: 120rpx 0; color: var(--muted); text-align: center; }

@@ -35,7 +35,6 @@ Page({
     splashImageMode: "aspectFit" as "aspectFill" | "aspectFit",
     marketingPopup: null as MarketingPlacement | null,
     marketingPopupVisible: false,
-    storeInfoVisible: false,
     error: "",
   },
   onShow() {
@@ -164,28 +163,10 @@ Page({
   onSplashImageLoad(event: WechatMiniprogram.CustomEvent<{ width: number; height: number }>) {
     this.setData({ splashImageMode: splashImageMode(event.detail.width, event.detail.height) });
   },
-  showStoreInfo() { this.setData({ storeInfoVisible: true }); },
-  closeStoreInfo() { this.setData({ storeInfoVisible: false }); },
   callStore() {
     const phone = this.data.store?.phone || this.data.store?.customerService?.phone;
     if (!phone) return wx.showToast({ title: "商家暂未配置电话", icon: "none" });
     wx.makePhoneCall({ phoneNumber: phone });
-  },
-  copyAddress() {
-    const address = this.data.store?.address || "";
-    if (!address) return wx.showToast({ title: "商家暂未配置地址", icon: "none" });
-    wx.setClipboardData({ data: address });
-  },
-  openStoreLocation() {
-    const store = this.data.store;
-    if (!store?.location) return wx.showToast({ title: "商家暂未配置地图位置", icon: "none" });
-    wx.openLocation({
-      latitude: store.location.latitude,
-      longitude: store.location.longitude,
-      name: store.name,
-      address: store.address || "",
-      scale: 16,
-    });
   },
   previewCustomerQR() {
     const url = this.data.store?.customerService?.qrUrl || "";

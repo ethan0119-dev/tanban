@@ -210,7 +210,7 @@ func TestUploadMediaAssetCleansFileWhenDatabaseWriteFails(t *testing.T) {
 	}
 }
 
-func TestServeMediaAssetOnlyReturnsActiveRegisteredImage(t *testing.T) {
+func TestServeMediaAssetReturnsActiveOrArchivedRegisteredImage(t *testing.T) {
 	t.Parallel()
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -228,7 +228,7 @@ func TestServeMediaAssetOnlyReturnsActiveRegisteredImage(t *testing.T) {
 	if err = os.Chtimes(target, time.Unix(1_700_000_000, 0), time.Unix(1_700_000_000, 0)); err != nil {
 		t.Fatal(err)
 	}
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status='ACTIVE' AND deleted_at IS NULL LIMIT 1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL LIMIT 1`)).
 		WithArgs(int64(5), int64(9), key).
 		WillReturnRows(sqlmock.NewRows([]string{"mime_type"}).AddRow("image/png"))
 
@@ -382,26 +382,45 @@ func TestDeleteMediaAssetRejectsDecorationReference(t *testing.T) {
 	}
 }
 
-func TestDeleteMediaAssetRejectsHistoricalDecorationVersionReference(t *testing.T) {
+func TestDeleteMediaAssetArchivesHistoricalDecorationVersionReference(t *testing.T) {
 	t.Parallel()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	server := New(db, config.Config{}, slog.Default())
+	storageRoot := t.TempDir()
+	storageKey := "uploads/t5/s9/2026/07/00112233445566778899aabbccddeeff.png"
+	target, err := persistUploadedImage(storageRoot, storageKey, testPNG(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(db, config.Config{MediaStorageDir: storageRoot}, slog.Default())
 	assetURL := "https://tbapi.example.com/api/v1/public/media/uploads/t5/s9/2026/07/00112233445566778899aabbccddeeff.png"
 	historical := `{"home":{"modules":[{"type":"IMAGE","config":{"imageUrl":"` + assetURL + `"}}]}}`
 	mock.ExpectQuery("SELECT id FROM stores").WithArgs(int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id FROM stores WHERE id=").WithArgs(int64(9), int64(5)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
-	mock.ExpectQuery("SELECT url,storage_key FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, ""))
+	mock.ExpectQuery("SELECT url,storage_key FROM media_assets").WithArgs(int64(44), int64(5), int64(9)).WillReturnRows(sqlmock.NewRows([]string{"url", "storage_key"}).AddRow(assetURL, storageKey))
 	mock.ExpectQuery("SELECT d.draft_json,COALESCE").WithArgs(int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"draft_json", "published_json"}).AddRow(`{"home":{"modules":[]}}`, `{"home":{"modules":[]}}`))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT config_json FROM store_decoration_versions WHERE tenant_id=? AND store_id=? ORDER BY id`)).
 		WithArgs(int64(5), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"config_json"}).AddRow(`{"home":{"modules":[]}}`).AddRow(historical))
-	mock.ExpectRollback()
+	mock.ExpectQuery("SELECT CASE").WithArgs(
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), int64(44), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), int64(9), assetURL, assetURL,
+		int64(5), assetURL,
+		int64(5), int64(9), assetURL,
+		int64(5), int64(9), assetURL,
+	).WillReturnRows(sqlmock.NewRows([]string{"reference_kind"}).AddRow(""))
+	mock.ExpectExec("UPDATE media_assets SET status='ARCHIVED'").WithArgs(int64(44), int64(5), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	request := httptest.NewRequest(http.MethodDelete, "/media-assets/44", nil)
 	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 12, TenantID: 5, Role: RoleMerchantManager}))
@@ -409,8 +428,11 @@ func TestDeleteMediaAssetRejectsHistoricalDecorationVersionReference(t *testing.
 	router := chi.NewRouter()
 	router.Delete("/media-assets/{assetID}", server.deleteMediaAsset)
 	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusConflict || !bytes.Contains(recorder.Body.Bytes(), []byte("MEDIA_ASSET_IN_USE")) {
-		t.Fatalf("expected historical in-use conflict, got %d: %s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected historical asset to be archived, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if _, err = os.Stat(target); err != nil {
+		t.Fatalf("historical asset file should be retained: %v", err)
 	}
 	if err = mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

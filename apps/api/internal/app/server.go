@@ -57,6 +57,19 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 			PrivateKey: cfg.TianQue.PrivateKey, PublicKey: cfg.TianQue.PublicKey,
 			NotifyURL: cfg.TianQue.NotifyURL,
 		}}
+	} else if cfg.PaymentProvider == "wechat_partner" {
+		payment = provider.WeChatPayPartner{Config: provider.WeChatPayPartnerConfig{
+			BaseURL:              cfg.WeChatPayPartner.BaseURL,
+			ServiceProviderMchID: cfg.WeChatPayPartner.ServiceProviderMchID,
+			ServiceProviderAppID: cfg.WeChatPayPartner.ServiceProviderAppID,
+			APICertSerialNo:      cfg.WeChatPayPartner.APICertSerialNo,
+			MerchantPrivateKey:   cfg.WeChatPayPartner.MerchantPrivateKey,
+			APIV3Key:             cfg.WeChatPayPartner.APIV3Key,
+			WeChatPayPublicKeyID: cfg.WeChatPayPartner.WeChatPayPublicKeyID,
+			WeChatPayPublicKey:   cfg.WeChatPayPartner.WeChatPayPublicKey,
+			NotifyURL:            cfg.WeChatPayPartner.NotifyURL,
+			RefundNotifyURL:      cfg.WeChatPayPartner.RefundNotifyURL,
+		}}
 	}
 	printer := provider.NewPrinterRouter(cfg.PrinterProvider, logger, provider.NewXPrinter(provider.XPrinterConfig{
 		BaseURL: cfg.XPYun.BaseURL,
@@ -94,6 +107,8 @@ func (s *Server) Routes() http.Handler {
 			s.publicRoutes(public)
 		})
 		api.Post("/payments/tianque/callback", s.tianQueCallback)
+		api.Post("/payments/wechat-partner/callback", s.wechatPayCallback)
+		api.Post("/payments/wechat-partner/refund-callback", s.wechatPayRefundCallback)
 		api.Post("/payments/mock/{providerOrderNo}/confirm", s.mockConfirm)
 	})
 	return r

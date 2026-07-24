@@ -246,7 +246,8 @@ func (s *Server) findPublicStore(ctx context.Context, code string) (storeDTO, er
 	var store storeDTO
 	err := scanStore(s.DB.QueryRowContext(ctx, `SELECT s.id,s.tenant_id,s.code,s.name,s.logo_url,s.banner_url,s.address,s.phone,s.business_hours,s.notice,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM stores s JOIN tenants t ON t.id=s.tenant_id LEFT JOIN store_profiles p ON p.store_id=s.id AND p.tenant_id=s.tenant_id
-		WHERE s.code=? AND s.status='ACTIVE' AND COALESCE(p.visible_in_miniapp,1)=1 AND s.deleted_at IS NULL AND t.status='ACTIVE' AND t.deleted_at IS NULL`, code), &store)
+		WHERE s.code=? AND s.status='ACTIVE' AND COALESCE(p.visible_in_miniapp,1)=1 AND s.deleted_at IS NULL
+		AND t.status='ACTIVE' AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL`, code), &store)
 	return store, err
 }
 
@@ -278,12 +279,13 @@ type publicOrderInput struct {
 	CustomerLatitude            *float64               `json:"customerLatitude"`
 	CustomerLongitude           *float64               `json:"customerLongitude"`
 	CouponCampaignID            int64                  `json:"couponCampaignId"`
+	DisableStorePromotion       bool                   `json:"disableStorePromotion"`
 }
 
 type publicOrderCoupon struct {
-	RecordID int64
-	Name     string
-	Discount int64
+	RecordID, CampaignID int64
+	Name                 string
+	Discount             int64
 }
 
 func legacyPublicOrderFingerprint(input publicOrderInput) string {
@@ -562,6 +564,42 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		total += subtotal
 		resolved = append(resolved, row)
 	}
+	merchandiseSubtotal := total
+	var appliedPromotion fullReductionRow
+	if !input.DisableStorePromotion {
+		now := time.Now().UTC()
+		promotionRows, promotionErr := tx.QueryContext(r.Context(), fullReductionSelect+` WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL
+			AND status='ACTIVE' AND threshold_cents<=? AND (active_from IS NULL OR active_from<=?) AND (active_to IS NULL OR active_to>?)
+			ORDER BY discount_cents DESC,threshold_cents ASC,id ASC FOR UPDATE`, store.TenantID, store.ID, merchandiseSubtotal, now, now)
+		if promotionErr != nil {
+			handleSQLError(w, promotionErr)
+			return
+		}
+		for promotionRows.Next() {
+			candidate, scanErr := scanFullReduction(promotionRows)
+			if scanErr != nil {
+				promotionRows.Close()
+				handleSQLError(w, scanErr)
+				return
+			}
+			if marketingOrderTypesContain(decodeMarketingOrderTypes(candidate.OrderTypesJSON), input.OrderType) {
+				appliedPromotion = candidate
+				break
+			}
+		}
+		if promotionErr = promotionRows.Close(); promotionErr != nil {
+			handleSQLError(w, promotionErr)
+			return
+		}
+		if appliedPromotion.ID > 0 {
+			discount := appliedPromotion.DiscountCents
+			if discount > total {
+				discount = total
+			}
+			appliedPromotion.DiscountCents = discount
+			total -= discount
+		}
+	}
 	var appliedCoupon publicOrderCoupon
 	if input.CouponCampaignID > 0 {
 		subjectHash, hashErr := marketingSubjectHash(input.CustomerKey)
@@ -596,6 +634,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		if appliedCoupon.Discount > total {
 			appliedCoupon.Discount = total
 		}
+		appliedCoupon.CampaignID = input.CouponCampaignID
 		total -= appliedCoupon.Discount
 	}
 	customerID, err := upsertPublicOrderCustomer(r.Context(), tx, store, input)
@@ -614,8 +653,8 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -734,7 +773,8 @@ func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 	orderNo := chi.URLParam(r, "orderNo")
 	var tenantID, id int64
 	if err := s.DB.QueryRowContext(r.Context(), `SELECT o.tenant_id,o.id FROM orders o
-		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
+		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
+			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		WHERE o.order_no=?`, orderNo).Scan(&tenantID, &id); err != nil {
 		handleSQLError(w, err)
