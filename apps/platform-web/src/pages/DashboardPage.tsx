@@ -49,7 +49,7 @@ export function DashboardPage() {
   const columns: ColumnsType<Tenant> = [
     { title: '商户', dataIndex: 'name', key: 'name', render: (value, row) => <div className="entity-name"><span>{String(value).slice(0, 1)}</span><div><strong>{value}</strong><small>{row.code || '—'}</small></div></div> },
     { title: '联系人', dataIndex: 'contactName', key: 'contactName', render: (value, row) => <div>{value || '—'}<small className="table-subtext">{row.contactPhone || ''}</small></div> },
-    { title: '门店', dataIndex: 'storeCount', key: 'storeCount', align: 'right', render: (value) => `${value || 0} 家` },
+    { title: '点单码', dataIndex: 'storeCode', key: 'storeCode', render: (value) => value || '—' },
     { title: '状态', dataIndex: 'status', key: 'status', render: (value) => <StatusTag status={value} /> },
     { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', render: formatBeijingDateTime },
   ];
@@ -64,7 +64,7 @@ export function DashboardPage() {
       {error && <div className="section-gap"><LoadError message={error} onRetry={() => void load()} /></div>}
       <Row gutter={[16, 16]} className="metric-grid">
         <Col xs={24} sm={12} xl={6}><MetricCard title="平台商户" value={data?.tenantCount || 0} suffix="家" prefix={<TeamOutlined />} trend={data?.metrics?.[0]?.trend} /></Col>
-        <Col xs={24} sm={12} xl={6}><MetricCard title="运营门店" value={data?.storeCount || 0} suffix="家" prefix={<ShopOutlined />} accent="blue" trend={data?.metrics?.[1]?.trend} /></Col>
+        <Col xs={24} sm={12} xl={6}><MetricCard title="正常商户" value={data?.activeTenantCount || 0} suffix="家" prefix={<ShopOutlined />} accent="blue" trend={data?.metrics?.[1]?.trend} /></Col>
         <Col xs={24} sm={12} xl={6}><MetricCard title="今日订单" value={data?.todayOrderCount || 0} suffix="单" prefix={<ShoppingCartOutlined />} accent="green" trend={data?.metrics?.[2]?.trend} /></Col>
         <Col xs={24} sm={12} xl={6}><MetricCard title="今日交易额" value={data?.todayTransactionAmount || 0} suffix="元" prefix={<DollarOutlined />} accent="purple" trend={data?.metrics?.[3]?.trend} /></Col>
       </Row>

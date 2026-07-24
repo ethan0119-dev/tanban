@@ -28,7 +28,7 @@ npm run build
 - 经营总览：`GET /platform/dashboard`
 - 管理员：`/platform/users`
 - 商户：`/platform/tenants`
-- 全局门店列表：`GET /platform/stores`；门店写操作：`/platform/tenants/:tenantId/stores`
+- 平台按“一个商户对应一家门店”管理租户生命周期；门店经营资料由商户后台维护。
 - 支付配置：`/platform/settings/payment`
 - 系统设置：`/platform/settings/system`
 - 审计日志：`/platform/audit-logs`

@@ -1,5 +1,4 @@
 import {
-  ApartmentOutlined,
   AuditOutlined,
   BankOutlined,
   DashboardOutlined,
@@ -28,7 +27,6 @@ const allMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/dashboard', label: <Link to="/dashboard">经营总览</Link>, icon: <DashboardOutlined /> },
   { key: '/users', label: <Link to="/users">管理员用户</Link>, icon: <TeamOutlined /> },
   { key: '/tenants', label: <Link to="/tenants">商户管理</Link>, icon: <ShopOutlined /> },
-  { key: '/stores', label: <Link to="/stores">店铺总览</Link>, icon: <ApartmentOutlined /> },
   { key: '/announcements', label: <Link to="/announcements">通知中心</Link>, icon: <NotificationOutlined /> },
   {
     key: 'configuration',

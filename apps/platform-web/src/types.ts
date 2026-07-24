@@ -49,7 +49,6 @@ export interface DashboardMetric {
 export interface TrendPoint {
   date: string;
   tenants?: number;
-  stores?: number;
   orders?: number;
   amount?: number;
 }
@@ -57,7 +56,6 @@ export interface TrendPoint {
 export interface DashboardData {
   tenantCount?: number;
   activeTenantCount?: number;
-  storeCount?: number;
   todayOrderCount?: number;
   todayTransactionAmount?: number;
   monthTransactionAmount?: number;
@@ -79,7 +77,9 @@ export interface Tenant {
   contactPhone?: string;
   legalName?: string;
   status: EntityStatus;
-  storeCount?: number;
+  storeId?: string;
+  storeCode?: string;
+  storeName?: string;
   orderCount?: number;
   ownerUsername?: string;
   ownerDisplayName?: string;
@@ -93,23 +93,6 @@ export interface Tenant {
   paymentStatus?: 'unbound' | 'pending' | 'active' | 'rejected';
   createdAt?: string;
   expiresAt?: string;
-}
-
-export interface Store {
-  id: string;
-  tenantId?: string;
-  tenantName?: string;
-  name: string;
-  code?: string;
-  phone?: string;
-  address?: string;
-  businessHours?: string;
-  logoUrl?: string;
-  bannerUrl?: string;
-  notice?: string;
-  status: EntityStatus;
-  orderCount?: number;
-  createdAt?: string;
 }
 
 export interface AuditLog {

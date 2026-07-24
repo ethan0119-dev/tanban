@@ -53,8 +53,8 @@ func TestCreateTenantProvisionsFirstStoreAndOwner(t *testing.T) {
 		WithArgs(RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, int64(31)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "code", "name", "contact_name", "contact_phone", "status", "payment_provider", "payment_merchant_no", "payment_sub_appid",
-			"business_license_url", "food_business_license_url", "store_count", "order_count", "owner_username", "owner_display_name", "owner_status", "has_owner", "created_at",
-		}).AddRow(31, "WDP001", "王大鹏", "王大鹏", "13800138000", "ACTIVE", "mock", "", "", "", "", 1, 0, "13800138000", "王大鹏", "ACTIVE", true, "2026-07-20T10:00:00Z"))
+			"business_license_url", "food_business_license_url", "store_id", "store_code", "store_name", "order_count", "owner_username", "owner_display_name", "owner_status", "has_owner", "created_at",
+		}).AddRow(31, "WDP001", "王大鹏", "王大鹏", "13800138000", "ACTIVE", "mock", "", "", "", "", 41, "wangdapeng", "王大鹏主门店", 0, "13800138000", "王大鹏", "ACTIVE", true, "2026-07-20T10:00:00Z"))
 
 	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
 	request := httptest.NewRequest(http.MethodPost, "/tenants", bytes.NewBufferString(`{

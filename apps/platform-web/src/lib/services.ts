@@ -10,7 +10,6 @@ import type {
   AnnouncementValues,
   PlatformUser,
   QueryParams,
-  Store,
   SystemSettings,
   PrinterProviderSettings,
   PrinterProviderTestResult,
@@ -75,7 +74,9 @@ function tenantFromRaw(value: unknown): Tenant {
     contactName: text(item.contact_name ?? item.contactName) || undefined,
     contactPhone: text(item.contact_phone ?? item.contactPhone) || undefined,
     status: statusValue(item.status),
-    storeCount: numberValue(item.store_count ?? item.storeCount),
+    storeId: text(item.store_id ?? item.storeId) || undefined,
+    storeCode: text(item.store_code ?? item.storeCode) || undefined,
+    storeName: text(item.store_name ?? item.storeName) || undefined,
     orderCount: numberValue(item.order_count ?? item.orderCount),
     ownerUsername: text(item.owner_username ?? item.ownerUsername) || undefined,
     ownerDisplayName: text(item.owner_display_name ?? item.ownerDisplayName) || undefined,
@@ -89,26 +90,6 @@ function tenantFromRaw(value: unknown): Tenant {
     paymentStatus: text(item.payment_status ?? item.paymentStatus).toLowerCase() as Tenant['paymentStatus'] || (merchantNo ? 'active' : 'unbound'),
     createdAt: text(item.created_at ?? item.createdAt) || undefined,
     expiresAt: text(item.expires_at ?? item.expiresAt) || undefined,
-  };
-}
-
-function storeFromRaw(value: unknown): Store {
-  const item = raw(value);
-  return {
-    id: text(item.id),
-    tenantId: text(item.tenant_id ?? item.tenantId) || undefined,
-    tenantName: text(item.tenant_name ?? item.tenantName) || undefined,
-    code: text(item.code) || undefined,
-    name: text(item.name),
-    phone: text(item.phone) || undefined,
-    address: text(item.address) || undefined,
-    businessHours: text(item.business_hours ?? item.businessHours) || undefined,
-    logoUrl: text(item.logo_url ?? item.logoUrl) || undefined,
-    bannerUrl: text(item.banner_url ?? item.bannerUrl) || undefined,
-    notice: text(item.notice) || undefined,
-    status: statusValue(item.status),
-    orderCount: numberValue(item.order_count ?? item.orderCount),
-    createdAt: text(item.created_at ?? item.createdAt) || undefined,
   };
 }
 
@@ -226,21 +207,6 @@ function tenantPayload(values: TenantCreateValues): RawRecord {
   };
 }
 
-function storePayload(values: Partial<Store>): RawRecord {
-  const item = values as Partial<Store> & { logoUrl?: string; bannerUrl?: string; notice?: string };
-  return {
-    code: item.code || '',
-    name: item.name || '',
-    logo_url: item.logoUrl || '',
-    banner_url: item.bannerUrl || '',
-    address: item.address || '',
-    phone: item.phone || '',
-    business_hours: item.businessHours || '',
-    notice: item.notice || '',
-    status: toBackendStatus(item.status),
-  };
-}
-
 export const authService = {
   login: async (account: string, password: string): Promise<LoginResponse> => {
     const response = await http.post<RawRecord>('/auth/login', { username: account, password, portal: 'platform' });
@@ -265,7 +231,6 @@ export const dashboardService = {
       ...(item as DashboardData),
       tenantCount: numberValue(item.tenantCount ?? item.tenant_count),
       activeTenantCount: numberValue(item.activeTenantCount ?? item.active_tenant_count),
-      storeCount: numberValue(item.storeCount ?? item.store_count),
       todayOrderCount: numberValue(item.todayOrderCount ?? item.today_order_count),
       // 平台总览接口中的交易金额统一以“分”传输，展示层统一使用“元”。
       todayTransactionAmount: numberValue(item.today_revenue_cents ?? item.todayTransactionAmount ?? item.today_transaction_amount) / 100,
@@ -276,7 +241,6 @@ export const dashboardService = {
           return {
             date: text(value.date),
             tenants: value.tenants === undefined ? undefined : numberValue(value.tenants),
-            stores: value.stores === undefined ? undefined : numberValue(value.stores),
             orders: value.orders === undefined ? undefined : numberValue(value.orders),
             amount: numberValue(value.amount_cents ?? value.amount) / 100,
           } satisfies TrendPoint;
@@ -315,31 +279,6 @@ export const tenantService = {
     const body = new FormData();
     body.append('file', file);
     return tenantFromRaw((await http.postForm<RawRecord>(`/platform/tenants/${id}/documents/${type}`, body)).data);
-  },
-};
-
-export const storeService = {
-  list: (params?: QueryParams) => getPage<Store>('/platform/stores', params, storeFromRaw),
-  get: async (tenantId: string, id: string) =>
-    storeFromRaw((await http.get<RawRecord>(`/platform/tenants/${tenantId}/stores/${id}/`)).data),
-  create: async (values: Partial<Store>) => {
-    if (!values.tenantId) throw new Error('创建门店必须指定所属商户');
-    return storeFromRaw((await http.post<RawRecord>(`/platform/tenants/${values.tenantId}/stores`, storePayload(values))).data);
-  },
-  update: async (tenantId: string, id: string, values: Partial<Store>) => {
-    // 列表接口不返回 logo/banner/notice，PUT 又是全量更新。先取详情再合并，
-    // 防止只改状态或基本信息时把店铺装修内容清空。
-    const existing = storeFromRaw((await http.get<RawRecord>(
-      `/platform/tenants/${tenantId}/stores/${id}/`,
-    )).data);
-    const supplied = Object.fromEntries(
-      Object.entries(values).filter(([, value]) => value !== undefined),
-    ) as Partial<Store>;
-    const merged = { ...existing, ...supplied, tenantId };
-    return storeFromRaw((await http.put<RawRecord>(
-      `/platform/tenants/${tenantId}/stores/${id}/`,
-      storePayload(merged),
-    )).data);
   },
 };
 

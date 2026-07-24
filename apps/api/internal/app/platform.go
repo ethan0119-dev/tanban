@@ -21,7 +21,9 @@ type tenantDTO struct {
 	PaymentSubAppID        string `json:"payment_sub_appid"`
 	BusinessLicenseURL     string `json:"business_license_url"`
 	FoodBusinessLicenseURL string `json:"food_business_license_url"`
-	StoreCount             int    `json:"store_count"`
+	StoreID                int64  `json:"store_id"`
+	StoreCode              string `json:"store_code"`
+	StoreName              string `json:"store_name"`
 	OrderCount             int    `json:"order_count"`
 	OwnerUsername          string `json:"owner_username"`
 	OwnerDisplayName       string `json:"owner_display_name"`
@@ -69,18 +71,6 @@ type storeDTO struct {
 	CreatedAt     string `json:"created_at"`
 }
 
-type storeInput struct {
-	Code          string `json:"code"`
-	Name          string `json:"name"`
-	LogoURL       string `json:"logo_url"`
-	BannerURL     string `json:"banner_url"`
-	Address       string `json:"address"`
-	Phone         string `json:"phone"`
-	BusinessHours string `json:"business_hours"`
-	Notice        string `json:"notice"`
-	Status        string `json:"status"`
-}
-
 type userDTO struct {
 	ID          int64  `json:"id"`
 	TenantID    int64  `json:"tenant_id"`
@@ -103,7 +93,6 @@ type userInput struct {
 func (s *Server) platformRoutes(r chi.Router) {
 	r.Use(requireRoles(RolePlatformAdmin, RolePlatformOperator))
 	r.Get("/dashboard", s.platformDashboard)
-	r.Get("/stores", s.listAllStores)
 	r.Get("/settings/payment", s.getPlatformPaymentSettings)
 	r.With(requireRoles(RolePlatformAdmin)).Put("/settings/payment", s.updatePlatformPaymentSettings)
 	r.Get("/settings/system", s.getPlatformSystemSettings)
@@ -125,13 +114,6 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deleteTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/owner", s.createTenantOwner)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/documents/{documentType}", s.uploadTenantDocument)
-		t.Get("/stores", s.listPlatformStores)
-		t.With(requireRoles(RolePlatformAdmin)).Post("/stores", s.createPlatformStore)
-		t.Route("/stores/{storeID}", func(st chi.Router) {
-			st.Get("/", s.getPlatformStore)
-			st.With(requireRoles(RolePlatformAdmin)).Put("/", s.updatePlatformStore)
-			st.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deletePlatformStore)
-		})
 	})
 	r.Group(func(admin chi.Router) {
 		admin.Use(requireRoles(RolePlatformAdmin))
@@ -160,7 +142,9 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
-		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
+		COALESCE((SELECT s.id FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),0),
+		COALESCE((SELECT s.code FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
+		COALESCE((SELECT s.name FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
 		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
@@ -175,7 +159,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantDTO{}
 	for rows.Next() {
 		var item tenantDTO
-		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -311,14 +295,16 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 	err := s.DB.QueryRowContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
-		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
+		COALESCE((SELECT s.id FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),0),
+		COALESCE((SELECT s.code FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
+		COALESCE((SELECT s.name FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),
 		COALESCE((SELECT a.username FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT a.display_name FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		COALESCE((SELECT m.status FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL ORDER BY m.id LIMIT 1),''),
 		EXISTS(SELECT 1 FROM tenant_memberships m JOIN accounts a ON a.id=m.account_id AND a.deleted_at IS NULL WHERE m.tenant_id=t.id AND m.role=? AND m.deleted_at IS NULL),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
-		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreCount, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
+		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -487,7 +473,7 @@ func (s *Server) deleteTenant(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
-func (s *Server) listPlatformStores(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listTenantStores(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := pathID(w, r, "tenantID")
 	if !ok {
 		return
@@ -511,126 +497,11 @@ func (s *Server) listPlatformStores(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, items)
 }
 
-func (s *Server) createPlatformStore(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathID(w, r, "tenantID")
-	if !ok {
-		return
-	}
-	var input storeInput
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.Code == "" || input.Name == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "code and name are required")
-		return
-	}
-	if input.Status == "" {
-		input.Status = "ACTIVE"
-	}
-	tx, err := s.DB.BeginTx(r.Context(), nil)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	defer tx.Rollback()
-	var existingStoreCount int
-	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM stores WHERE tenant_id=? AND deleted_at IS NULL FOR UPDATE`, tenantID).Scan(&existingStoreCount); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if existingStoreCount > 0 {
-		writeError(w, http.StatusConflict, "SINGLE_STORE_TENANT", "one tenant can contain only one store; create a new tenant for another store")
-		return
-	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO stores(tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status)
-		VALUES(?,?,?,?,?,?,?,?,?,?)`, tenantID, input.Code, input.Name, input.LogoURL, input.BannerURL, input.Address, input.Phone, input.BusinessHours, input.Notice, strings.ToUpper(input.Status))
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	id, _ := result.LastInsertId()
-	if err = seedStoreBusinessPeriods(r.Context(), tx, tenantID, id, input.BusinessHours); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if err = tx.Commit(); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	s.audit(r.Context(), currentIdentity(r.Context()), "store.create", "store", int64String(id), input, r)
-	s.getStoreByScope(w, r, tenantID, id)
-}
-
-func (s *Server) getPlatformStore(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok1 := pathID(w, r, "tenantID")
-	storeID, ok2 := pathID(w, r, "storeID")
-	if ok1 && ok2 {
-		s.getStoreByScope(w, r, tenantID, storeID)
-	}
-}
-
-func (s *Server) getStoreByScope(w http.ResponseWriter, r *http.Request, tenantID, storeID int64) {
-	var item storeDTO
-	err := scanStoreRow(s.DB.QueryRowContext(r.Context(), `SELECT id,tenant_id,code,name,logo_url,banner_url,address,phone,business_hours,notice,status,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, storeID, tenantID), &item)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	writeData(w, http.StatusOK, item)
-}
-
-func (s *Server) updatePlatformStore(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok1 := pathID(w, r, "tenantID")
-	storeID, ok2 := pathID(w, r, "storeID")
-	if !ok1 || !ok2 {
-		return
-	}
-	var input storeInput
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.Status == "" {
-		input.Status = "ACTIVE"
-	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE stores SET code=?,name=?,logo_url=?,banner_url=?,address=?,phone=?,business_hours=?,notice=?,status=?
-		WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.Code, input.Name, input.LogoURL, input.BannerURL, input.Address, input.Phone, input.BusinessHours, input.Notice, strings.ToUpper(input.Status), storeID, tenantID)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "store not found")
-		return
-	}
-	s.audit(r.Context(), currentIdentity(r.Context()), "store.update", "store", int64String(storeID), input, r)
-	s.getStoreByScope(w, r, tenantID, storeID)
-}
-
-func (s *Server) deletePlatformStore(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok1 := pathID(w, r, "tenantID")
-	storeID, ok2 := pathID(w, r, "storeID")
-	if !ok1 || !ok2 {
-		return
-	}
-	result, err := s.DB.ExecContext(r.Context(), "UPDATE stores SET status='DISABLED',deleted_at=NOW(3) WHERE id=? AND tenant_id=? AND deleted_at IS NULL", storeID, tenantID)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "store not found")
-		return
-	}
-	s.audit(r.Context(), currentIdentity(r.Context()), "store.delete", "store", int64String(storeID), nil, r)
-	writeData(w, http.StatusOK, map[string]bool{"deleted": true})
-}
-
 type scanner interface{ Scan(...any) error }
 
 func scanStore(row scanner, item *storeDTO) error {
 	return row.Scan(&item.ID, &item.TenantID, &item.Code, &item.Name, &item.LogoURL, &item.BannerURL, &item.Address, &item.Phone, &item.BusinessHours, &item.Notice, &item.Status, &item.CreatedAt)
 }
-func scanStoreRow(row *sql.Row, item *storeDTO) error { return scanStore(row, item) }
 
 func (s *Server) listPlatformUsers(w http.ResponseWriter, r *http.Request) {
 	page, size, offset := pagination(r)

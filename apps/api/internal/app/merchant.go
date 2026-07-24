@@ -257,7 +257,7 @@ func (s *Server) listMerchantStores(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
 	ctx := chi.NewRouteContext()
 	ctx.URLParams.Add("tenantID", int64String(identity.TenantID))
-	s.listPlatformStores(w, r.WithContext(contextWithRoute(r.Context(), ctx)))
+	s.listTenantStores(w, r.WithContext(contextWithRoute(r.Context(), ctx)))
 }
 
 func contextWithRoute(ctx context.Context, route *chi.Context) context.Context {

@@ -7,13 +7,9 @@ import (
 )
 
 func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
-	var tenantCount, activeTenants, storeCount, todayOrders int
+	var tenantCount, activeTenants, todayOrders int
 	var todayRevenue, monthRevenue int64
 	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*),COALESCE(SUM(status='ACTIVE'),0) FROM tenants WHERE deleted_at IS NULL").Scan(&tenantCount, &activeTenants); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM stores WHERE deleted_at IS NULL").Scan(&storeCount); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -45,7 +41,9 @@ func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
 		trend = append(trend, map[string]any{"date": date, "orders": orders, "amount": amount})
 	}
 	recentRows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
-		(SELECT COUNT(*) FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL),
+		COALESCE((SELECT s.id FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),0),
+		COALESCE((SELECT s.code FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
+		COALESCE((SELECT s.name FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),''),
 		(SELECT COUNT(*) FROM orders o WHERE o.tenant_id=t.id),DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s')
 		FROM tenants t WHERE t.deleted_at IS NULL ORDER BY t.id DESC LIMIT 5`)
 	if err != nil {
@@ -56,39 +54,13 @@ func (s *Server) platformDashboard(w http.ResponseWriter, r *http.Request) {
 	recentTenants := []tenantDTO{}
 	for recentRows.Next() {
 		var tenant tenantDTO
-		if err = recentRows.Scan(&tenant.ID, &tenant.Code, &tenant.Name, &tenant.ContactName, &tenant.ContactPhone, &tenant.Status, &tenant.PaymentProvider, &tenant.PaymentMerchantNo, &tenant.PaymentSubAppID, &tenant.StoreCount, &tenant.OrderCount, &tenant.CreatedAt); err != nil {
+		if err = recentRows.Scan(&tenant.ID, &tenant.Code, &tenant.Name, &tenant.ContactName, &tenant.ContactPhone, &tenant.Status, &tenant.PaymentProvider, &tenant.PaymentMerchantNo, &tenant.PaymentSubAppID, &tenant.StoreID, &tenant.StoreCode, &tenant.StoreName, &tenant.OrderCount, &tenant.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
 		recentTenants = append(recentTenants, tenant)
 	}
-	writeData(w, http.StatusOK, map[string]any{"tenant_count": tenantCount, "tenantCount": tenantCount, "active_tenants": activeTenants, "activeTenantCount": activeTenants, "store_count": storeCount, "storeCount": storeCount, "today_orders": todayOrders, "todayOrderCount": todayOrders, "today_revenue_cents": todayRevenue, "todayTransactionAmount": todayRevenue, "month_revenue_cents": monthRevenue, "trend": trend, "recent_tenants": recentTenants})
-}
-
-func (s *Server) listAllStores(w http.ResponseWriter, r *http.Request) {
-	page, size, offset := pagination(r)
-	var total int
-	if err := s.DB.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM stores WHERE deleted_at IS NULL").Scan(&total); err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT s.id,s.tenant_id,t.name,s.code,s.name,s.phone,s.address,s.business_hours,s.status,DATE_FORMAT(s.created_at,'%Y-%m-%d %H:%i:%s') FROM stores s JOIN tenants t ON t.id=s.tenant_id WHERE s.deleted_at IS NULL ORDER BY s.id DESC LIMIT ? OFFSET ?`, size, offset)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	defer rows.Close()
-	items := []map[string]any{}
-	for rows.Next() {
-		var id, tenantID int64
-		var tenantName, code, name, phone, address, hours, status, created string
-		if err := rows.Scan(&id, &tenantID, &tenantName, &code, &name, &phone, &address, &hours, &status, &created); err != nil {
-			handleSQLError(w, err)
-			return
-		}
-		items = append(items, map[string]any{"id": id, "tenant_id": tenantID, "tenant_name": tenantName, "code": code, "name": name, "phone": phone, "address": address, "business_hours": hours, "status": status, "created_at": created})
-	}
-	writeList(w, http.StatusOK, items, total, page, size)
+	writeData(w, http.StatusOK, map[string]any{"tenant_count": tenantCount, "tenantCount": tenantCount, "active_tenants": activeTenants, "activeTenantCount": activeTenants, "today_orders": todayOrders, "todayOrderCount": todayOrders, "today_revenue_cents": todayRevenue, "todayTransactionAmount": todayRevenue, "month_revenue_cents": monthRevenue, "trend": trend, "recent_tenants": recentTenants})
 }
 
 type paymentSettings struct {

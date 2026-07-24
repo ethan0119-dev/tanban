@@ -239,7 +239,7 @@ export function TenantsPage() {
       render: (value, row) => <div className="entity-name entity-name--merchant"><span><ShopOutlined /></span><div><strong>{value}</strong><small>{row.code || '—'}</small></div></div>,
     },
     { title: '联系人', key: 'contact', width: 170, render: (_, row) => <div>{row.contactName || '—'}<small className="table-subtext">{row.contactPhone || ''}</small></div> },
-    { title: '门店', dataIndex: 'storeCount', key: 'storeCount', width: 90, align: 'right', render: (value) => `${value || 0} 家` },
+    { title: '点单码', dataIndex: 'storeCode', key: 'storeCode', width: 150, render: (value) => value || '—' },
     { title: '老板账号', key: 'owner', width: 150, render: (_, row) => row.hasOwner ? <div>{row.ownerUsername}<small className="table-subtext">{row.ownerDisplayName || '老板'}</small></div> : <Tag color="warning">待创建</Tag> },
     { title: '累计订单', dataIndex: 'orderCount', key: 'orderCount', width: 120, align: 'right', render: (value) => Number(value || 0).toLocaleString('zh-CN') },
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
@@ -320,7 +320,8 @@ export function TenantsPage() {
           <Descriptions column={1} bordered size="small" className="detail-descriptions">
             <Descriptions.Item label="商户编号">{selected.code || '—'}</Descriptions.Item>
             <Descriptions.Item label="联系人">{selected.contactName || '—'} {selected.contactPhone || ''}</Descriptions.Item>
-            <Descriptions.Item label="门店数量">{selected.storeCount || 0} 家</Descriptions.Item>
+            <Descriptions.Item label="门店 ID">{selected.storeId || '—'}</Descriptions.Item>
+            <Descriptions.Item label="点单码">{selected.storeCode || '—'}</Descriptions.Item>
             <Descriptions.Item label="老板账号">{selected.hasOwner ? <Space><UserOutlined />{selected.ownerUsername}<Button type="link" size="small" icon={<CopyOutlined />} onClick={() => void copy(selected.ownerUsername || '', '账号')}>复制</Button></Space> : <Button type="primary" size="small" icon={<UserOutlined />} onClick={openOwnerAccount}>创建首个老板账号</Button>}</Descriptions.Item>
             {selected.hasOwner && <Descriptions.Item label="账号姓名 / 状态">{selected.ownerDisplayName || '—'} · <StatusTag status={selected.ownerStatus || 'active'} /></Descriptions.Item>}
             <Descriptions.Item label="累计订单">{selected.orderCount || 0} 单</Descriptions.Item>
