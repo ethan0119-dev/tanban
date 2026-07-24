@@ -310,7 +310,7 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	if !strings.Contains(content, "</B><BR></L><BR><L>支付：") {
 		t.Fatalf("payment method must have a blank line after the emphasized paid row:\n%s", content)
 	}
-	footerSequence := "<L>" + strings.Repeat("-", 32) + "<BR></L><L>谢谢惠顾 TB202607200001<BR></L><C>客服电话：18602296557<BR></C><BR><CB>"
+	footerSequence := "<L>" + strings.Repeat("-", 32) + "<BR></L><C>谢谢惠顾 TB202607200001<BR></C><C>客服电话：18602296557<BR></C><BR><CB>"
 	if !strings.Contains(content, footerSequence) {
 		t.Fatalf("footer must be separated, include the store phone and leave space before the end marker:\n%s", content)
 	}
@@ -356,6 +356,9 @@ func TestStructuredReceiptRendersCopyRoleAndKeepsCJKWithinPaperWidth(t *testing.
 	if !strings.Contains(kitchen, "(厨)取餐码:0023") || strings.ContainsAny(kitchen, "¥￥") || strings.Contains(kitchen, "合计") || strings.Contains(kitchen, "实付") {
 		t.Fatalf("kitchen copy must emphasize production data without prices:\n%s", kitchen)
 	}
+	if !strings.Contains(kitchen, "<BR><CB><BOLD>--#0023完--") {
+		t.Fatalf("kitchen copy must leave the same blank line before the end marker:\n%s", kitchen)
+	}
 	for _, line := range printContentLines(kitchen) {
 		line = plainPrintLine(line)
 		if line == "" {
@@ -398,6 +401,9 @@ func TestStructuredReceiptPrintsProductAndOptionsBeforeBoldValues(t *testing.T) 
 	}
 	if strings.Contains(content, "<L>冰<BR></L>") || strings.Contains(content, "<L>无糖<BR></L>") {
 		t.Fatalf("option values must not be emitted as standalone rows:\n%s", content)
+	}
+	if !strings.Contains(content, "<BR><CB><BOLD>--#0024完--") {
+		t.Fatalf("merchant copy must leave a blank line before the end marker even without a footer:\n%s", content)
 	}
 }
 
