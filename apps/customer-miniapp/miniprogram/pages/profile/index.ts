@@ -14,7 +14,7 @@ interface PublicMembership {
 }
 
 Page({
-  data: { version: "v0.2.5", storeCode: "", store: null as Store | null, membership: null as PublicMembership | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
+  data: { version: "v0.2.6", storeCode: "", store: null as Store | null, membership: null as PublicMembership | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
   async onShow() {
     try {
       const appearance = await loadPageAppearance();
