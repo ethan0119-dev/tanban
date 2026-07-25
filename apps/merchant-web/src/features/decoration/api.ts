@@ -52,6 +52,7 @@ interface ApiDecorationConfig {
     loadMode: 'BY_CATEGORY' | 'ALL';
     productActionMode: 'SKU_SHEET' | 'DIRECT_ADD';
     density: 'COMFORTABLE' | 'COMPACT';
+    cartTemplate: 'CLASSIC' | 'COUNT_ACTION' | 'PROMO_CAPSULE';
   };
   navigation: {
     items: Array<{ key: string; text: string; visible: boolean; sortOrder: number }>;
@@ -207,6 +208,9 @@ export function normalizeConfig(payload: unknown): DecorationConfig {
       showSales: booleanValue(base.ordering.showSales, rawMenu.showSales),
       loadMode: stringValue(rawMenu.loadMode) === 'ALL' ? 'ALL' : 'BY_CATEGORY',
       productActionMode: stringValue(rawMenu.productActionMode) === 'DIRECT_ADD' ? 'DIRECT_ADD' : 'SKU_SHEET',
+      cartTemplate: ['COUNT_ACTION', 'PROMO_CAPSULE'].includes(stringValue(rawMenu.cartTemplate))
+        ? stringValue(rawMenu.cartTemplate) as DecorationConfig['ordering']['cartTemplate']
+        : 'CLASSIC',
     },
     navigation: navItems.length ? navItems.map((item, index) => {
       const nav = record(item);
@@ -303,6 +307,7 @@ export function toApiConfig(config: DecorationConfig): ApiDecorationConfig {
       loadMode: config.ordering.loadMode,
       productActionMode: config.ordering.productActionMode,
       density: config.ordering.density,
+      cartTemplate: config.ordering.cartTemplate,
     },
     navigation: {
       items: config.navigation.map((item, index) => ({ key: item.key.toLowerCase(), text: item.label, visible: item.enabled, sortOrder: (index + 1) * 10 })),

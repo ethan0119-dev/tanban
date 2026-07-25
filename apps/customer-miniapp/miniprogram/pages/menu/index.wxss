@@ -75,6 +75,10 @@
 .product-grid-view .product-main { padding: 0 18rpx; }
 .product-grid-view .product-purchase { margin-top: auto; }
 .product-grid-view .selected-skus { display: none; }
+.member-price-line { display: flex; min-width: 0; align-items: baseline; gap: 9rpx; }
+.member-price-line .member-price { color: var(--green); }
+.original-price { color: var(--muted); font-size: 20rpx; text-decoration: line-through; }
+.member-price-badge { padding: 2rpx 8rpx; border: 1rpx solid var(--green); border-radius: 999rpx; color: var(--green); font-size: 18rpx; font-weight: var(--font-weight-semibold); line-height: 1.4; }
 .cart-bar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; min-height: 104rpx; padding: 12rpx 22rpx 12rpx 28rpx; border-top: 1rpx solid var(--line); border-radius: 0; background: var(--surface); color: var(--ink); box-shadow: 0 -6rpx 20rpx rgba(23,32,27,.08); }
 .cart-bar .cart-summary { display: flex; flex: 1; min-width: 0; min-height: 70rpx; align-items: center; gap: 14rpx; font-size: 21rpx; color: var(--muted); }
 .cart-bar .cart-summary.can-open { cursor: pointer; }
@@ -85,6 +89,25 @@
 .cart-action > text { color: var(--muted); font-size: 20rpx; }
 .cart-bar button { display: flex; align-items: center; justify-content: center; width: 100%; height: 62rpx; min-height: 62rpx; margin: 0; padding: 0 22rpx; border: 1rpx solid var(--green); border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); box-sizing: border-box; font-size: var(--font-body); font-weight: var(--font-weight-semibold); line-height: 1; }
 .cart-bar button[disabled] { background: var(--disabled-bg); }
+.cart-icon-wrap { position: relative; display: flex; flex: 0 0 74rpx; align-items: center; justify-content: center; }
+.cart-icon-wrap image { width: 62rpx; height: 62rpx; }
+.cart-icon-count { position: absolute; top: -6rpx; right: 0; display: flex; min-width: 34rpx; height: 34rpx; align-items: center; justify-content: center; padding: 0 7rpx; border: 3rpx solid var(--surface); border-radius: 999rpx; background: var(--primary); color: var(--on-primary); box-sizing: border-box; font-size: 19rpx; font-weight: var(--font-weight-strong); }
+.cart-summary-copy { display: flex; min-width: 0; flex-direction: column; gap: 4rpx; }
+.cart-summary-copy text:first-child { overflow: hidden; color: var(--ink); font-size: 26rpx; font-weight: var(--font-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.cart-summary-copy text:last-child { color: var(--muted); font-size: 21rpx; }
+.cart-template-COUNT_ACTION .cart-action { flex-basis: 214rpx; }
+.cart-template-COUNT_ACTION .cart-action button { height: 72rpx; border-radius: 999rpx; background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 29rpx; }
+.cart-template-PROMO_CAPSULE { right: 22rpx; bottom: 18rpx; left: 22rpx; min-height: 96rpx; padding: 0; overflow: hidden; border: 0; border-radius: 999rpx; background: var(--ink); color: var(--surface); box-shadow: 0 12rpx 36rpx rgba(0,0,0,.2); }
+.cart-template-PROMO_CAPSULE .cart-promo { display: flex; min-width: 154rpx; align-self: stretch; flex-direction: column; align-items: center; justify-content: center; padding: 0 18rpx; background: var(--primary); color: var(--on-primary); font-size: 20rpx; }
+.cart-template-PROMO_CAPSULE .cart-promo text:first-child { font-size: 27rpx; font-weight: var(--font-weight-semibold); }
+.cart-template-PROMO_CAPSULE .cart-summary { min-height: 96rpx; padding: 0 18rpx; color: var(--surface); }
+.cart-template-PROMO_CAPSULE .cart-summary .cart-price { color: var(--surface); font-size: 34rpx; }
+.cart-template-PROMO_CAPSULE .cart-icon-wrap { flex-basis: 66rpx; }
+.cart-template-PROMO_CAPSULE .cart-icon-wrap image { width: 54rpx; height: 54rpx; filter: brightness(0) invert(1); }
+.cart-template-PROMO_CAPSULE .cart-icon-count { border-color: var(--ink); }
+.cart-template-PROMO_CAPSULE .cart-action { flex-basis: 190rpx; margin-left: 0; padding-right: 10rpx; }
+.cart-template-PROMO_CAPSULE .cart-action button { height: 72rpx; border-color: var(--accent); border-radius: 999rpx; background: var(--accent); color: var(--on-accent); }
+.cart-template-PROMO_CAPSULE .cart-action > text { display: none; }
 .cart-sheet-mask { position: fixed; top: 0; right: 0; bottom: 104rpx; left: 0; z-index: 20; display: flex; align-items: flex-end; background: rgba(18,20,18,.46); }
 .cart-sheet { width: 100%; max-height: 58vh; padding: 16rpx 28rpx 24rpx; overflow: hidden; border-radius: 30rpx 30rpx 0 0; box-sizing: border-box; background: var(--surface); box-shadow: 0 -18rpx 60rpx rgba(23,32,27,.16); }
 .cart-sheet-handle { width: 66rpx; height: 7rpx; margin: 0 auto 20rpx; border-radius: 99rpx; background: var(--line); }

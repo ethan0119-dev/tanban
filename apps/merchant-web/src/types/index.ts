@@ -54,6 +54,10 @@ export interface OrderItem {
   image?: string;
   quantity: number;
   unitPrice: number;
+  originalUnitPrice?: number;
+  memberDiscount?: number;
+  memberLevelName?: string;
+  additionSequence?: number;
   amount?: number;
   remark?: string;
   itemRemark?: string;
@@ -71,8 +75,15 @@ export interface Order {
   fastFoodPlateCode?: string;
   fastFoodPlateName?: string;
   status: OrderStatus;
+  paymentStatus?: 'UNPAID' | 'PENDING' | 'PAID' | 'SUCCEEDED' | 'FAILED' | 'CLOSED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
+  settlementMode?: 'PAY_BEFORE' | 'PAY_AFTER';
+  additionCount?: number;
+  dinerCount?: number;
+  memberLevelName?: string;
+  memberDiscount?: number;
   amount: number;
   paidAmount?: number;
+  remainingAmount?: number;
   refundAmount?: number;
   paymentMethod?: string;
   businessType?: OrderBusinessType;
@@ -229,6 +240,7 @@ export interface Product {
   recommended?: boolean;
   inStoreEnabled?: boolean;
   deliveryEnabled?: boolean;
+  memberDiscountEnabled?: boolean;
   salesCount?: number;
   soldOut?: boolean;
   autoRestock?: boolean;
@@ -251,12 +263,45 @@ export interface PaymentRecord {
   orderNo: string;
   paymentNo?: string;
   providerOrderNo?: string;
+  provider?: string;
   amount: number;
   refundableAmount?: number;
   method?: string;
   status: string;
   paidAt?: string;
   createdAt?: string;
+}
+
+export interface OrderReturnRequest {
+  id: Id;
+  orderItemId: Id;
+  skuId: Id;
+  productName: string;
+  quantity: number;
+  amount: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedBy?: Id;
+  reviewedBy?: Id;
+  reviewedAt?: string;
+  reviewRemark?: string;
+  createdAt: string;
+}
+
+export interface OfflineReconciliation {
+  id?: Id;
+  businessDate: string;
+  expectedCash: number;
+  expectedExternal: number;
+  actualCash?: number;
+  actualExternal?: number;
+  discrepancy?: number;
+  cashCount: number;
+  externalCount: number;
+  note?: string;
+  status: 'UNCONFIRMED' | 'CONFIRMED';
+  confirmedBy?: Id;
+  confirmedAt?: string;
 }
 
 export interface RefundRecord {
@@ -368,7 +413,7 @@ export interface MerchantStoreProfile {
 
 export interface MerchantOperationSettings {
   storeId: Id;
-  settlementMode: 'PAY_BEFORE';
+  settlementMode: 'PAY_BEFORE' | 'PAY_AFTER';
   orderingMode: 'SINGLE_PERSON' | 'MULTI_PERSON';
   distanceCheckEnabled: boolean;
   distanceLimitM: number;
@@ -460,10 +505,14 @@ export interface TableBoardTable {
   name: string;
   tableCode: string;
   capacity: number;
-  state: 'UNOPENED' | 'OPENED' | 'DINING';
+  state: 'UNOPENED' | 'OPENED' | 'DINING' | 'UNSETTLED';
   orderId?: Id;
   orderNo?: string;
   orderStatus?: string;
+  paymentStatus?: string;
+  settlementMode?: 'PAY_BEFORE' | 'PAY_AFTER';
+  additionCount?: number;
+  dinerCount?: number;
   customerName?: string;
   totalCents?: number;
   openedAt?: string;
@@ -471,7 +520,7 @@ export interface TableBoardTable {
 
 export interface TableBoardResponse {
   areas: Array<{ id: Id; name: string; tables: TableBoardTable[] }>;
-  settlementMode: 'PAY_BEFORE';
+  settlementMode: 'PAY_BEFORE' | 'PAY_AFTER';
   orderingMode: 'SINGLE_PERSON' | 'MULTI_PERSON';
 }
 

@@ -78,6 +78,7 @@ type DecorationMenu struct {
 	LoadMode          string `json:"loadMode"`
 	ProductActionMode string `json:"productActionMode"`
 	Density           string `json:"density"`
+	CartTemplate      string `json:"cartTemplate"`
 }
 
 type DecorationNavigation struct {
@@ -282,7 +283,7 @@ func defaultDecorationConfig(store storeDTO) DecorationConfig {
 		}},
 		Menu: DecorationMenu{
 			CategoryLayout: "LEFT", ProductLayout: "LIST", ShowDescription: true,
-			ShowSoldOut: true, LoadMode: "BY_CATEGORY", ProductActionMode: "SKU_SHEET", Density: "COMFORTABLE",
+			ShowSoldOut: true, LoadMode: "BY_CATEGORY", ProductActionMode: "SKU_SHEET", Density: "COMFORTABLE", CartTemplate: "CLASSIC",
 		},
 		Navigation: DecorationNavigation{
 			TemplateKey:     "classic",
@@ -412,6 +413,9 @@ func validateDecorationConfig(config DecorationConfig) error {
 	}
 	if !oneOf(config.Menu.Density, "COMPACT", "COMFORTABLE") {
 		return errors.New("menu.density must be COMPACT or COMFORTABLE")
+	}
+	if config.Menu.CartTemplate != "" && !oneOf(config.Menu.CartTemplate, "CLASSIC", "COUNT_ACTION", "PROMO_CAPSULE") {
+		return errors.New("menu.cartTemplate must be CLASSIC, COUNT_ACTION or PROMO_CAPSULE")
 	}
 	if len(config.Navigation.Items) < 2 || len(config.Navigation.Items) > 4 {
 		return errors.New("navigation must contain between 2 and 4 items")

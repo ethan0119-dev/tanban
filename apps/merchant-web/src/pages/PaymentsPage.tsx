@@ -25,10 +25,11 @@ import {
   message,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, errorMessage } from '../api/client';
 import { PageHeading } from '../components/PageHeading';
-import type { PaymentRecord, RefundRecord } from '../types';
+import type { OfflineReconciliation, PaymentRecord, RefundRecord } from '../types';
 import { dateTime, toBeijingRFC3339, yuan } from '../utils/format';
 import { paymentProviderName } from '../utils/payment';
 
@@ -55,6 +56,7 @@ function normalizePayment(value: PaymentRecord): PaymentRecord {
     orderId: value.orderId ?? (raw.order_id as string | number),
     orderNo: value.orderNo ?? String(raw.order_no ?? ''),
     paymentNo: value.paymentNo ?? String(raw.payment_no ?? raw.provider_order_no ?? ''),
+    provider: value.provider ?? String(raw.provider ?? ''),
     amount: paidCents !== undefined ? Number(paidCents) / 100 : Number(value.amount ?? 0),
     refundableAmount: value.refundableAmount ?? (paidCents !== undefined ? (Number(paidCents) - refundedCents) / 100 : Number(value.amount ?? 0)),
     method: paymentProviderName(value.method ?? raw.provider),
@@ -76,6 +78,24 @@ function normalizeRefund(value: RefundRecord, orderNumbers: Map<string, string>)
   };
 }
 
+function normalizeReconciliation(value: Record<string, unknown>): OfflineReconciliation {
+  return {
+    id: value.id as string | number,
+    businessDate: String(value.business_date ?? value.businessDate ?? ''),
+    expectedCash: Number(value.expected_cash_cents ?? 0) / 100,
+    expectedExternal: Number(value.expected_external_cents ?? 0) / 100,
+    actualCash: value.actual_cash_cents === undefined ? undefined : Number(value.actual_cash_cents) / 100,
+    actualExternal: value.actual_external_cents === undefined ? undefined : Number(value.actual_external_cents) / 100,
+    discrepancy: value.discrepancy_cents === undefined ? undefined : Number(value.discrepancy_cents) / 100,
+    cashCount: Number(value.cash_count ?? 0),
+    externalCount: Number(value.external_count ?? 0),
+    note: String(value.note ?? ''),
+    status: String(value.status ?? 'UNCONFIRMED') as OfflineReconciliation['status'],
+    confirmedBy: value.confirmed_by as string | number,
+    confirmedAt: String(value.confirmed_at ?? ''),
+  };
+}
+
 export function PaymentsPage() {
   const [activeTab, setActiveTab] = useState('payments');
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -87,6 +107,10 @@ export function PaymentsPage() {
   const [refundIdempotencyKey, setRefundIdempotencyKey] = useState('');
   const [refundSaving, setRefundSaving] = useState(false);
   const [refundForm] = Form.useForm<{ amount: number; reason: string }>();
+  const [reconciliationDate, setReconciliationDate] = useState<Dayjs>(dayjs());
+  const [reconciliation, setReconciliation] = useState<OfflineReconciliation | null>(null);
+  const [reconciliationLoading, setReconciliationLoading] = useState(false);
+  const [reconciliationForm] = Form.useForm<{ actualCash: number; actualExternal: number; note: string }>();
   const [messageApi, contextHolder] = message.useMessage();
 
   const load = useCallback(async () => {
@@ -129,6 +153,46 @@ export function PaymentsPage() {
   }, [dates, keyword, messageApi]);
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadReconciliation = useCallback(async (date = reconciliationDate) => {
+    setReconciliationLoading(true);
+    try {
+      const report = normalizeReconciliation(await api.get<Record<string, unknown>>('/merchant/offline-reconciliation', { business_date: date.format('YYYY-MM-DD') }));
+      setReconciliation(report);
+      reconciliationForm.setFieldsValue({
+        actualCash: report.actualCash ?? report.expectedCash,
+        actualExternal: report.actualExternal ?? report.expectedExternal,
+        note: report.note || '',
+      });
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setReconciliationLoading(false);
+    }
+  }, [messageApi, reconciliationDate, reconciliationForm]);
+
+  useEffect(() => {
+    if (activeTab === 'reconciliation') void loadReconciliation();
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const confirmReconciliation = async () => {
+    const values = await reconciliationForm.validateFields();
+    setReconciliationLoading(true);
+    try {
+      const report = normalizeReconciliation(await api.post<Record<string, unknown>>('/merchant/offline-reconciliation/confirm', {
+        business_date: reconciliationDate.format('YYYY-MM-DD'),
+        actual_cash_cents: Math.round(values.actualCash * 100),
+        actual_external_cents: Math.round(values.actualExternal * 100),
+        note: values.note || '',
+      }));
+      setReconciliation(report);
+      messageApi.success('线下支付日结已确认');
+    } catch (error) {
+      messageApi.error(errorMessage(error));
+    } finally {
+      setReconciliationLoading(false);
+    }
+  };
 
   const openRefund = (payment: PaymentRecord) => {
     setRefundTarget(payment);
@@ -206,7 +270,7 @@ export function PaymentsPage() {
                     { title: '支付时间', dataIndex: 'paidAt', width: 180, render: dateTime },
                     {
                       title: '操作', key: 'action', width: 100, fixed: 'right',
-                      render: (_, record) => <Button type="link" disabled={!['SUCCESS', 'PAID', 'PARTIAL_REFUNDED', 'PARTIALLY_REFUNDED'].includes(record.status) || Number(record.refundableAmount ?? record.amount) <= 0} onClick={() => openRefund(record)}>退款</Button>,
+                      render: (_, record) => <Button type="link" disabled={['offline_cash', 'external'].includes(String(record.provider)) || !['SUCCESS', 'PAID', 'PARTIAL_REFUNDED', 'PARTIALLY_REFUNDED'].includes(record.status) || Number(record.refundableAmount ?? record.amount) <= 0} onClick={() => openRefund(record)}>退款</Button>,
                     },
                   ]}
                 />
@@ -231,6 +295,46 @@ export function PaymentsPage() {
                     { title: '申请时间', dataIndex: 'createdAt', width: 180, render: dateTime },
                   ]}
                 />
+              ),
+            },
+            {
+              key: 'reconciliation',
+              label: '线下支付日结',
+              children: (
+                <div>
+                  <Row gutter={[16, 16]} align="middle" style={{ marginBottom: 18 }}>
+                    <Col><Typography.Text strong>营业日期</Typography.Text></Col>
+                    <Col>
+                      <DatePicker
+                        value={reconciliationDate}
+                        allowClear={false}
+                        format="YYYY-MM-DD"
+                        onChange={(value) => {
+                          if (!value) return;
+                          setReconciliationDate(value);
+                          void loadReconciliation(value);
+                        }}
+                      />
+                    </Col>
+                    <Col><Button loading={reconciliationLoading} onClick={() => void loadReconciliation()}>重新核对</Button></Col>
+                    <Col>{reconciliation?.status === 'CONFIRMED' ? <Tag color="success">已确认日结</Tag> : <Tag color="processing">待确认</Tag>}</Col>
+                  </Row>
+                  <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+                    <Col xs={24} md={12}><Card size="small" loading={reconciliationLoading}><Statistic title={`系统应收现金（${reconciliation?.cashCount || 0} 笔）`} value={reconciliation?.expectedCash || 0} prefix="¥" precision={2} /></Card></Col>
+                    <Col xs={24} md={12}><Card size="small" loading={reconciliationLoading}><Statistic title={`系统外支付（${reconciliation?.externalCount || 0} 笔）`} value={reconciliation?.expectedExternal || 0} prefix="¥" precision={2} /></Card></Col>
+                  </Row>
+                  <Form form={reconciliationForm} layout="vertical" onFinish={() => void confirmReconciliation()}>
+                    <Row gutter={16}>
+                      <Col xs={24} md={12}><Form.Item label="盘点实收现金" name="actualCash" rules={[{ required: true, message: '请输入盘点现金' }]}><InputNumber min={0} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col>
+                      <Col xs={24} md={12}><Form.Item label="核对系统外支付" name="actualExternal" rules={[{ required: true, message: '请输入系统外支付实收' }]}><InputNumber min={0} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col>
+                    </Row>
+                    <Form.Item label="日结备注" name="note"><Input.TextArea rows={3} maxLength={500} showCount placeholder="记录长短款原因、交接信息等" /></Form.Item>
+                    {reconciliation?.status === 'CONFIRMED' && <Typography.Paragraph type={Number(reconciliation.discrepancy || 0) === 0 ? 'success' : 'danger'}>
+                      上次确认差额：{yuan(reconciliation.discrepancy || 0)} · {dateTime(reconciliation.confirmedAt)}
+                    </Typography.Paragraph>}
+                    <Button type="primary" htmlType="submit" loading={reconciliationLoading}>确认本日线下支付日结</Button>
+                  </Form>
+                </div>
               ),
             },
           ]}

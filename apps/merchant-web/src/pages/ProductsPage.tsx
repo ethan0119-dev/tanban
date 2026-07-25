@@ -8,7 +8,6 @@ import {
   EditOutlined,
   InboxOutlined,
   MoreOutlined,
-  PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -49,6 +48,7 @@ import { merchantFeatureCopy } from '../features/availability/copy';
 import type { MediaAsset } from '../features/media/model';
 import type { Category, Product, ProductImage, Sku } from '../types';
 import { dateTime, yuan } from '../utils/format';
+import productUploadIcon from '../assets/icons/product-upload.webp';
 import './products.css';
 
 interface ProductFormValues {
@@ -61,6 +61,7 @@ interface ProductFormValues {
   recommended: boolean;
   inStoreEnabled: boolean;
   deliveryEnabled: boolean;
+  memberDiscountEnabled: boolean;
   autoRestock: boolean;
   dailyStock?: number;
   skus: Sku[];
@@ -182,6 +183,7 @@ export function normalizeProduct(value: Product): Product {
     recommended: Boolean(value.recommended ?? raw.recommended),
     inStoreEnabled: value.inStoreEnabled ?? Boolean(raw.in_store_enabled ?? true),
     deliveryEnabled: value.deliveryEnabled ?? Boolean(raw.delivery_enabled ?? false),
+    memberDiscountEnabled: Boolean(value.memberDiscountEnabled ?? raw.member_discount_enabled),
     salesCount: Number(value.salesCount ?? raw.sales_count ?? 0),
     // The database shape is retained for forward compatibility, but no daily
     // idempotent refill job exists yet. Never present a stored flag as active.
@@ -218,6 +220,7 @@ export function productPayload(values: ProductFormValues | Product, enabled = va
     recommended: Boolean(values.recommended),
     in_store_enabled: values.inStoreEnabled !== false,
     delivery_enabled: Boolean(values.deliveryEnabled),
+    member_discount_enabled: Boolean(values.memberDiscountEnabled),
     sort_order: 0,
     status: enabled ? 'ACTIVE' : 'DISABLED',
     skus: submittedSkus.map((sku) => ({
@@ -233,6 +236,24 @@ export function productPayload(values: ProductFormValues | Product, enabled = va
       refill_stock: 0,
     })),
   };
+}
+
+export function NoSpecificationProductFields() {
+  return (
+    <Form.Item noStyle shouldUpdate={(previous, current) => (previous.skus?.length || 0) !== (current.skus?.length || 0)}>
+      {({ getFieldValue }) => (getFieldValue('skus') || []).length === 0 ? (
+        <Card size="small" title="无规格商品">
+          <Typography.Paragraph type="secondary">当前商品不区分规格，使用统一售价和库存。需要区分杯型、尺寸等时可增加规格。</Typography.Paragraph>
+          <Form.Item name="baseSkuId" hidden><Input /></Form.Item>
+          <Form.Item name="baseExpectedStock" hidden><InputNumber /></Form.Item>
+          <Row gutter={12}>
+            <Col span={12}><Form.Item label="售价" name="basePrice" rules={[{ required: true, message: '请输入售价' }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item label="库存" name="baseStock" rules={[{ required: true, message: '请输入库存' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+        </Card>
+      ) : null}
+    </Form.Item>
+  );
 }
 
 export function ProductsPage() {
@@ -318,6 +339,7 @@ export function ProductsPage() {
       recommended: product.recommended ?? false,
       inStoreEnabled: product.inStoreEnabled !== false,
       deliveryEnabled: Boolean(product.deliveryEnabled),
+      memberDiscountEnabled: Boolean(product.memberDiscountEnabled),
       autoRestock: product.autoRestock ?? false,
       dailyStock: product.dailyStock,
       skus: implicitDefault ? [] : (product.skus?.length ? product.skus : []),
@@ -334,6 +356,7 @@ export function ProductsPage() {
       recommended: false,
       inStoreEnabled: true,
       deliveryEnabled: false,
+      memberDiscountEnabled: true,
       autoRestock: false,
       images: [],
       skus: [],
@@ -681,6 +704,7 @@ export function ProductsPage() {
                       <Avatar shape="square" size={58} src={product.image} icon={<InboxOutlined />} />
                       <div>
                         <Space size={6}><Typography.Text strong>{product.name}</Typography.Text>{product.recommended && <Tag color="volcano" icon={<StarFilled />}>推荐</Tag>}</Space>
+                        {product.memberDiscountEnabled && <div><Tag color="green">支持会员折扣</Tag></div>}
                         <div><Typography.Text type="secondary">{product.categoryName || categories.find((item) => String(item.id) === String(product.categoryId))?.name || '未分类'} · {product.images?.length || 0} 张图</Typography.Text></div>
                         <div><Typography.Text type="secondary">销量 {product.salesCount || 0}</Typography.Text></div>
                       </div>
@@ -788,24 +812,15 @@ export function ProductsPage() {
             <Col span={12}><Form.Item label="店内" name="inStoreEnabled" valuePropName="checked" extra="同时用于堂食与门店自取"><Switch checkedChildren="显示" unCheckedChildren="隐藏" /></Form.Item></Col>
             <Col span={12}><Form.Item label="外卖（暂未开放）" name="deliveryEnabled" valuePropName="checked" extra="外卖订单与配送能力接入后开放"><Switch checked={false} onChange={(checked) => { if (checked) deliveryUnavailable(); form.setFieldValue('deliveryEnabled', false); }} /></Form.Item></Col>
           </Row>
+          <Form.Item label="参与会员折扣" name="memberDiscountEnabled" valuePropName="checked" extra="开启后，有效会员会在小程序看到原价与会员价；关闭后该商品始终按原价计费。"><Switch checkedChildren="参与" unCheckedChildren="不参与" /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.autoRestock !== current.autoRestock}>
             {({ getFieldValue }) => getFieldValue('autoRestock') ? <Form.Item label="每日初始库存" name="dailyStock" rules={[{ required: true, message: '请输入每日库存' }]}><InputNumber min={0} precision={0} addonAfter="份" style={{ width: 220 }} /></Form.Item> : null}
           </Form.Item>
           <Divider orientation="left">规格与库存</Divider>
+          <NoSpecificationProductFields />
           <Form.List name="skus">
             {(fields, { add, remove }) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {fields.length === 0 ? (
-                  <Card size="small" title="无规格商品">
-                    <Typography.Paragraph type="secondary">当前商品不区分规格，使用统一售价和库存。需要区分杯型、尺寸等时可增加规格。</Typography.Paragraph>
-                    <Form.Item name="baseSkuId" hidden><Input /></Form.Item>
-                    <Form.Item name="baseExpectedStock" hidden><InputNumber /></Form.Item>
-                    <Row gutter={12}>
-                      <Col span={12}><Form.Item label="售价" name="basePrice" rules={[{ required: true, message: '请输入售价' }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: '100%' }} /></Form.Item></Col>
-                      <Col span={12}><Form.Item label="库存" name="baseStock" rules={[{ required: true, message: '请输入库存' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
-                    </Row>
-                  </Card>
-                ) : null}
                 {fields.map((field, index) => (
                   <Card
                     size="small"
@@ -968,7 +983,7 @@ function ProductImagesField({ value = [], onChange, onOpenLibrary }: { value?: P
           </div>
         </div>
       ))}
-      {ordered.length < 4 && <button type="button" className="product-image-add" onClick={onOpenLibrary}><PictureOutlined /><strong>从图片库选择</strong><small>还可添加 {4 - ordered.length} 张</small></button>}
+      {ordered.length < 4 && <button type="button" className="product-image-add" onClick={onOpenLibrary}><img src={productUploadIcon} alt="" /><strong>从图片库选择</strong><small>还可添加 {4 - ordered.length} 张</small></button>}
     </div>
   );
 }

@@ -7,6 +7,12 @@
 .table-order-card .section-title { margin: 0; font-size: 40rpx; }
 .table-badge { align-self: flex-start; padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--green); color: var(--on-primary); font-size: 22rpx; font-weight: var(--font-weight-semibold); }
 .table-code { align-self: flex-start; padding: 9rpx 18rpx; border-radius: 14rpx; background: var(--soft-primary); color: var(--green); font-weight: var(--font-weight-semibold); }
+.diner-count-card { display: flex; align-items: center; justify-content: space-between; gap: 24rpx; }
+.diner-count-card > view:first-child { display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }
+.diner-count-card .section-title { margin: 0; }
+.diner-picker { display: flex; min-width: 190rpx; align-items: center; justify-content: space-between; gap: 18rpx; padding: 20rpx 22rpx; border: 1rpx solid var(--line); border-radius: var(--button-radius); background: var(--soft-primary); }
+.diner-picker text:first-child { color: var(--green); font-size: 30rpx; font-weight: var(--font-weight-semibold); }
+.diner-picker text:last-child { color: var(--muted); font-size: 20rpx; }
 .fast-food-order-card { display: flex; flex-direction: column; gap: 16rpx; border: 2rpx solid var(--green); background: var(--surface); }
 .fast-food-order-card > view { display: flex; flex-direction: column; gap: 8rpx; }
 .fast-food-order-card .section-title { margin: 0; font-size: 40rpx; }

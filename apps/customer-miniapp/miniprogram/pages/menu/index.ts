@@ -11,6 +11,7 @@ import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { scanAndBindTableCode } from "../../utils/table-scanner";
+import { customerGuestKey } from "../../utils/customer";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -39,6 +40,13 @@ function isRecommendedProduct(product: Product): boolean {
   const compatible = product as Product & { isRecommended?: unknown; is_recommended?: unknown };
   const value: unknown = compatible.recommended ?? compatible.isRecommended ?? compatible.is_recommended;
   return value === true || value === 1 || String(value).toLowerCase() === "true";
+}
+
+function memberPriceFor(product: Product, rawPrice: number): number {
+  const discount = Number(product.memberDiscountPercent || 100);
+  return product.memberDiscountEnabled && discount > 0 && discount < 100
+    ? Math.round(rawPrice * discount / 100)
+    : rawPrice;
 }
 
 function nextOpenLabel(value?: string): string {
@@ -96,7 +104,11 @@ Page({
   async loadCatalog() {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
     try {
-      const catalog = await request<Catalog>({ url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`, method: "GET" });
+      const catalog = await request<Catalog>({
+        url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`,
+        method: "GET",
+        header: { "X-Customer-Key": customerGuestKey() },
+      });
       if (catalog.store?.nextOpenAt) catalog.store.nextOpenAt = formatBeijingDateTime(catalog.store.nextOpenAt);
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
       if (catalog.store) rememberPageAppearance(catalog.store);
@@ -265,7 +277,7 @@ Page({
     const sku = this.data.selectableSkus.find((item) => item.id === this.data.selectedSkuId);
     const optionDelta = this.data.pickerOptionGroups.reduce((sum, group) => sum + group.values.filter((value) => value.selected).reduce((valueSum, value) => valueSum + value.priceDeltaCents, 0), 0);
     const modifierDelta = this.data.pickerModifierGroups.reduce((sum, group) => sum + group.items.filter((item) => item.selected).reduce((itemSum, item) => itemSum + item.priceCents, 0), 0);
-    this.setData({ pickerPrice: (sku?.price ?? product.price) + optionDelta + modifierDelta });
+    this.setData({ pickerPrice: memberPriceFor(product, (sku?.price ?? product.price) + optionDelta + modifierDelta) });
   },
   confirmConfiguredProduct() {
     const product = this.data.selectingProduct;
@@ -294,7 +306,8 @@ Page({
   },
   addSkuToCart(product: Product, sku?: Sku) {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-    this.setCart(addCartItem(storeCode, { productId: product.id, skuId: sku?.id, name: product.name, skuName: sku?.name, price: sku?.price ?? product.price, quantity: 1 }));
+    const originalPrice = sku?.price ?? product.price;
+    this.setCart(addCartItem(storeCode, { productId: product.id, skuId: sku?.id, name: product.name, skuName: sku?.name, price: sku?.memberPrice ?? product.memberPrice ?? memberPriceFor(product, originalPrice), quantity: 1 }));
   },
   incrementCartItem(event: WechatMiniprogram.BaseEvent) {
     const storeCode = getApp<TanbanAppOption>().globalData.storeCode;

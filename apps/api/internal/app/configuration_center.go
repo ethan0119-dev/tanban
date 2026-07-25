@@ -318,19 +318,23 @@ func (s *Server) getMerchantPaymentSettings(w http.ResponseWriter, r *http.Reque
 }
 
 type tableBoardTable struct {
-	ID           int64  `json:"id"`
-	AreaID       int64  `json:"areaId"`
-	AreaName     string `json:"areaName"`
-	Name         string `json:"name"`
-	TableCode    string `json:"tableCode"`
-	Capacity     int    `json:"capacity"`
-	State        string `json:"state"`
-	OrderID      int64  `json:"orderId,omitempty"`
-	OrderNo      string `json:"orderNo,omitempty"`
-	OrderStatus  string `json:"orderStatus,omitempty"`
-	CustomerName string `json:"customerName,omitempty"`
-	TotalCents   int64  `json:"totalCents,omitempty"`
-	OpenedAt     string `json:"openedAt,omitempty"`
+	ID             int64  `json:"id"`
+	AreaID         int64  `json:"areaId"`
+	AreaName       string `json:"areaName"`
+	Name           string `json:"name"`
+	TableCode      string `json:"tableCode"`
+	Capacity       int    `json:"capacity"`
+	State          string `json:"state"`
+	OrderID        int64  `json:"orderId,omitempty"`
+	OrderNo        string `json:"orderNo,omitempty"`
+	OrderStatus    string `json:"orderStatus,omitempty"`
+	PaymentStatus  string `json:"paymentStatus,omitempty"`
+	SettlementMode string `json:"settlementMode,omitempty"`
+	AdditionCount  int    `json:"additionCount,omitempty"`
+	DinerCount     int    `json:"dinerCount,omitempty"`
+	CustomerName   string `json:"customerName,omitempty"`
+	TotalCents     int64  `json:"totalCents,omitempty"`
+	OpenedAt       string `json:"openedAt,omitempty"`
 }
 
 func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
@@ -341,7 +345,9 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.area_id,a.name,t.name,t.table_code,t.capacity,
-		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
+		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.payment_status,''),
+		COALESCE(o.settlement_mode_snapshot,''),COALESCE(o.addition_count,0),COALESCE(o.diner_count,0),
+		COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
 		COALESCE(DATE_FORMAT(o.created_at,'%Y-%m-%d %H:%i:%s'),'')
 		FROM table_codes t JOIN table_areas a ON a.id=t.area_id AND a.tenant_id=t.tenant_id AND a.store_id=t.store_id
 		LEFT JOIN orders o ON o.id=(SELECT o2.id FROM orders o2 WHERE o2.tenant_id=t.tenant_id AND o2.store_id=t.store_id
@@ -360,12 +366,15 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item tableBoardTable
 		if err = rows.Scan(&item.ID, &item.AreaID, &item.AreaName, &item.Name, &item.TableCode, &item.Capacity,
-			&item.OrderID, &item.OrderNo, &item.OrderStatus, &item.CustomerName, &item.TotalCents, &item.OpenedAt); err != nil {
+			&item.OrderID, &item.OrderNo, &item.OrderStatus, &item.PaymentStatus, &item.SettlementMode,
+			&item.AdditionCount, &item.DinerCount, &item.CustomerName, &item.TotalCents, &item.OpenedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
 		item.State = "UNOPENED"
-		if item.OrderStatus == "PENDING_PAYMENT" || item.OrderStatus == "PAID" {
+		if item.SettlementMode == "PAY_AFTER" && item.PaymentStatus == "UNPAID" {
+			item.State = "UNSETTLED"
+		} else if item.OrderStatus == "PENDING_PAYMENT" || item.OrderStatus == "PAID" {
 			item.State = "OPENED"
 		} else if item.OrderStatus != "" {
 			item.State = "DINING"

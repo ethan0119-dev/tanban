@@ -50,7 +50,7 @@ const sectionMeta: Record<SettingsSection, { title: string; description: string 
   PAYMENT: { title: '支付设置', description: '查看当前收款通道、商户绑定、资金流向和支付确认方式' },
   NOTIFICATION: { title: '通知设置', description: '配置商户希望接收的消息类型，并查看微信通知开通状态' },
   PRIVACY: { title: '隐私与客服', description: '维护小程序隐私政策、用户协议和私人客服联系方式' },
-  PRINT: { title: '打印设置', description: '配置门店打印总开关与新模板的默认触发点' },
+  PRINT: { title: '打印设置', description: '查看跟随堂食结算模式的打印触发点，并配置门店打印总开关' },
 };
 
 const eventOptions = [
@@ -175,10 +175,10 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
                 <Form.Item label="堂食结算模式" name="settlementMode">
                   <Radio.Group>
                     <Radio.Button value="PAY_BEFORE">先结账后用餐</Radio.Button>
-                    <Radio.Button value="PAY_AFTER" disabled>先用餐后结账（暂未开放）</Radio.Button>
+                    <Radio.Button value="PAY_AFTER">先用餐后结账</Radio.Button>
                   </Radio.Group>
                 </Form.Item>
-                <FeatureAvailabilityNotice feature="PAY_AFTER_MEAL" />
+                <Alert type="info" showIcon message="先用餐后结账已开放" description="顾客下单后直接进入订单详情，可继续加菜并在用餐结束后支付；店员也可在桌台订单中登记现金或系统外收款并完成结账。" />
                 <Divider />
                 <Form.Item label="堂食点餐模式" name="orderingMode">
                   <Radio.Group>
@@ -279,9 +279,9 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={15}>
               <Card bordered={false} className="content-card settings-card" title={<Space><PrinterOutlined />打印总策略</Space>}>
-                <Alert type="warning" showIcon message="默认建议选择支付成功后打印" description="下单后打印会让未付款订单也出单；每个店内/外卖模板仍可在对应打印模板页单独设置触发点和商家联、顾客联、厨房联、标签等版式。" />
+                <Alert type="info" showIcon message="打印触发点跟随堂食结算模式" description={operation?.settlementMode === 'PAY_AFTER' ? '当前为先用餐后结账：订单提交后立即打印，确保后厨及时收到首次点单和每次加菜。此处只展示，不能单独修改。' : '当前为先结账后用餐：支付成功后打印，避免未付款订单进入制作。此处只展示，不能单独修改。'} />
                 <Form.Item label="新模板默认触发点" name="printTrigger" rules={[{ required: true }]} style={{ marginTop: 18 }}>
-                  <Radio.Group>
+                  <Radio.Group disabled>
                     <Radio.Button value="PAYMENT_SUCCESS"><BankOutlined /> 付款后打印</Radio.Button>
                     <Radio.Button value="ORDER_CREATED"><ClockCircleOutlined /> 下单后打印</Radio.Button>
                   </Radio.Group>

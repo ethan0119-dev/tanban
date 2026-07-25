@@ -20,6 +20,7 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)
 	r.Get("/stores/{storeCode}", s.publicStore)
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
+	r.Get("/stores/{storeCode}/membership", s.publicMembership)
 	r.Get("/stores/{storeCode}/stored-value", s.publicStoredValue)
 	r.Post("/stores/{storeCode}/orders", s.publicCreateOrder)
 	r.Get("/orders/{orderNo}", s.publicGetOrder)
@@ -28,6 +29,80 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Post("/payments/{paymentID}/mock-confirm", s.publicMockConfirm)
 	r.Get("/customer/orders", s.publicCustomerOrders)
 	s.registerPublicMarketingRoutes(r)
+}
+
+func (s *Server) publicMembership(w http.ResponseWriter, r *http.Request) {
+	store, err := s.findPublicStore(r.Context(), chi.URLParam(r, "storeCode"))
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var enabled, showBalance bool
+	var cardName, cardColor, cardImageURL, agreementURL string
+	err = s.DB.QueryRowContext(r.Context(), `SELECT enabled,card_name,card_color,card_image_url,agreement_url,show_balance
+		FROM membership_settings WHERE tenant_id=?`, store.TenantID).
+		Scan(&enabled, &cardName, &cardColor, &cardImageURL, &agreementURL, &showBalance)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeData(w, http.StatusOK, map[string]any{"available": false, "levels": []any{}})
+		return
+	}
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	levels := []map[string]any{}
+	if enabled {
+		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,rank_no,acquire_type,price_cents,valid_days,benefits_json,is_default
+			FROM member_levels WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL ORDER BY rank_no,id`, store.TenantID)
+		if queryErr != nil {
+			handleSQLError(w, queryErr)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, price int64
+			var rank, validDays int
+			var name, acquireType, benefitsJSON string
+			var isDefault bool
+			if scanErr := rows.Scan(&id, &name, &rank, &acquireType, &price, &validDays, &benefitsJSON, &isDefault); scanErr != nil {
+				handleSQLError(w, scanErr)
+				return
+			}
+			levels = append(levels, map[string]any{"id": id, "name": name, "rank": rank, "acquireType": acquireType, "rechargeCents": price, "validDays": validDays, "discountPercent": decodeMemberDiscount(benefitsJSON), "isDefault": isDefault})
+		}
+	}
+	view := map[string]any{
+		"available": enabled,
+		"card":      map[string]any{"name": cardName, "color": cardColor, "imageUrl": cardImageURL, "agreementUrl": agreementURL, "showBalance": showBalance},
+		"levels":    levels,
+	}
+	guestKey := strings.TrimSpace(r.Header.Get("X-Customer-Key"))
+	openID := strings.TrimSpace(r.Header.Get("X-Wechat-Openid"))
+	if enabled && (guestKey != "" || openID != "") {
+		identityColumn, identityValue := "guest_key", guestKey
+		if openID != "" {
+			identityColumn, identityValue = "wechat_openid", openID
+		}
+		var memberID sql.NullInt64
+		var memberNo, levelName string
+		var levelID sql.NullInt64
+		var principal, bonus int64
+		memberErr := s.DB.QueryRowContext(r.Context(), `SELECT m.id,COALESCE(m.member_no,''),m.current_level_id,COALESCE(l.name,''),
+			COALESCE(ba.principal_cents,0),COALESCE(ba.bonus_cents,0)
+			FROM customers c
+			LEFT JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
+			LEFT JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id AND l.status='ACTIVE' AND l.deleted_at IS NULL
+			LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id
+			WHERE c.tenant_id=? AND c.`+identityColumn+`=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
+			store.TenantID, identityValue).Scan(&memberID, &memberNo, &levelID, &levelName, &principal, &bonus)
+		if memberErr == nil {
+			view["member"] = map[string]any{"memberId": memberID.Int64, "memberNo": memberNo, "levelId": levelID.Int64, "levelName": levelName, "principalCents": principal, "bonusCents": bonus, "balanceCents": principal + bonus}
+		} else if !errors.Is(memberErr, sql.ErrNoRows) {
+			handleSQLError(w, memberErr)
+			return
+		}
+	}
+	writeData(w, http.StatusOK, view)
 }
 
 func (s *Server) publicStoredValue(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +184,11 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	memberBenefit, err := s.publicMemberBenefitByIdentity(r.Context(), store.TenantID, strings.TrimSpace(r.Header.Get("X-Customer-Key")), strings.TrimSpace(r.Header.Get("X-Wechat-Openid")))
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	products, err := s.loadProducts(r.Context(), store.TenantID, store.ID, true, 0)
 	if err != nil {
 		handleSQLError(w, err)
@@ -147,16 +227,29 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 			if index == 0 || sku.PriceCents < minPrice {
 				minPrice = sku.PriceCents
 			}
-			publicSKUs = append(publicSKUs, map[string]any{"id": sku.ID, "name": sku.Name, "price": sku.PriceCents, "stock": sku.Stock, "soldOut": sku.Stock <= 0})
+			skuView := map[string]any{"id": sku.ID, "name": sku.Name, "price": sku.PriceCents, "stock": sku.Stock, "soldOut": sku.Stock <= 0}
+			if product.MemberDiscount && memberBenefit.DiscountPercent < 100 {
+				skuView["memberPrice"] = discountedMemberPrice(sku.PriceCents, memberBenefit.DiscountPercent)
+			}
+			publicSKUs = append(publicSKUs, skuView)
 		}
 		configuration, configErr := s.loadProductConfiguration(r.Context(), store.TenantID, store.ID, product.ID, true)
 		if configErr != nil {
 			handleSQLError(w, configErr)
 			return
 		}
-		publicProducts = append(publicProducts, map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "recommended": product.Recommended, "inStoreEnabled": product.InStoreEnabled, "deliveryEnabled": product.DeliveryEnabled, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)})
+		productView := map[string]any{"id": product.ID, "categoryId": product.CategoryID, "name": product.Name, "description": product.Description, "imageUrl": product.ImageURL, "images": publicImages, "price": minPrice, "stock": stock, "soldOut": len(product.SKUs) == 0 || stock <= 0, "recommended": product.Recommended, "memberDiscountEnabled": product.MemberDiscount, "inStoreEnabled": product.InStoreEnabled, "deliveryEnabled": product.DeliveryEnabled, "skus": publicSKUs, "optionGroups": publicOptionGroups(configuration.OptionGroups), "modifierGroups": publicModifierGroups(configuration.ModifierGroups)}
+		if product.MemberDiscount && memberBenefit.DiscountPercent < 100 {
+			productView["memberPrice"] = discountedMemberPrice(minPrice, memberBenefit.DiscountPercent)
+			productView["memberDiscountPercent"] = memberBenefit.DiscountPercent
+		}
+		publicProducts = append(publicProducts, productView)
 	}
-	writeData(w, http.StatusOK, map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts})
+	catalogView := map[string]any{"store": s.publicStoreView(r.Context(), store), "categories": publicCategories, "products": publicProducts}
+	if memberBenefit.MemberID > 0 {
+		catalogView["membership"] = map[string]any{"memberId": memberBenefit.MemberID, "levelId": memberBenefit.LevelID, "levelName": memberBenefit.LevelName, "discountPercent": memberBenefit.DiscountPercent}
+	}
+	writeData(w, http.StatusOK, catalogView)
 }
 
 func publicOptionGroups(groups []productOptionGroupDTO) []map[string]any {
@@ -281,6 +374,98 @@ type publicOrderInput struct {
 	CustomerLongitude           *float64               `json:"customerLongitude"`
 	CouponCampaignID            int64                  `json:"couponCampaignId"`
 	DisableStorePromotion       bool                   `json:"disableStorePromotion"`
+	DinerCount                  int                    `json:"dinerCount"`
+}
+
+type publicMemberBenefit struct {
+	CustomerID      int64
+	MemberID        int64
+	LevelID         int64
+	LevelName       string
+	DiscountPercent int
+}
+
+func discountedMemberPrice(amount int64, percent int) int64 {
+	if percent <= 0 || percent >= 100 {
+		return amount
+	}
+	return (amount*int64(percent) + 50) / 100
+}
+
+func decodeMemberDiscount(benefitsJSON string) int {
+	benefits := map[string]any{}
+	if json.Unmarshal([]byte(benefitsJSON), &benefits) != nil {
+		return 100
+	}
+	raw, ok := benefits["discount"]
+	if !ok {
+		return 100
+	}
+	var discount int
+	switch value := raw.(type) {
+	case float64:
+		discount = int(value)
+	case string:
+		discount, _ = strconv.Atoi(strings.TrimSpace(value))
+	}
+	if discount < 1 || discount > 100 {
+		return 100
+	}
+	return discount
+}
+
+func (s *Server) publicMemberBenefitByIdentity(ctx context.Context, tenantID int64, guestKey, openID string) (publicMemberBenefit, error) {
+	if guestKey == "" && openID == "" {
+		return publicMemberBenefit{DiscountPercent: 100}, nil
+	}
+	identityColumn, identityValue := "guest_key", guestKey
+	if openID != "" {
+		identityColumn, identityValue = "wechat_openid", openID
+	}
+	var result publicMemberBenefit
+	var benefitsJSON string
+	err := s.DB.QueryRowContext(ctx, `SELECT c.id,m.id,l.id,l.name,l.benefits_json
+		FROM customers c
+		JOIN membership_settings ms ON ms.tenant_id=c.tenant_id AND ms.enabled=1
+		JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
+			AND (m.expires_at IS NULL OR m.expires_at>NOW(3))
+		JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id
+			AND l.status='ACTIVE' AND l.deleted_at IS NULL
+		WHERE c.tenant_id=? AND c.`+identityColumn+`=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
+		tenantID, identityValue).Scan(&result.CustomerID, &result.MemberID, &result.LevelID, &result.LevelName, &benefitsJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return publicMemberBenefit{DiscountPercent: 100}, nil
+	}
+	if err != nil {
+		return publicMemberBenefit{}, err
+	}
+	result.DiscountPercent = decodeMemberDiscount(benefitsJSON)
+	return result, nil
+}
+
+func publicMemberBenefitByCustomer(ctx context.Context, queryer sqlQueryer, tenantID, customerID int64) (publicMemberBenefit, error) {
+	if customerID <= 0 {
+		return publicMemberBenefit{DiscountPercent: 100}, nil
+	}
+	var result publicMemberBenefit
+	var benefitsJSON string
+	err := queryer.QueryRowContext(ctx, `SELECT c.id,m.id,l.id,l.name,l.benefits_json
+		FROM customers c
+		JOIN membership_settings ms ON ms.tenant_id=c.tenant_id AND ms.enabled=1
+		JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
+			AND (m.expires_at IS NULL OR m.expires_at>NOW(3))
+		JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id
+			AND l.status='ACTIVE' AND l.deleted_at IS NULL
+		WHERE c.tenant_id=? AND c.id=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
+		tenantID, customerID).Scan(&result.CustomerID, &result.MemberID, &result.LevelID, &result.LevelName, &benefitsJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return publicMemberBenefit{CustomerID: customerID, DiscountPercent: 100}, nil
+	}
+	if err != nil {
+		return publicMemberBenefit{}, err
+	}
+	result.DiscountPercent = decodeMemberDiscount(benefitsJSON)
+	return result, nil
 }
 
 type publicOrderCoupon struct {
@@ -369,6 +554,17 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if orderType != orderTypeTakeout && input.FastFoodPlatePublicID != "" {
 		writeError(w, http.StatusBadRequest, "FAST_FOOD_PLATE_NOT_ALLOWED", "fastFoodPlatePublicId is only valid for a takeout order")
 		return
+	}
+	if input.OrderType == orderTypeDineIn {
+		if input.DinerCount == 0 {
+			input.DinerCount = 1
+		}
+		if input.DinerCount < 1 || input.DinerCount > 99 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "dinerCount must be between 1 and 99 for dine-in orders")
+			return
+		}
+	} else {
+		input.DinerCount = 1
 	}
 	input.OpenID = strings.TrimSpace(input.OpenID)
 	input.CustomerKey = strings.TrimSpace(input.CustomerKey)
@@ -498,7 +694,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
 		err = tx.QueryRowContext(r.Context(), `SELECT id,total_cents,addition_count+1 FROM orders
 			WHERE tenant_id=? AND store_id=? AND table_id=? AND order_type='DINE_IN'
-			  AND settlement_mode_snapshot='PAY_AFTER' AND payment_status='UNPAID'
+			  AND settlement_mode_snapshot='PAY_AFTER' AND payment_status='UNPAID' AND paid_cents=0
 			  AND status IN ('PAID','ACCEPTED','PREPARING','READY')
 			  AND NOT EXISTS (SELECT 1 FROM payment_transactions p WHERE p.tenant_id=orders.tenant_id
 			    AND p.order_id=orders.id AND p.status IN ('CREATING','PENDING','SUCCESS'))
@@ -537,13 +733,26 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	customerID, err := upsertPublicOrderCustomer(r.Context(), tx, store, input)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	memberBenefit, err := publicMemberBenefitByCustomer(r.Context(), tx, store.TenantID, customerID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	type resolvedItem struct {
 		productID, skuID, basePrice, modifierPrice, unitPrice               int64
+		originalPrice, memberDiscount                                       int64
 		productName, skuName, productType, attrs, configuration, itemRemark string
+		memberDiscountEnabled                                               bool
 		quantity                                                            int
 	}
 	resolved := make([]resolvedItem, 0, len(input.Items))
 	var total int64
+	var memberDiscountTotal int64
 	for _, requested := range input.Items {
 		if requested.SKUID == 0 {
 			requested.SKUID = requested.LegacySKU
@@ -554,8 +763,8 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		var row resolvedItem
 		var stock int
-		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,p.product_type,s.attributes_json,s.price_cents,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN categories c ON c.id=p.category_id AND c.tenant_id=p.tenant_id AND c.store_id=p.store_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND p.in_store_enabled=1 AND c.status='ACTIVE' AND c.in_store_enabled=1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
-			Scan(&row.productID, &row.skuID, &row.productName, &row.skuName, &row.productType, &row.attrs, &row.basePrice, &stock)
+		err = tx.QueryRowContext(r.Context(), `SELECT p.id,s.id,p.name,s.name,p.product_type,s.attributes_json,s.price_cents,p.member_discount_enabled,i.stock FROM skus s JOIN products p ON p.id=s.product_id JOIN categories c ON c.id=p.category_id AND c.tenant_id=p.tenant_id AND c.store_id=p.store_id JOIN inventory i ON i.sku_id=s.id WHERE s.id=? AND s.tenant_id=? AND s.store_id=? AND s.status='ACTIVE' AND p.status='ACTIVE' AND p.in_store_enabled=1 AND c.status='ACTIVE' AND c.in_store_enabled=1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE`, requested.SKUID, store.TenantID, store.ID).
+			Scan(&row.productID, &row.skuID, &row.productName, &row.skuName, &row.productType, &row.attrs, &row.basePrice, &row.memberDiscountEnabled, &stock)
 		if err != nil || stock < requested.Quantity {
 			writeError(w, http.StatusConflict, "ITEM_UNAVAILABLE", "an item is sold out or unavailable")
 			return
@@ -578,7 +787,12 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "INVALID_PRICE", "configured unit price is outside the allowed range")
 			return
 		}
-		row.unitPrice = row.basePrice + row.modifierPrice
+		row.originalPrice = row.basePrice + row.modifierPrice
+		row.unitPrice = row.originalPrice
+		if row.memberDiscountEnabled && memberBenefit.MemberID > 0 && memberBenefit.DiscountPercent < 100 {
+			row.unitPrice = discountedMemberPrice(row.originalPrice, memberBenefit.DiscountPercent)
+			row.memberDiscount = row.originalPrice - row.unitPrice
+		}
 		row.configuration = resolvedConfiguration.SnapshotJSON
 		row.itemRemark = requested.ItemRemark
 		if stockErr := reserveStock(r.Context(), tx, store.TenantID, requested.SKUID, requested.Quantity); errors.Is(stockErr, errInsufficientStock) {
@@ -599,6 +813,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		total += subtotal
+		memberDiscountTotal += row.memberDiscount * int64(row.quantity)
 		resolved = append(resolved, row)
 	}
 	merchandiseSubtotal := total
@@ -674,11 +889,6 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		appliedCoupon.CampaignID = input.CouponCampaignID
 		total -= appliedCoupon.Discount
 	}
-	customerID, err := upsertPublicOrderCustomer(r.Context(), tx, store, input)
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
 	if additionOrderID > 0 {
 		if total > maxCatalogOrderCents-additionCurrentTotal {
 			writeError(w, http.StatusConflict, "ORDER_AMOUNT_LIMIT", "table bill amount exceeds the allowed range")
@@ -687,7 +897,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		additionResult, updateErr := tx.ExecContext(r.Context(), `UPDATE orders SET
 			total_cents=total_cents+?,merchandise_subtotal_cents=merchandise_subtotal_cents+?,
 			store_promotion_discount_cents=store_promotion_discount_cents+?,
-			coupon_discount_cents=coupon_discount_cents+?,addition_count=addition_count+1,
+			coupon_discount_cents=coupon_discount_cents+?,member_discount_cents=member_discount_cents+?,addition_count=addition_count+1,
 			store_promotion_id=COALESCE(?,store_promotion_id),
 			store_promotion_name=IF(?<>'',?,store_promotion_name),
 			coupon_campaign_id=COALESCE(?,coupon_campaign_id),
@@ -697,7 +907,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			status=IF(status='READY','PAID',status),updated_at=NOW(3)
 			WHERE id=? AND tenant_id=? AND payment_status='UNPAID'
 			  AND settlement_mode_snapshot='PAY_AFTER' AND addition_count=?`,
-			total, merchandiseSubtotal, appliedPromotion.DiscountCents, appliedCoupon.Discount,
+			total, merchandiseSubtotal, appliedPromotion.DiscountCents, appliedCoupon.Discount, memberDiscountTotal,
 			nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.Name,
 			nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Name,
 			nullableID(customerID), input.OpenID, input.CustomerName, input.CustomerPhone,
@@ -731,7 +941,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, row := range resolved {
-			if _, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, additionOrderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity)); err != nil {
+			if _, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,addition_sequence,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,original_unit_price_cents,member_discount_cents,member_level_id_snapshot,member_level_name_snapshot,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, additionOrderID, additionSequence, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.originalPrice, row.memberDiscount, nullableID(memberBenefit.LevelID), memberBenefit.LevelName, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity)); err != nil {
 				handleSQLError(w, err)
 				return
 			}
@@ -769,8 +979,8 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
 		initialStatus = "PAID"
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,customer_openid,customer_id,member_id_snapshot,member_level_id_snapshot,member_level_name_snapshot,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,member_discount_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -805,7 +1015,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, row := range resolved {
-		_, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, orderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity))
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO order_items(tenant_id,order_id,addition_sequence,product_id,sku_id,product_name,sku_name,product_type,base_price_cents,modifier_price_cents,original_unit_price_cents,member_discount_cents,member_level_id_snapshot,member_level_name_snapshot,attributes_json,configuration_json,item_remark,unit_price_cents,quantity,subtotal_cents) VALUES(?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, orderID, row.productID, row.skuID, row.productName, row.skuName, row.productType, row.basePrice, row.modifierPrice, row.originalPrice, row.memberDiscount, nullableID(memberBenefit.LevelID), memberBenefit.LevelName, row.attrs, row.configuration, row.itemRemark, row.unitPrice, row.quantity, row.unitPrice*int64(row.quantity))
 		if err != nil {
 			handleSQLError(w, err)
 			return
@@ -861,7 +1071,50 @@ func upsertPublicOrderCustomer(ctx context.Context, tx *sql.Tx, store storeDTO, 
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	customerID, err := result.LastInsertId()
+	if err != nil || customerID <= 0 {
+		return 0, err
+	}
+	if err = ensureAutoMembershipTx(ctx, tx, store.TenantID, customerID); err != nil {
+		return 0, err
+	}
+	return customerID, nil
+}
+
+func ensureAutoMembershipTx(ctx context.Context, tx *sql.Tx, tenantID, customerID int64) error {
+	var enabled, autoEnroll bool
+	var levelID sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT enabled,auto_enroll,default_level_id
+		FROM membership_settings WHERE tenant_id=?`, tenantID).Scan(&enabled, &autoEnroll, &levelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !enabled || !autoEnroll || !levelID.Valid {
+		return nil
+	}
+	var validDays int
+	var acquireType string
+	if err = tx.QueryRowContext(ctx, `SELECT valid_days,acquire_type FROM member_levels
+		WHERE tenant_id=? AND id=? AND status='ACTIVE' AND deleted_at IS NULL`, tenantID, levelID.Int64).Scan(&validDays, &acquireType); errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var currentLevel any
+	var expires any
+	if acquireType == "FREE" {
+		currentLevel = levelID.Int64
+	}
+	if currentLevel != nil && validDays > 0 {
+		expires = time.Now().AddDate(0, 0, validDays)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO members(tenant_id,customer_id,member_no,current_level_id,expires_at)
+		VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE customer_id=VALUES(customer_id)`,
+		tenantID, customerID, newBusinessNo("MB"), currentLevel, expires)
+	return err
 }
 
 func (s *Server) publicGetOrder(w http.ResponseWriter, r *http.Request) {
@@ -943,13 +1196,13 @@ func (s *Server) publicCustomerOrders(w http.ResponseWriter, _ *http.Request) {
 func publicOrderView(order orderDTO) map[string]any {
 	items := make([]map[string]any, 0, len(order.Items))
 	for _, item := range order.Items {
-		items = append(items, map[string]any{"productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName, "configuration": item.Configuration, "itemRemark": item.ItemRemark, "price": item.UnitPriceCents, "quantity": item.Quantity, "amount": item.SubtotalCents})
+		items = append(items, map[string]any{"id": item.ID, "productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName, "configuration": item.Configuration, "itemRemark": item.ItemRemark, "price": item.UnitPriceCents, "originalPrice": item.OriginalCents, "memberDiscount": item.MemberDiscount, "memberLevelName": item.MemberLevel, "additionSequence": item.Addition, "quantity": item.Quantity, "amount": item.SubtotalCents})
 	}
 	paymentStatus := order.PaymentStatus
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "canAddItems": order.SettlementMode == "PAY_AFTER" && order.PaymentStatus == "UNPAID" && validStatus(order.Status, "PAID", "ACCEPTED", "PREPARING", "READY"), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "dinerCount": order.DinerCount, "memberLevelName": order.MemberLevel, "memberDiscount": order.MemberDiscount, "canAddItems": order.SettlementMode == "PAY_AFTER" && order.PaymentStatus == "UNPAID" && order.PaidCents == 0 && validStatus(order.Status, "PAID", "ACCEPTED", "PREPARING", "READY"), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "paidAmount": order.PaidCents, "remainingAmount": order.RemainingCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
 	if order.FastFoodPlate != nil {
 		view["fastFoodPlate"] = map[string]any{"publicId": order.FastFoodPlate.PublicID, "plateName": order.FastFoodPlate.Name, "plateCode": order.FastFoodPlate.PlateCode}
 		view["fastFoodPlatePublicId"] = order.FastFoodPlate.PublicID

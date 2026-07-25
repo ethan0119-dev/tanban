@@ -201,6 +201,15 @@ export function OrderingPanel({ config, onChange }: ConfigPanelProps) {
           <Form.Item label="信息密度"><Segmented block value={config.ordering.density} options={[{ label: '舒适', value: 'COMFORTABLE' }, { label: '紧凑', value: 'COMPACT' }]} onChange={(density) => update({ density: density as DecorationConfig['ordering']['density'] })} /></Form.Item>
           <Form.Item label="商品加载"><Segmented block value={config.ordering.loadMode} options={[{ label: '按分类加载', value: 'BY_CATEGORY' }, { label: '一次加载全部', value: 'ALL' }]} onChange={(loadMode) => update({ loadMode: loadMode as DecorationConfig['ordering']['loadMode'] })} /></Form.Item>
           <Form.Item label="加购方式"><Segmented block value={config.ordering.productActionMode} options={[{ label: '打开规格面板', value: 'SKU_SHEET' }, { label: '直接加入', value: 'DIRECT_ADD' }]} onChange={(productActionMode) => update({ productActionMode: productActionMode as DecorationConfig['ordering']['productActionMode'] })} /></Form.Item>
+          <Form.Item label="购物车样式" extra="按钮、徽标和金额会自动跟随全店主色、强调色与圆角设置。">
+            <Radio.Group value={config.ordering.cartTemplate} onChange={(event) => update({ cartTemplate: event.target.value })}>
+              <Space direction="vertical">
+                <Radio value="CLASSIC">经典金额栏</Radio>
+                <Radio value="COUNT_ACTION">件数＋去下单（参考图一）</Radio>
+                <Radio value="PROMO_CAPSULE">优惠胶囊栏（参考图二）</Radio>
+              </Space>
+            </Radio.Group>
+          </Form.Item>
         </Form>
       </Card>
       <Card size="small" className="decor-section-card" title="商品信息">

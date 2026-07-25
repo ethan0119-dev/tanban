@@ -111,6 +111,14 @@ func (s *Server) createPrinter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
+	var settlementMode string
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(os.settlement_mode,'PAY_BEFORE')
+		FROM stores st LEFT JOIN store_operation_settings os ON os.tenant_id=st.tenant_id AND os.store_id=st.id
+		WHERE st.id=? AND st.tenant_id=? AND st.deleted_at IS NULL`, storeID, identity.TenantID).Scan(&settlementMode); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	input.PrintTrigger = settlementPrintTrigger(settlementMode)
 	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO printer_devices(tenant_id,store_id,name,provider,model,sn,paper_width,label_width_mm,label_height_mm,print_trigger,output_type,copy_roles,template_text,status)
 		SELECT ?,id,?,?,?,?,?,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, identity.TenantID, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, nullablePositiveInt(input.LabelWidthMM), nullablePositiveInt(input.LabelHeightMM), input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, storeID, identity.TenantID)
 	if err != nil {
@@ -254,6 +262,19 @@ func (s *Server) updatePrinter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
+	var storeID int64
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT store_id FROM printer_devices WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID).Scan(&storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var settlementMode string
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(os.settlement_mode,'PAY_BEFORE')
+		FROM stores st LEFT JOIN store_operation_settings os ON os.tenant_id=st.tenant_id AND os.store_id=st.id
+		WHERE st.id=? AND st.tenant_id=? AND st.deleted_at IS NULL`, storeID, identity.TenantID).Scan(&settlementMode); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	input.PrintTrigger = settlementPrintTrigger(settlementMode)
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE printer_devices SET name=?,provider=?,model=?,sn=?,paper_width=?,label_width_mm=?,label_height_mm=?,print_trigger=?,output_type=?,copy_roles=?,template_text=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.Name, input.Provider, input.Model, input.SN, input.PaperWidth, nullablePositiveInt(input.LabelWidthMM), nullablePositiveInt(input.LabelHeightMM), input.PrintTrigger, input.OutputType, input.CopyRolesDatabase, input.TemplateText, input.Status, id, identity.TenantID)
 	if err != nil {
 		handleSQLError(w, err)
@@ -410,9 +431,22 @@ func (s *Server) enqueueOrderPrintsWith(ctx context.Context, executor sqlQueryEx
 }
 
 func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQueryExecer, tenantID, storeID, orderID int64, event string, reprint bool, actorID int64, extra, outputType string) error {
+	return s.enqueueOrderPrintsWithOutputAndRole(ctx, executor, tenantID, storeID, orderID, event, reprint, actorID, extra, outputType, "")
+}
+
+func (s *Server) enqueueOrderPrintsWithOutputAndRole(ctx context.Context, executor sqlQueryExecer, tenantID, storeID, orderID int64, event string, reprint bool, actorID int64, extra, outputType, copyRole string) error {
 	order, err := s.loadOrderWith(ctx, executor, tenantID, orderID, "")
 	if err != nil {
 		return err
+	}
+	if sequence := printAdditionSequence(extra); sequence > 0 {
+		items := make([]orderItemDTO, 0, len(order.Items))
+		for _, item := range order.Items {
+			if item.Addition == sequence {
+				items = append(items, item)
+			}
+		}
+		order.Items = items
 	}
 	if err = ensureDefaultPrintTemplates(ctx, executor, tenantID, storeID); err != nil {
 		return err
@@ -457,8 +491,16 @@ func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQ
 			templates = []activePrintTemplate{{CopyRole: copyRole, TemplateType: device.OutputType, Content: device.TemplateText, TriggerEvent: device.PrintTrigger, Copies: 1, PaperWidth: device.PaperWidth}}
 		}
 		for _, template := range templates {
+			if copyRole != "" && template.CopyRole != copyRole {
+				continue
+			}
 			if !printerAllowsCopyRole(device, template.CopyRole) {
 				continue
+			}
+			if event == "REPRINT" && copyRole != "" {
+				// An explicit operator request for one copy role is allowed even
+				// when that role is disabled for automatic printing.
+				template.Enabled = true
 			}
 			contentTemplate, copies, shouldPrint := resolvePrintPlan(device, template, event)
 			if !shouldPrint {
@@ -485,6 +527,20 @@ func (s *Server) enqueueOrderPrintsWithOutput(ctx context.Context, executor sqlQ
 		}
 	}
 	return nil
+}
+
+func printAdditionSequence(extra string) int {
+	const prefix = "【加单 #"
+	const suffix = "】"
+	value := strings.TrimSpace(extra)
+	if !strings.HasPrefix(value, prefix) || !strings.HasSuffix(value, suffix) {
+		return 0
+	}
+	sequence, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(value, prefix), suffix))
+	if sequence < 2 {
+		return 0
+	}
+	return sequence
 }
 
 func printerAllowsCopyRole(device printerDTO, copyRole string) bool {
@@ -665,6 +721,9 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	if layoutBool(template.Layout, "showTable", true) && order.Table != nil {
 		appendReceiptBodyLines(&output, []string{printKeyValue("桌台", strings.TrimSpace(order.Table.AreaName+" "+order.Table.Name+" "+order.Table.TableCode), width)}, fontSize)
 	}
+	if order.OrderType == orderTypeDineIn && order.DinerCount > 0 {
+		appendReceiptBodyLines(&output, []string{printKeyValue("人数", strconv.Itoa(order.DinerCount)+" 人", width)}, fontSize)
+	}
 	if createdAt := printableOrderTime(order.CreatedAt); layoutBool(template.Layout, "showOrderTime", true) && createdAt != "" {
 		appendReceiptBodyLines(&output, []string{printKeyValue("下单时间", createdAt, width)}, fontSize)
 	}
@@ -714,10 +773,16 @@ func renderStructuredReceipt(template activePrintTemplate, order orderDTO, extra
 	}
 	if layoutBool(template.Layout, "showPrices", template.CopyRole != "KITCHEN") {
 		appendReceiptMarkup(&output, separator, "LEFT", false, false)
-		appendReceiptBodyLines(&output, []string{printTwoColumns("合计", formatPrintAmount(order.TotalCents), width)}, fontSize)
+		totalLabel := "合计"
+		if printAdditionSequence(extra) > 0 {
+			totalLabel = "累计应收"
+		}
+		appendReceiptBodyLines(&output, []string{printTwoColumns(totalLabel, formatPrintAmount(order.TotalCents), width)}, fontSize)
 	}
 	if layoutBool(template.Layout, "showPayment", template.CopyRole != "KITCHEN") {
-		if layoutBool(template.Layout, "emphasizePaid", true) {
+		if order.SettlementMode == "PAY_AFTER" && order.PaymentStatus == "UNPAID" {
+			appendReceiptBodyLines(&output, []string{printTwoColumns("待结账", formatPrintAmount(order.TotalCents), width)}, fontSize)
+		} else if layoutBool(template.Layout, "emphasizePaid", true) {
 			paidWidth := printableColumns(template.PaperWidth, "LARGE")
 			appendReceiptMarkup(&output, printTwoColumns("实付", formatPrintAmount(order.PaidCents), paidWidth), "LEFT", true, false)
 		} else {
@@ -1295,6 +1360,7 @@ func renderOrderTemplate(template string, order orderDTO, items, extra string, r
 		"{{order_type}}", order.OrderType,
 		"{{paid_amount}}", formatPrintAmount(order.PaidCents),
 		"{{paid_cents}}", int64String(order.PaidCents),
+		"{{diner_count}}", strconv.Itoa(order.DinerCount),
 		"{{table_name}}", tableName,
 		"{{table_area}}", tableArea,
 		"{{table_code}}", tableCode,
@@ -1393,6 +1459,7 @@ type reprintOrderInput struct {
 	Type          string `json:"type"`
 	OutputType    string `json:"output_type"`
 	BusinessType  string `json:"business_type"`
+	CopyRole      string `json:"copy_role"`
 	MarkAsReprint bool   `json:"markAsReprint"`
 }
 
@@ -1417,17 +1484,26 @@ func (s *Server) reprintOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "type must be RECEIPT or LABEL")
 		return
 	}
+	copyRole := strings.ToUpper(strings.TrimSpace(input.CopyRole))
+	if copyRole != "" && !validStatus(copyRole, "MERCHANT", "CUSTOMER", "KITCHEN", "ITEM") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "copy_role must be MERCHANT, CUSTOMER, KITCHEN or ITEM")
+		return
+	}
+	if outputType == "LABEL" && copyRole != "" && copyRole != "ITEM" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "label output only supports ITEM copy_role")
+		return
+	}
 	var storeID int64
 	if err := s.DB.QueryRowContext(r.Context(), "SELECT store_id FROM orders WHERE id=? AND tenant_id=?", id, identity.TenantID).Scan(&storeID); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if err := s.enqueueOrderPrintsWithOutput(r.Context(), s.DB, identity.TenantID, storeID, id, "REPRINT", true, identity.UserID, "", outputType); err != nil {
+	if err := s.enqueueOrderPrintsWithOutputAndRole(r.Context(), s.DB, identity.TenantID, storeID, id, "REPRINT", true, identity.UserID, "", outputType, copyRole); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	s.audit(r.Context(), identity, "order.reprint", "order", int64String(id), map[string]any{"output_type": outputType}, r)
-	writeData(w, http.StatusOK, map[string]any{"queued": true, "reprint": true, "output_type": outputType})
+	s.audit(r.Context(), identity, "order.reprint", "order", int64String(id), map[string]any{"output_type": outputType, "copy_role": copyRole}, r)
+	writeData(w, http.StatusOK, map[string]any{"queued": true, "reprint": true, "output_type": outputType, "copy_role": copyRole})
 }
 
 func (s *Server) listPrintJobs(w http.ResponseWriter, r *http.Request) {

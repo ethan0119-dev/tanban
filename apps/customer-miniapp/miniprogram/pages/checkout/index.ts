@@ -21,6 +21,7 @@ interface PaymentResult {
 }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 interface CouponChoiceEvent { currentTarget: { dataset: { id?: number | string } } }
+interface PickerChangeEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 
 function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): value is WechatMiniprogram.RequestPaymentOption {
   return Boolean(value?.timeStamp && value.nonceStr && value.package && value.signType && value.paySign);
@@ -35,7 +36,7 @@ function customerLocation(): Promise<{ customerLatitude: number; customerLongitu
 }
 
 Page({
-  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], subtotalAmount: 0, discountAmount: 0, promotionDiscountAmount: 0, couponDiscountAmount: 0, amount: 0, selectedCoupon: null as MarketingCoupon | null, eligibleCoupons: [] as MarketingCoupon[], couponSheetOpen: false, storePromotion: null as StoreFullReduction | null, promotionEnabled: true, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", appearanceStyle: "" },
+  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], subtotalAmount: 0, discountAmount: 0, promotionDiscountAmount: 0, couponDiscountAmount: 0, amount: 0, selectedCoupon: null as MarketingCoupon | null, eligibleCoupons: [] as MarketingCoupon[], couponSheetOpen: false, storePromotion: null as StoreFullReduction | null, promotionEnabled: true, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, dinerCount: 2, dinerOptions: Array.from({ length: 20 }, (_, index) => index + 1), detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", appearanceStyle: "" },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -95,6 +96,7 @@ Page({
       eligibleCoupons: coupons,
       storePromotion,
       fulfillmentType: flow.fulfillmentType,
+      dinerCount: tableContext ? 2 : 1,
       remark: flow.remark,
       detailsLocked: flow.submitted,
       submitting: Boolean(flow.orderNo),
@@ -159,6 +161,11 @@ Page({
   setCustomerPhone(event: TextInputEvent) {
     if (this.data.detailsLocked) return;
     this.setData({ customerPhone: event.detail.value.trim() });
+  },
+  selectDinerCount(event: PickerChangeEvent) {
+    if (this.data.detailsLocked) return;
+    const index = Number(event.detail.value || 0);
+    this.setData({ dinerCount: this.data.dinerOptions[index] || 1 });
   },
   chooseFulfillment() {
     if (this.data.tableContext) {
@@ -247,7 +254,7 @@ Page({
           order = await request<Order>({
             url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
             header: { "Idempotency-Key": flow.idempotencyKey },
-            data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
+            data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", dinerCount: tableContext ? this.data.dinerCount : 1, ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
           });
           rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
           this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -256,7 +263,7 @@ Page({
         order = await request<Order>({
           url: `/public/stores/${encodeURIComponent(storeCode)}/orders`, method: "POST",
           header: { "Idempotency-Key": flow.idempotencyKey },
-          data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
+          data: { customerKey: customerGuestKey(), customer_phone: this.data.customerPhone, couponCampaignId: this.data.selectedCoupon?.id || 0, disableStorePromotion: !this.data.promotionEnabled, ...locationFields, fulfillmentType: tableContext ? "DINE_IN" : "PICKUP", dinerCount: tableContext ? this.data.dinerCount : 1, ...tableOrderFields(tableContext), ...(fastFoodContext ? { fastFoodPlatePublicId: fastFoodContext.publicId } : {}), remark: orderRemark, items: this.data.cart.map((item) => ({ productId: item.productId, skuId: item.skuId, quantity: item.quantity, optionValueIds: item.optionValueIds || [], modifiers: item.modifiers || [], itemRemark: allowItemRemark ? (item.itemRemark || '') : '' })) },
         });
         rememberCheckoutOrder(flow.idempotencyKey, order.orderNo);
         this.setData({ checkoutKey: flow.idempotencyKey, orderNo: order.orderNo });
@@ -266,6 +273,14 @@ Page({
         remark: order.remark || "",
       });
       rememberOrder(storeCode, order.orderNo);
+      const payAfterMeal = Boolean(tableContext) && (order.settlementMode === "PAY_AFTER" || latestStore.orderingSettings?.settlementMode === "PAY_AFTER");
+      if (payAfterMeal) {
+        clearCart(storeCode);
+        if (this.data.selectedCoupon) forgetClaimedCoupon(storeCode, this.data.selectedCoupon.id);
+        clearCheckoutFlow(flow.idempotencyKey);
+        wx.redirectTo({ url: `/pages/order-detail/index?orderNo=${encodeURIComponent(order.orderNo)}` });
+        return;
+      }
       if (Number(order.amount) !== Number(this.data.amount)) {
         const previousAmount = this.data.amount;
         this.setData({ amount: order.amount, discountAmount: Math.max(0, this.data.subtotalAmount - order.amount) });

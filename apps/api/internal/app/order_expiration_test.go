@@ -139,17 +139,17 @@ func TestPaidCallbackWithoutReservationBecomesPaymentException(t *testing.T) {
 	paidAt := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.inventory_reserved")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.settlement_mode_snapshot,o.inventory_reserved")).
 		WithArgs("mock", "MOCK-1").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "inventory_reserved"}).
-			AddRow(2, 4, 5, 8, "PENDING", "PENDING_PAYMENT", "UNPAID", 0))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "settlement_mode_snapshot", "inventory_reserved"}).
+			AddRow(2, 4, 5, 8, "PENDING", "PENDING_PAYMENT", "UNPAID", "PAY_BEFORE", 0))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,provider,provider_order_no,status FROM payment_transactions")).
 		WithArgs(int64(4), int64(8), int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "provider", "provider_order_no", "status"}))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE payment_transactions SET status='SUCCESS',paid_at=? WHERE id=?")).
 		WithArgs(paidAt, int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?")).
-		WithArgs("PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=?,completed_at=IF(?='COMPLETED',?,completed_at) WHERE id=?")).
+		WithArgs("PAYMENT_EXCEPTION", paidAt, "PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE customer_coupons SET status='USED',used_at=NOW(3)")).
 		WithArgs(int64(4), int64(8)).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
@@ -177,10 +177,10 @@ func TestSecondSuccessfulPaymentAttemptBecomesPaymentException(t *testing.T) {
 	paidAt := time.Date(2026, 7, 20, 12, 5, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.inventory_reserved")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.settlement_mode_snapshot,o.inventory_reserved")).
 		WithArgs("mock", "MOCK-SECOND").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "inventory_reserved"}).
-			AddRow(3, 4, 5, 8, "PENDING", "PAID", "PAID", 0))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "settlement_mode_snapshot", "inventory_reserved"}).
+			AddRow(3, 4, 5, 8, "PENDING", "PAID", "PAID", "PAY_BEFORE", 0))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,provider,provider_order_no,status FROM payment_transactions")).
 		WithArgs(int64(4), int64(8), int64(3)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "provider", "provider_order_no", "status"}))
@@ -213,10 +213,10 @@ func TestLateSuccessClosesNewerPendingAttemptAndFlagsException(t *testing.T) {
 	paidAt := time.Date(2026, 7, 20, 12, 10, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.inventory_reserved")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.status,o.status,o.payment_status,o.settlement_mode_snapshot,o.inventory_reserved")).
 		WithArgs("mock", "MOCK-OLD").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "inventory_reserved"}).
-			AddRow(2, 4, 5, 8, "CLOSED", "PENDING_PAYMENT", "UNPAID", 1))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "store_id", "order_id", "payment_status", "order_status", "order_payment_status", "settlement_mode_snapshot", "inventory_reserved"}).
+			AddRow(2, 4, 5, 8, "CLOSED", "PENDING_PAYMENT", "UNPAID", "PAY_BEFORE", 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,provider,provider_order_no,status FROM payment_transactions")).
 		WithArgs(int64(4), int64(8), int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "provider", "provider_order_no", "status"}).AddRow(3, "mock", "MOCK-NEW", "PENDING"))
@@ -224,8 +224,8 @@ func TestLateSuccessClosesNewerPendingAttemptAndFlagsException(t *testing.T) {
 		WithArgs(int64(3), int64(4)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE payment_transactions SET status='SUCCESS',paid_at=? WHERE id=?")).
 		WithArgs(paidAt, int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=? WHERE id=?")).
-		WithArgs("PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE orders SET status=?,payment_status='PAID',inventory_reserved=0,stock_reserved_at=NULL,paid_cents=total_cents,paid_at=?,completed_at=IF(?='COMPLETED',?,completed_at) WHERE id=?")).
+		WithArgs("PAYMENT_EXCEPTION", paidAt, "PAYMENT_EXCEPTION", paidAt, int64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE customer_coupons SET status='USED',used_at=NOW(3)")).
 		WithArgs(int64(4), int64(8)).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()

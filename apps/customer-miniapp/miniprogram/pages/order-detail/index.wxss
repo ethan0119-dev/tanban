@@ -11,4 +11,15 @@
 .table-destination text:last-child { color: var(--muted); font-size: 24rpx; }
 .detail-line { display: flex; justify-content: space-between; padding: 20rpx 0; border-bottom: 1rpx solid var(--line); color: var(--muted); font-size: 24rpx; }
 .detail-line text:last-child { max-width: 65%; color: var(--ink); text-align: right; }
-.back { margin: 32rpx 28rpx; }
+.items-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18rpx; border-bottom: 1rpx solid var(--line); }
+.items-heading text:first-child { font-size: 30rpx; font-weight: var(--font-weight-semibold); }
+.items-heading text:last-child { color: var(--green); font-size: 21rpx; }
+.order-item { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; padding: 20rpx 0; border-bottom: 1rpx solid var(--line); }
+.order-item:last-child { border-bottom: 0; }
+.order-item > view { display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }
+.order-item > text { flex-shrink: 0; font-weight: var(--font-weight-semibold); }
+.member-saving { color: var(--green) !important; font-size: 21rpx; font-weight: var(--font-weight-semibold); }
+.order-actions { display: flex; flex-direction: column; gap: 16rpx; margin: 32rpx 28rpx; }
+.order-actions button { margin: 0; }
+.pay-button { font-size: 30rpx; }
+.secondary { border: 1rpx solid var(--green); background: var(--surface); color: var(--green); }

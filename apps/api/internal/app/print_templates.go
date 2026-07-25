@@ -420,6 +420,14 @@ func (s *Server) createPrintTemplate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var settlementMode string
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(os.settlement_mode,'PAY_BEFORE')
+		FROM stores st LEFT JOIN store_operation_settings os ON os.tenant_id=st.tenant_id AND os.store_id=st.id
+		WHERE st.id=? AND st.tenant_id=? AND st.deleted_at IS NULL`, storeID, identity.TenantID).Scan(&settlementMode); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	input.TriggerEvent = settlementPrintTrigger(settlementMode)
 	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO print_templates(tenant_id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,layout_json,status)
 		SELECT ?,id,?,?,?,?,?,?,?,?,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL
 		ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),name=VALUES(name),content_text=VALUES(content_text),trigger_event=VALUES(trigger_event),copies=VALUES(copies),paper_width=VALUES(paper_width),layout_json=VALUES(layout_json),status=VALUES(status),deleted_at=NULL`, identity.TenantID, input.BusinessType, input.TemplateType, input.CopyRole, input.Name, input.Content, input.TriggerEvent, input.Copies, input.PaperWidth, input.LayoutJSON, input.Status, storeID, identity.TenantID)
@@ -483,6 +491,19 @@ func (s *Server) updatePrintTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
+	var storeID int64
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT store_id FROM print_templates WHERE id=? AND tenant_id=? AND deleted_at IS NULL", id, identity.TenantID).Scan(&storeID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var settlementMode string
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(os.settlement_mode,'PAY_BEFORE')
+		FROM stores st LEFT JOIN store_operation_settings os ON os.tenant_id=st.tenant_id AND os.store_id=st.id
+		WHERE st.id=? AND st.tenant_id=? AND st.deleted_at IS NULL`, storeID, identity.TenantID).Scan(&settlementMode); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	input.TriggerEvent = settlementPrintTrigger(settlementMode)
 	_, err := s.DB.ExecContext(r.Context(), `UPDATE print_templates SET business_type=?,template_type=?,copy_role=?,name=?,content_text=?,trigger_event=?,copies=?,paper_width=?,layout_json=?,status=?
 		WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.BusinessType, input.TemplateType, input.CopyRole, input.Name, input.Content, input.TriggerEvent, input.Copies, input.PaperWidth, input.LayoutJSON, input.Status, id, identity.TenantID)
 	if err != nil {

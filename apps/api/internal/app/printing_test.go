@@ -188,6 +188,12 @@ func TestUpdatePrinterAcceptsUnchangedValues(t *testing.T) {
 	}
 	defer db.Close()
 
+	mock.ExpectQuery("SELECT store_id FROM printer_devices").
+		WithArgs(int64(11), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"store_id"}).AddRow(9))
+	mock.ExpectQuery("SELECT COALESCE\\(os.settlement_mode,'PAY_BEFORE'\\)").
+		WithArgs(int64(9), int64(5)).
+		WillReturnRows(sqlmock.NewRows([]string{"settlement_mode"}).AddRow("PAY_BEFORE"))
 	mock.ExpectExec("UPDATE printer_devices SET").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM printer_devices").
@@ -506,13 +512,14 @@ func TestEnqueueOrderPrintsCreatesIndependentJobsForEnabledCopyRoles(t *testing.
 		WithArgs(int64(2), int64(11)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "tenant_id", "store_id", "store_name", "order_no", "customer_name", "customer_phone", "remark", "source", "fulfillment_type", "order_type",
+			"settlement_mode_snapshot", "addition_count", "diner_count", "member_id_snapshot", "member_level_id_snapshot", "member_level_name_snapshot", "member_discount_cents",
 			"business_date", "pickup_sequence", "pickup_code", "fast_food_plate_id", "fast_food_plate_public_id_snapshot", "fast_food_plate_name_snapshot", "fast_food_plate_code_snapshot",
 			"table_id", "table_public_id_snapshot", "table_area_name_snapshot", "table_name_snapshot", "table_code_snapshot", "status", "payment_status", "total_cents", "paid_cents", "refunded_cents", "paid_at", "created_at",
-		}).AddRow(11, 2, 5, "码农咖啡", "TB11", "", "", "", "MINI_PROGRAM", "DINE_IN", orderTypeDineIn, "2026-07-20", nil, "", nil, "", "", "", nil, "", "", "", "", "PAID", "PAID", 1200, 1200, 0, nil, "2026-07-20T08:00:00Z"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items")).
+		}).AddRow(11, 2, 5, "码农咖啡", "TB11", "", "", "", "MINI_PROGRAM", "DINE_IN", orderTypeDineIn, "PAY_BEFORE", 1, 2, 0, 0, "", 0, "2026-07-20", nil, "", nil, "", "", "", nil, "", "", "", "", "PAID", "PAID", 1200, 1200, 0, nil, "2026-07-20T08:00:00Z"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,original_unit_price_cents,member_discount_cents,COALESCE(member_level_id_snapshot,0),member_level_name_snapshot,addition_sequence,unit_price_cents,quantity,subtotal_cents FROM order_items")).
 		WithArgs(int64(2), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "product_id", "sku_id", "product_name", "sku_name", "attributes_json", "configuration_json", "item_remark", "base_price_cents", "modifier_price_cents", "unit_price_cents", "quantity", "subtotal_cents"}).
-			AddRow(101, 201, 301, "美式", "大杯", `{}`, `{}`, "", 1200, 0, 1200, 1, 1200))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "product_id", "sku_id", "product_name", "sku_name", "attributes_json", "configuration_json", "item_remark", "base_price_cents", "modifier_price_cents", "original_unit_price_cents", "member_discount_cents", "member_level_id_snapshot", "member_level_name_snapshot", "addition_sequence", "unit_price_cents", "quantity", "subtotal_cents"}).
+			AddRow(101, 201, 301, "美式", "大杯", `{}`, `{}`, "", 1200, 0, 1200, 0, 0, "", 1, 1200, 1, 1200))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id,provider,provider_order_no,amount_cents,status FROM payment_transactions")).
 		WithArgs(int64(2), int64(11)).WillReturnError(sql.ErrNoRows)
 

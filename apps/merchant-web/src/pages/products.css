@@ -11,7 +11,7 @@
 .product-image-tile:hover .product-image-actions, .product-image-tile:focus-within .product-image-actions { opacity: 1; }
 .product-image-add { min-height: 142px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: #8d7d73; border-style: dashed; cursor: pointer; }
 .product-image-add:hover { color: #985b38; border-color: #bd8c6c; background: #fbf4ef; }
-.product-image-add .anticon { font-size: 24px; }
+.product-image-add > img { width: 56px; height: 49px; object-fit: contain; }
 .product-image-add strong { font-size: 12px; }
 .product-image-add small { color: #aaa09a; font-size: 10px; }
 .product-statistics-card .ant-card-body { padding: 4px 0; }

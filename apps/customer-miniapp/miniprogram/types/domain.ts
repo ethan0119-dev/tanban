@@ -94,6 +94,7 @@ export interface DecorationModule {
 export interface DecorationMenu {
   categoryLayout: "LEFT" | "TOP";
   productLayout: "LIST" | "GRID";
+  cartTemplate: "CLASSIC" | "COUNT_ACTION" | "PROMO_CAPSULE";
   showDescription: boolean;
   showStock: boolean;
   showSales: boolean;
@@ -161,6 +162,7 @@ export interface Store {
   decoration?: DecorationConfig;
   decorationVersion?: number;
   orderingSettings?: {
+    settlementMode: "PAY_BEFORE" | "PAY_AFTER";
     orderingMode: "SINGLE_PERSON" | "MULTI_PERSON";
     distanceCheckEnabled: boolean;
     distanceLimitM: number;
@@ -284,6 +286,7 @@ export interface Sku {
   id: number;
   name: string;
   price: number;
+  memberPrice?: number;
   stock: number;
   soldOut: boolean;
 }
@@ -339,6 +342,9 @@ export interface Product {
     sortOrder: number;
   }>;
   price: number;
+  memberPrice?: number;
+  memberDiscountEnabled?: boolean;
+  memberDiscountPercent?: number;
   stock: number;
   soldOut: boolean;
   inStoreEnabled?: boolean;
@@ -374,6 +380,12 @@ export interface Order {
   fastFoodPlate?: { publicId?: string; plateCode?: string; plateName?: string };
   status: string;
   paymentStatus: string;
+  settlementMode?: "PAY_BEFORE" | "PAY_AFTER";
+  additionCount?: number;
+  dinerCount?: number;
+  canAddItems?: boolean;
+  memberLevelName?: string;
+  memberDiscount?: number;
   fulfillmentType?: "PICKUP" | "DINE_IN";
   orderScene?: "TAKEOUT" | "DINE_IN";
   order_scene?: "TAKEOUT" | "DINE_IN";
@@ -389,9 +401,17 @@ export interface Order {
   };
   remark?: string;
   amount: number;
+  paidAmount?: number;
+  remainingAmount?: number;
   subtotal?: number;
   discount?: number;
   couponName?: string;
   createdAt: string;
-  items?: Array<CartItem & { amount: number }>;
+  items?: Array<CartItem & {
+    amount: number;
+    originalPrice?: number;
+    memberDiscount?: number;
+    memberLevelName?: string;
+    additionSequence?: number;
+  }>;
 }

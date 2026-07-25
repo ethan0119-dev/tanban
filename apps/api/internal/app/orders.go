@@ -30,6 +30,11 @@ type orderDTO struct {
 	OrderType      string                 `json:"order_type"`
 	SettlementMode string                 `json:"settlement_mode"`
 	AdditionCount  int                    `json:"addition_count"`
+	DinerCount     int                    `json:"diner_count"`
+	MemberID       int64                  `json:"member_id,omitempty"`
+	MemberLevelID  int64                  `json:"member_level_id,omitempty"`
+	MemberLevel    string                 `json:"member_level_name,omitempty"`
+	MemberDiscount int64                  `json:"member_discount_cents"`
 	BusinessDate   string                 `json:"business_date,omitempty"`
 	PickupSequence int64                  `json:"pickup_sequence,omitempty"`
 	PickupCode     string                 `json:"pickup_code,omitempty"`
@@ -39,6 +44,7 @@ type orderDTO struct {
 	PaymentStatus  string                 `json:"payment_status"`
 	TotalCents     int64                  `json:"total_cents"`
 	PaidCents      int64                  `json:"paid_cents"`
+	RemainingCents int64                  `json:"remaining_cents"`
 	RefundedCents  int64                  `json:"refunded_cents"`
 	PaidAt         *string                `json:"paid_at,omitempty"`
 	CreatedAt      string                 `json:"created_at"`
@@ -73,6 +79,11 @@ type orderItemDTO struct {
 	ItemRemark     string         `json:"item_remark"`
 	BasePriceCents int64          `json:"base_price_cents"`
 	ModifierCents  int64          `json:"modifier_price_cents"`
+	OriginalCents  int64          `json:"original_unit_price_cents"`
+	MemberDiscount int64          `json:"member_discount_cents"`
+	MemberLevelID  int64          `json:"member_level_id,omitempty"`
+	MemberLevel    string         `json:"member_level_name,omitempty"`
+	Addition       int            `json:"addition_sequence"`
 	UnitPriceCents int64          `json:"unit_price_cents"`
 	Quantity       int            `json:"quantity"`
 	SubtotalCents  int64          `json:"subtotal_cents"`
@@ -136,7 +147,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, size, offset)
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,COALESCE(member_id_snapshot,0),COALESCE(member_level_id_snapshot,0),member_level_name_snapshot,member_discount_cents,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders`+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		handleSQLError(w, err)
@@ -151,7 +162,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		var pickupSequence, fastFoodPlateID sql.NullInt64
 		var fastFoodPublicID, fastFoodName, fastFoodCode string
 		var tablePublicID, tableArea, tableName, tableCode string
-		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.DinerCount, &item.MemberID, &item.MemberLevelID, &item.MemberLevel, &item.MemberDiscount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -159,6 +170,10 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		setOrderPickupContext(&item, pickupSequence, fastFoodPlateID, fastFoodPublicID, fastFoodName, fastFoodCode)
 		if paidAt.Valid {
 			item.PaidAt = &paidAt.String
+		}
+		item.RemainingCents = item.TotalCents - item.PaidCents
+		if item.RemainingCents < 0 {
+			item.RemainingCents = 0
 		}
 		item.AvailableSteps = orderTransitions[item.Status]
 		items = append(items, item)
@@ -193,7 +208,7 @@ type sqlQueryer interface {
 }
 
 func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID, id int64, orderNo string) (orderDTO, error) {
-	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
+	query := `SELECT id,tenant_id,store_id,(SELECT name FROM stores WHERE stores.id=orders.store_id),order_no,customer_name,customer_phone,remark,source,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,COALESCE(member_id_snapshot,0),COALESCE(member_level_id_snapshot,0),member_level_name_snapshot,member_discount_cents,IF(business_date IS NULL,'',DATE_FORMAT(business_date,'%Y-%m-%d')),pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,status,payment_status,total_cents,paid_cents,refunded_cents,
 		IF(paid_at IS NULL,NULL,DATE_FORMAT(paid_at,'%Y-%m-%d %H:%i:%s')),DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM orders WHERE tenant_id=?`
 	args := []any{tenantID}
 	if id > 0 {
@@ -209,17 +224,21 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	var pickupSequence, fastFoodPlateID sql.NullInt64
 	var fastFoodPublicID, fastFoodName, fastFoodCode string
 	var tablePublicID, tableArea, tableName, tableCode string
-	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
+	err := queryer.QueryRowContext(ctx, query, args...).Scan(&item.ID, &item.TenantID, &item.StoreID, &item.StoreName, &item.OrderNo, &item.CustomerName, &item.CustomerPhone, &item.Remark, &item.Source, &item.Fulfillment, &item.OrderType, &item.SettlementMode, &item.AdditionCount, &item.DinerCount, &item.MemberID, &item.MemberLevelID, &item.MemberLevel, &item.MemberDiscount, &item.BusinessDate, &pickupSequence, &item.PickupCode, &fastFoodPlateID, &fastFoodPublicID, &fastFoodName, &fastFoodCode, &tableID, &tablePublicID, &tableArea, &tableName, &tableCode, &item.Status, &item.PaymentStatus, &item.TotalCents, &item.PaidCents, &item.RefundedCents, &paidAt, &item.CreatedAt)
 	if err != nil {
 		return item, err
 	}
 	if paidAt.Valid {
 		item.PaidAt = &paidAt.String
 	}
+	item.RemainingCents = item.TotalCents - item.PaidCents
+	if item.RemainingCents < 0 {
+		item.RemainingCents = 0
+	}
 	setOrderTable(&item, tableID, tablePublicID, tableArea, tableName, tableCode)
 	setOrderPickupContext(&item, pickupSequence, fastFoodPlateID, fastFoodPublicID, fastFoodName, fastFoodCode)
 	item.AvailableSteps = orderTransitions[item.Status]
-	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? ORDER BY id`, tenantID, item.ID)
+	rows, err := queryer.QueryContext(ctx, `SELECT id,product_id,sku_id,product_name,sku_name,attributes_json,COALESCE(configuration_json,'{}'),item_remark,base_price_cents,modifier_price_cents,original_unit_price_cents,member_discount_cents,COALESCE(member_level_id_snapshot,0),member_level_name_snapshot,addition_sequence,unit_price_cents,quantity,subtotal_cents FROM order_items WHERE tenant_id=? AND order_id=? AND quantity>0 ORDER BY id`, tenantID, item.ID)
 	if err != nil {
 		return item, err
 	}
@@ -227,7 +246,7 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	for rows.Next() {
 		var row orderItemDTO
 		var attrs, configuration string
-		if err := rows.Scan(&row.ID, &row.ProductID, &row.SKUID, &row.ProductName, &row.SKUName, &attrs, &configuration, &row.ItemRemark, &row.BasePriceCents, &row.ModifierCents, &row.UnitPriceCents, &row.Quantity, &row.SubtotalCents); err != nil {
+		if err := rows.Scan(&row.ID, &row.ProductID, &row.SKUID, &row.ProductName, &row.SKUName, &attrs, &configuration, &row.ItemRemark, &row.BasePriceCents, &row.ModifierCents, &row.OriginalCents, &row.MemberDiscount, &row.MemberLevelID, &row.MemberLevel, &row.Addition, &row.UnitPriceCents, &row.Quantity, &row.SubtotalCents); err != nil {
 			return item, err
 		}
 		_ = json.Unmarshal([]byte(attrs), &row.Attributes)
@@ -338,17 +357,23 @@ func (s *Server) settlePayAfterOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := currentIdentity(r.Context())
-	tx, err := s.DB.BeginTx(r.Context(), nil)
+	conn, release, err := s.acquirePaymentOrderLock(r.Context(), identity.TenantID, id)
+	if err != nil {
+		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", err.Error())
+		return
+	}
+	defer release()
+	tx, err := conn.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	defer tx.Rollback()
-	var storeID, totalCents int64
+	var storeID, totalCents, paidCents int64
 	var status, paymentStatus, settlementMode string
-	if err = tx.QueryRowContext(r.Context(), `SELECT store_id,total_cents,status,payment_status,settlement_mode_snapshot,inventory_reserved
+	if err = tx.QueryRowContext(r.Context(), `SELECT store_id,total_cents,paid_cents,status,payment_status,settlement_mode_snapshot,inventory_reserved
 		FROM orders WHERE id=? AND tenant_id=? FOR UPDATE`, id, identity.TenantID).
-		Scan(&storeID, &totalCents, &status, &paymentStatus, &settlementMode, new(int)); err != nil {
+		Scan(&storeID, &totalCents, &paidCents, &status, &paymentStatus, &settlementMode, new(int)); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -374,6 +399,11 @@ func (s *Server) settlePayAfterOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", "顾客正在支付，请确认支付结果后再操作线下结账")
 		return
 	}
+	remainingCents := totalCents - paidCents
+	if remainingCents <= 0 {
+		writeError(w, http.StatusConflict, "ORDER_NOT_SETTLEABLE", "订单已无待收金额")
+		return
+	}
 	reference := newBusinessNo("OF")
 	providerName := "external"
 	if input.Method == "CASH" {
@@ -382,7 +412,7 @@ func (s *Server) settlePayAfterOrder(w http.ResponseWriter, r *http.Request) {
 	raw, _ := json.Marshal(map[string]any{"method": input.Method, "remark": input.Remark, "confirmedBy": identity.UserID})
 	paymentResult, err := tx.ExecContext(r.Context(), `INSERT INTO payment_transactions(
 		tenant_id,store_id,order_id,provider,provider_request_no,provider_order_no,amount_cents,status,raw_response,paid_at
-	) VALUES(?,?,?,?,?,?,?,'SUCCESS',?,NOW(3))`, identity.TenantID, storeID, id, providerName, reference, reference, totalCents, string(raw))
+	) VALUES(?,?,?,?,?,?,?,'SUCCESS',?,NOW(3))`, identity.TenantID, storeID, id, providerName, reference, reference, remainingCents, string(raw))
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -451,9 +481,9 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var current, paymentStatus string
+	var current, paymentStatus, settlementMode string
 	var inventoryReserved int
-	if err := tx.QueryRowContext(r.Context(), "SELECT status,payment_status,inventory_reserved FROM orders WHERE id=? AND tenant_id=? FOR UPDATE", id, identity.TenantID).Scan(&current, &paymentStatus, &inventoryReserved); err != nil {
+	if err := tx.QueryRowContext(r.Context(), "SELECT status,payment_status,settlement_mode_snapshot,inventory_reserved FROM orders WHERE id=? AND tenant_id=? FOR UPDATE", id, identity.TenantID).Scan(&current, &paymentStatus, &settlementMode, &inventoryReserved); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -465,6 +495,10 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if !allowed || (input.Status == "CLOSED" && paymentStatus != "UNPAID") {
 		writeError(w, http.StatusConflict, "INVALID_TRANSITION", "order cannot transition from "+current+" to "+input.Status)
+		return
+	}
+	if input.Status == "COMPLETED" && settlementMode == "PAY_AFTER" && paymentStatus == "UNPAID" {
+		writeError(w, http.StatusConflict, "ORDER_NOT_SETTLED", "后付账订单必须先完成结账，系统会自动结束订单")
 		return
 	}
 	completedExpr, closedExpr := "completed_at", "closed_at"
@@ -681,7 +715,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 
 	var orderNo, orderStatus, orderPaymentStatus, settlementMode, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus string
 	var storeID, amount int64
-	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,o.total_cents,o.status,o.payment_status,o.settlement_mode_snapshot,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
+	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,GREATEST(o.total_cents-o.paid_cents,0),o.status,o.payment_status,o.settlement_mode_snapshot,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
 		t.payment_onboarding_status,t.payment_product_authorization_status
 		FROM orders o
 		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
@@ -739,7 +773,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
 	renewReservation := newReservation && !postPay
-	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? ORDER BY id DESC LIMIT 1", tenantID, orderID).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
+	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? AND provider=? ORDER BY id DESC LIMIT 1", tenantID, orderID, s.Payment.Name()).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
 	createAttempt := errors.Is(err, sql.ErrNoRows)
 	if err == nil {
 		switch existingStatus {
@@ -1094,12 +1128,12 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var storeID, totalCents, paymentID int64
-	var providerNo, merchantNo, paymentStatus string
-	err = tx.QueryRowContext(r.Context(), `SELECT o.store_id,o.paid_cents,p.id,p.provider_order_no,
+	var providerName, providerNo, merchantNo, paymentStatus string
+	err = tx.QueryRowContext(r.Context(), `SELECT o.store_id,p.amount_cents,p.id,p.provider,p.provider_order_no,
 		p.merchant_no,o.payment_status
 		FROM orders o JOIN payment_transactions p ON p.order_id=o.id AND p.status='SUCCESS'
 		WHERE o.id=? AND o.tenant_id=? ORDER BY p.id DESC LIMIT 1 FOR UPDATE`, input.OrderID, identity.TenantID).
-		Scan(&storeID, &totalCents, &paymentID, &providerNo, &merchantNo, &paymentStatus)
+		Scan(&storeID, &totalCents, &paymentID, &providerName, &providerNo, &merchantNo, &paymentStatus)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -1108,8 +1142,12 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "ORDER_NOT_REFUNDABLE", "order payment is not refundable")
 		return
 	}
+	if providerName != s.Payment.Name() {
+		writeError(w, http.StatusConflict, "OFFLINE_PAYMENT_REFUND_REQUIRED", "现金或系统外支付请在线下完成退款并保留交接记录")
+		return
+	}
 	var reserved int64
-	if err = tx.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount_cents),0) FROM refunds WHERE order_id=? AND status IN ('PENDING','SUCCESS')", input.OrderID).Scan(&reserved); err != nil {
+	if err = tx.QueryRowContext(r.Context(), "SELECT COALESCE(SUM(amount_cents),0) FROM refunds WHERE payment_id=? AND status IN ('PENDING','SUCCESS')", paymentID).Scan(&reserved); err != nil {
 		handleSQLError(w, err)
 		return
 	}

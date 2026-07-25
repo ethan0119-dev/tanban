@@ -20,15 +20,24 @@ func TestValidateOperationSettingsRequiresCoordinatesForDistanceCheck(t *testing
 	}
 }
 
-func TestValidateOperationSettingsRejectsPayAfterMealUntilWorkflowExists(t *testing.T) {
+func TestValidateOperationSettingsAcceptsPayAfterMeal(t *testing.T) {
 	input := storeOperationSettings{
 		SettlementMode:               "PAY_AFTER",
 		OrderingMode:                 "MULTI_PERSON",
 		DistanceLimitM:               1000,
 		OrderReminderIntervalMinutes: 5,
 	}
-	if err := validateOperationSettings(input); err == nil {
-		t.Fatal("pay-after-meal must stay unavailable until its order workflow exists")
+	if err := validateOperationSettings(input); err != nil {
+		t.Fatalf("pay-after-meal workflow should be available: %v", err)
+	}
+}
+
+func TestSettlementPrintTriggerFollowsSettlementMode(t *testing.T) {
+	if got := settlementPrintTrigger("PAY_AFTER"); got != "ORDER_CREATED" {
+		t.Fatalf("pay-after mode must print when the order is submitted, got %s", got)
+	}
+	if got := settlementPrintTrigger("PAY_BEFORE"); got != "PAYMENT_SUCCESS" {
+		t.Fatalf("pay-before mode must print after payment, got %s", got)
 	}
 }
 

@@ -19,7 +19,7 @@
         <view class="recommended-card" wx:for="{{recommendedProducts}}" wx:key="id">
           <view class="recommended-image-wrap"><image src="{{item.imageUrl || '/assets/tanban-product-fallback.png'}}" mode="aspectFill" /><text>推荐</text></view>
           <text class="recommended-name">{{item.name}}</text>
-          <view class="recommended-card-footer"><text class="price">¥{{item.price / 100}}</text><button class="{{item.requiresConfiguration ? 'with-text' : 'icon-only'}}" disabled="{{item.soldOut || (store && store.businessStatus !== 'OPEN')}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选择' : '＋'}}</button></view>
+          <view class="recommended-card-footer"><view class="member-price-line" wx:if="{{item.memberPrice !== undefined && item.memberPrice < item.price}}"><text class="price member-price">¥{{item.memberPrice / 100}}</text><text class="original-price">¥{{item.price / 100}}</text></view><text class="price" wx:else>¥{{item.price / 100}}</text><button class="{{item.requiresConfiguration ? 'with-text' : 'icon-only'}}" disabled="{{item.soldOut || (store && store.businessStatus !== 'OPEN')}}" data-id="{{item.id}}" bindtap="addProduct">{{item.requiresConfiguration ? '选择' : '＋'}}</button></view>
         </view>
       </view>
     </scroll-view>
@@ -37,7 +37,7 @@
         <view class="product-main">
           <text class="product-name">{{item.name}}</text>
           <text class="product-desc" wx:if="{{decoration.menu.showDescription}}">{{item.description || '用心制作，口味可选'}}</text>
-          <view class="product-meta"><text class="price">¥{{item.price / 100}}</text><text wx:if="{{decoration.menu.showStock}}">库存 {{item.stock}}</text><text wx:if="{{decoration.menu.showSales && item.sales !== undefined}}">已售 {{item.sales}}</text></view>
+          <view class="product-meta"><view class="member-price-line" wx:if="{{item.memberPrice !== undefined && item.memberPrice < item.price}}"><text class="price member-price">¥{{item.memberPrice / 100}}</text><text class="original-price">¥{{item.price / 100}}</text><text class="member-price-badge">会员价</text></view><text class="price" wx:else>¥{{item.price / 100}}</text><text wx:if="{{decoration.menu.showStock}}">库存 {{item.stock}}</text><text wx:if="{{decoration.menu.showSales && item.sales !== undefined}}">已售 {{item.sales}}</text></view>
           <view class="selected-skus" wx:if="{{item.selectedItems.length}}">
             <view class="selected-sku" wx:for="{{item.selectedItems}}" wx:for-item="selected" wx:key="lineKey">
               <text>{{selected.optionSummary || selected.skuName || '默认规格'}}</text>
@@ -58,7 +58,18 @@
     </view>
   </scroll-view>
   </view>
-  <view class="cart-bar"><view class="cart-summary {{cartQuantity ? 'can-open' : ''}}" role="button" aria-label="查看购物车" bindtap="showCart"><text class="cart-count">{{cartQuantity}}</text><text class="cart-price">¥{{cartAmount / 100}}</text><text>已选 {{cartQuantity}} 件</text><text class="cart-expand" wx:if="{{cartQuantity}}">查看</text></view><view class="cart-action"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">去结算</button><text wx:if="{{store && store.businessStatus !== 'OPEN'}}">门店休息中，暂不可下单</text></view></view>
+  <view class="cart-bar cart-template-{{decoration.menu.cartTemplate}}">
+    <view class="cart-promo" wx:if="{{decoration.menu.cartTemplate === 'PROMO_CAPSULE'}}"><text>优惠</text><text>{{cartQuantity ? '结算时自动核算' : '暂无可用'}}</text></view>
+    <view class="cart-summary {{cartQuantity ? 'can-open' : ''}}" role="button" aria-label="查看购物车" bindtap="showCart">
+      <view class="cart-icon-wrap" wx:if="{{decoration.menu.cartTemplate !== 'CLASSIC'}}"><image src="/assets/icons/shopping.png" mode="aspectFit" /><text class="cart-icon-count" wx:if="{{cartQuantity}}">{{cartQuantity}}</text></view>
+      <text class="cart-count" wx:else>{{cartQuantity}}</text>
+      <view class="cart-summary-copy" wx:if="{{decoration.menu.cartTemplate === 'COUNT_ACTION'}}"><text>{{cartQuantity ? '已点 ' + cartQuantity + ' 份菜品' : '还没有选择菜品'}}</text><text wx:if="{{cartQuantity}}">¥{{cartAmount / 100}}</text></view>
+      <text class="cart-price" wx:else>¥{{cartAmount / 100}}</text>
+      <text wx:if="{{decoration.menu.cartTemplate === 'CLASSIC'}}">已选 {{cartQuantity}} 件</text>
+      <text class="cart-expand" wx:if="{{cartQuantity && decoration.menu.cartTemplate === 'CLASSIC'}}">查看</text>
+    </view>
+    <view class="cart-action"><button disabled="{{store && store.businessStatus !== 'OPEN'}}" bindtap="checkout">{{decoration.menu.cartTemplate === 'COUNT_ACTION' ? '去下单' : (decoration.menu.cartTemplate === 'PROMO_CAPSULE' ? '选好了' : '去结算')}}</button><text wx:if="{{store && store.businessStatus !== 'OPEN'}}">门店休息中，暂不可下单</text></view>
+  </view>
 </view>
 <view class="empty" wx:elif="{{routeError}}"><text>{{routeError}}</text><text>请重新扫描有效二维码</text></view>
 <view class="empty" wx:else>正在准备菜单…</view>

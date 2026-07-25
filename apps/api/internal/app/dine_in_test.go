@@ -82,3 +82,45 @@ func TestPublicOrderViewIncludesDineInSnapshot(t *testing.T) {
 		}
 	}
 }
+
+func TestPartialSettlementDisablesAdditionsAndExposesRemainingAmount(t *testing.T) {
+	t.Parallel()
+	view := publicOrderView(orderDTO{
+		ID:             8,
+		OrderType:      orderTypeDineIn,
+		Fulfillment:    orderTypeDineIn,
+		SettlementMode: "PAY_AFTER",
+		Status:         "PREPARING",
+		PaymentStatus:  "UNPAID",
+		TotalCents:     3600,
+		PaidCents:      1200,
+		RemainingCents: 2400,
+	})
+	if view["canAddItems"] != false {
+		t.Fatal("a partially settled order must not accept additional dishes")
+	}
+	if view["paidAmount"] != int64(1200) || view["remainingAmount"] != int64(2400) {
+		t.Fatalf("unexpected partial settlement view: %#v", view)
+	}
+}
+
+func TestDineInOperationsRequireUnpaidPayAfterMealOrder(t *testing.T) {
+	t.Parallel()
+	if !validDineInOperationOrder(orderTypeDineIn, "PAY_AFTER", "UNPAID", "READY", 0) {
+		t.Fatal("valid pay-after-meal order should allow dine-in operations")
+	}
+	for _, test := range []struct {
+		orderType, settlement, payment, status string
+		paid                                   int64
+	}{
+		{orderTypeTakeout, "PAY_AFTER", "UNPAID", "READY", 0},
+		{orderTypeDineIn, "PAY_BEFORE", "UNPAID", "READY", 0},
+		{orderTypeDineIn, "PAY_AFTER", "PAID", "READY", 0},
+		{orderTypeDineIn, "PAY_AFTER", "UNPAID", "READY", 1},
+		{orderTypeDineIn, "PAY_AFTER", "UNPAID", "CLOSED", 0},
+	} {
+		if validDineInOperationOrder(test.orderType, test.settlement, test.payment, test.status, test.paid) {
+			t.Fatalf("invalid operation state was accepted: %+v", test)
+		}
+	}
+}

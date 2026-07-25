@@ -177,9 +177,18 @@
 .mini-cart { position: absolute; right: 13px; bottom: 58px; left: 13px; z-index: 2; min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 5px 6px 5px 12px; border-radius: 18px; color: #fff; background: var(--decor-text); box-shadow: 0 8px 18px rgba(25,28,26,.2); }
 .mini-cart.fixed { right: 0; bottom: 49px; left: 0; border-radius: 0; box-shadow: 0 -4px 13px rgba(25,28,26,.12); }
 .mini-cart b { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; color: var(--decor-text); background: var(--decor-accent); }
+.mini-cart .mini-cart-icon { position: relative; flex: none; }
+.mini-cart .mini-cart-icon i { position: absolute; top: -8px; right: -9px; min-width: 13px; height: 13px; display: grid; place-items: center; padding: 0 3px; border-radius: 999px; color: var(--decor-on-primary); background: var(--decor-primary); font-size: 7px; font-style: normal; line-height: 1; box-shadow: 0 0 0 2px var(--decor-surface); }
 .mini-cart strong { font-size: 13px; }
 .mini-cart span { flex: 1; opacity: .65; font-size: 8px; }
 .mini-cart button { padding: 8px 11px; border: 0; border-radius: var(--decor-button-radius); color: var(--decor-on-accent); background: var(--decor-accent); font-size: 9px; font-weight: 700; }
+.mini-cart.cart-count_action { border-radius: 0; color: var(--decor-text); background: var(--decor-surface); box-shadow: 0 -4px 13px rgba(25,28,26,.12); }
+.mini-cart.cart-count_action b { color: var(--decor-primary); background: color-mix(in srgb, var(--decor-primary) 12%, var(--decor-surface)); }
+.mini-cart.cart-count_action strong { flex: 1; }
+.mini-cart.cart-count_action button { min-width: 78px; border-radius: 999px; background: var(--decor-accent); }
+.mini-cart.cart-promo_capsule { overflow: hidden; padding-left: 0; border-radius: 999px; background: var(--decor-text); }
+.mini-cart.cart-promo_capsule .mini-cart-promo { display: block; flex: none; align-self: stretch; padding: 7px 12px; color: var(--decor-on-primary); background: var(--decor-primary); font-size: 8px; line-height: 1.35; opacity: 1; }
+.mini-cart.cart-promo_capsule button { min-width: 72px; border-radius: 999px; }
 .mini-tabbar { position: absolute; right: 0; bottom: 0; left: 0; z-index: 5; height: 49px; display: flex; align-items: center; justify-content: space-around; border-top: 1px solid rgba(0,0,0,.05); background: var(--decor-nav-background); }
 .mini-tabbar button { min-width: 46px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: 0; color: var(--decor-nav-text); background: transparent; font-size: 8px; }
 .mini-tabbar button .anticon { font-size: 14px; }

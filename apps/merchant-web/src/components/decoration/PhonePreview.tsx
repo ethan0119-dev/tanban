@@ -171,7 +171,16 @@ function MenuPreview({ config }: { config: DecorationConfig }) {
           </article>
         ))}
       </div>
-      <div className="mini-cart"><b>2</b><strong>¥30</strong><span>已选 2 件</span><button type="button">去结算</button></div>
+      <div className={`mini-cart cart-${config.ordering.cartTemplate.toLowerCase()}`}>
+        {config.ordering.cartTemplate === 'PROMO_CAPSULE' && <span className="mini-cart-promo">优惠券<br />2张可用</span>}
+        <b className="mini-cart-icon">
+          <ShoppingCartOutlined />
+          {config.ordering.cartTemplate === 'COUNT_ACTION' && <i>2</i>}
+        </b>
+        <strong>{config.ordering.cartTemplate === 'COUNT_ACTION' ? '已点 2 份菜品' : '¥30.00'}</strong>
+        <span>{config.ordering.cartTemplate === 'CLASSIC' ? '已选 2 件' : ''}</span>
+        <button type="button">{config.ordering.cartTemplate === 'COUNT_ACTION' ? '去下单' : '选好了'}</button>
+      </div>
     </div>
   );
 }

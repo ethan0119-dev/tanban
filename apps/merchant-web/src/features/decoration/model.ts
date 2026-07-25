@@ -67,6 +67,7 @@ export interface OrderingConfig {
   showSales: boolean;
   loadMode: 'BY_CATEGORY' | 'ALL';
   productActionMode: 'SKU_SHEET' | 'DIRECT_ADD';
+  cartTemplate: 'CLASSIC' | 'COUNT_ACTION' | 'PROMO_CAPSULE';
 }
 
 export type NavigationKey = 'HOME' | 'MENU' | 'ORDERS' | 'PROFILE';

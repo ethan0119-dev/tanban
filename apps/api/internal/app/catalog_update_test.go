@@ -21,9 +21,9 @@ func TestUpdateProductAcceptsUnchangedBaseFields(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT store_id,recommended,in_store_enabled,delivery_enabled FROM products").
+	mock.ExpectQuery("SELECT store_id,recommended,member_discount_enabled,in_store_enabled,delivery_enabled FROM products").
 		WithArgs(int64(17), int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"store_id", "recommended", "in_store_enabled", "delivery_enabled"}).AddRow(9, false, true, false))
+		WillReturnRows(sqlmock.NewRows([]string{"store_id", "recommended", "member_discount_enabled", "in_store_enabled", "delivery_enabled"}).AddRow(9, false, false, true, false))
 	mock.ExpectQuery("SELECT id FROM stores").
 		WithArgs(int64(9), int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
@@ -44,10 +44,10 @@ func TestUpdateProductAcceptsUnchangedBaseFields(t *testing.T) {
 	mock.ExpectExec("UPDATE product_images SET deleted_at").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery("SELECT id,store_id,category_id,name,description,image_url,recommended,in_store_enabled,delivery_enabled,sort_order,status FROM products").
+	mock.ExpectQuery("SELECT id,store_id,category_id,name,description,image_url,recommended,member_discount_enabled,in_store_enabled,delivery_enabled,sort_order,status FROM products").
 		WithArgs(int64(5), int64(17)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "category_id", "name", "description", "image_url", "recommended", "in_store_enabled", "delivery_enabled", "sort_order", "status"}).
-			AddRow(17, 9, 3, "拿铁", "", "", false, true, false, 0, "ACTIVE"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "store_id", "category_id", "name", "description", "image_url", "recommended", "member_discount_enabled", "in_store_enabled", "delivery_enabled", "sort_order", "status"}).
+			AddRow(17, 9, 3, "拿铁", "", "", false, false, true, false, 0, "ACTIVE"))
 	mock.ExpectQuery("SELECT id,media_asset_id,url,is_primary,sort_order FROM product_images").
 		WithArgs(int64(5), int64(9), int64(17)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "media_asset_id", "url", "is_primary", "sort_order"}))

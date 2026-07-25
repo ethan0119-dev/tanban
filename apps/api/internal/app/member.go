@@ -1051,20 +1051,50 @@ func (s *Server) createMemberLevelOrder(w http.ResponseWriter, r *http.Request) 
 		handleSQLError(w, err)
 		return
 	}
-	var levelName string
+	var levelName, benefitsJSON string
 	var configuredPrice int64
-	if err = tx.QueryRowContext(r.Context(), "SELECT name,price_cents FROM member_levels WHERE id=? AND tenant_id=? AND deleted_at IS NULL", input.LevelID, actor.TenantID).Scan(&levelName, &configuredPrice); err != nil {
+	var validDays int
+	if err = tx.QueryRowContext(r.Context(), "SELECT name,price_cents,valid_days,benefits_json FROM member_levels WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL", input.LevelID, actor.TenantID).Scan(&levelName, &configuredPrice, &validDays, &benefitsJSON); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	snapshot, _ := json.Marshal(map[string]any{"id": input.LevelID, "name": levelName, "configured_price_cents": configuredPrice})
+	if input.Status == "COMPLETED" && input.AmountCents != configuredPrice {
+		writeError(w, http.StatusConflict, "MEMBER_LEVEL_AMOUNT_MISMATCH", "充值金额必须与会员等级配置的入会充值金额一致")
+		return
+	}
+	snapshot, _ := json.Marshal(map[string]any{"id": input.LevelID, "name": levelName, "configured_price_cents": configuredPrice, "valid_days": validDays, "benefits": jsonValue(benefitsJSON)})
 	var memberID sql.NullInt64
 	_ = tx.QueryRowContext(r.Context(), "SELECT id FROM members WHERE tenant_id=? AND customer_id=?", actor.TenantID, input.CustomerID).Scan(&memberID)
+	var expires any
+	if validDays > 0 {
+		expires = time.Now().AddDate(0, 0, validDays)
+	}
+	if input.Status == "COMPLETED" {
+		if memberID.Valid {
+			if _, err = tx.ExecContext(r.Context(), `UPDATE members SET current_level_id=?,status='ACTIVE',expires_at=?
+				WHERE id=? AND tenant_id=?`, input.LevelID, expires, memberID.Int64, actor.TenantID); err != nil {
+				handleSQLError(w, err)
+				return
+			}
+		} else {
+			memberResult, memberErr := tx.ExecContext(r.Context(), `INSERT INTO members(tenant_id,customer_id,member_no,current_level_id,expires_at)
+				VALUES(?,?,?,?,?)`, actor.TenantID, input.CustomerID, newBusinessNo("MB"), input.LevelID, expires)
+			if memberErr != nil {
+				handleSQLError(w, memberErr)
+				return
+			}
+			memberID.Int64, _ = memberResult.LastInsertId()
+			memberID.Valid = true
+		}
+	}
 	completed := any(nil)
+	paymentStatus := "RECORDED"
 	if input.Status == "COMPLETED" {
 		completed = time.Now()
+		paymentStatus = "SUCCESS"
 	}
-	result, err := tx.ExecContext(r.Context(), "INSERT INTO member_level_orders(tenant_id,order_no,customer_id,member_id,level_id,level_snapshot_json,amount_cents,payment_method,payment_status,status,remark,idempotency_key,request_fingerprint,created_by,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", actor.TenantID, newBusinessNo("ML"), input.CustomerID, nullableNullInt64(memberID), input.LevelID, string(snapshot), input.AmountCents, input.PaymentMethod, "RECORDED", input.Status, input.Remark, key, fingerprint, actor.UserID, completed)
+	orderNo := newBusinessNo("ML")
+	result, err := tx.ExecContext(r.Context(), "INSERT INTO member_level_orders(tenant_id,order_no,customer_id,member_id,level_id,level_snapshot_json,amount_cents,payment_method,payment_status,status,remark,idempotency_key,request_fingerprint,created_by,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", actor.TenantID, orderNo, input.CustomerID, nullableNullInt64(memberID), input.LevelID, string(snapshot), input.AmountCents, input.PaymentMethod, paymentStatus, input.Status, input.Remark, key, fingerprint, actor.UserID, completed)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -1081,6 +1111,17 @@ func (s *Server) createMemberLevelOrder(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id, _ := result.LastInsertId()
+	if input.Status == "COMPLETED" && configuredPrice > 0 {
+		balanceKey := "MLBAL:" + requestFingerprint(key)[:40]
+		if _, _, err = applyBalanceDeltaTx(r.Context(), tx, actor.TenantID, input.CustomerID, "PRINCIPAL", configuredPrice, "CREDIT", "MEMBER_LEVEL_RECHARGE", orderNo, balanceKey, actor.UserID, "会员等级充值："+levelName); err != nil {
+			if errors.Is(err, errBalanceLimitExceeded) {
+				writeError(w, http.StatusConflict, "BALANCE_LIMIT_EXCEEDED", "充值后余额将超过储值上限")
+				return
+			}
+			handleSQLError(w, err)
+			return
+		}
+	}
 	if err = auditTx(r.Context(), tx, actor, "member_level_order.create", "member_level_order", int64String(id), map[string]any{"customer_id": input.CustomerID, "level_id": input.LevelID, "amount_cents": input.AmountCents}, r); err != nil {
 		handleSQLError(w, err)
 		return

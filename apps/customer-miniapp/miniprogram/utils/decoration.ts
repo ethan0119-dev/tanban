@@ -109,6 +109,7 @@ export function defaultDecoration(store?: Store): DecorationConfig {
     menu: {
       categoryLayout: "LEFT",
       productLayout: "LIST",
+      cartTemplate: "CLASSIC",
       showDescription: true,
       showStock: false,
       showSales: false,
@@ -254,6 +255,7 @@ export function normalizeDecoration(value: unknown, store?: Store): DecorationCo
     menu: {
       categoryLayout: menu.categoryLayout === "TOP" ? "TOP" : "LEFT",
       productLayout: menu.productLayout === "GRID" ? "GRID" : "LIST",
+      cartTemplate: menu.cartTemplate === "COUNT_ACTION" || menu.cartTemplate === "PROMO_CAPSULE" ? menu.cartTemplate : "CLASSIC",
       showDescription: bool(menu.showDescription, fallback.menu.showDescription),
       showStock: bool(menu.showStock, fallback.menu.showStock),
       showSales: bool(menu.showSales, fallback.menu.showSales),

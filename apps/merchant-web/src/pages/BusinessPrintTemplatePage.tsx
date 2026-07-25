@@ -475,7 +475,7 @@ export function BusinessPrintTemplatePage({
           <Card bordered={false} className="content-card print-layout-editor" title={activeRole === 'ITEM' ? '标签与打印设置' : '纸张与打印设置'}>
             <Row gutter={14}>
               <Col xs={24} md={12}><label className="field-label">模板名称</label><Input value={section.name} maxLength={100} onChange={(event) => updateSection({ name: event.target.value })} /></Col>
-              <Col xs={24} md={12}><label className="field-label">打印触发点</label><Select value={section.triggerEvent} style={{ width: '100%' }} onChange={(value) => updateSection({ triggerEvent: value })} options={[{ value: 'PAYMENT_SUCCESS', label: '付款成功后打印' }, { value: 'ORDER_CREATED', label: '下单后打印（含待付款）' }]} /></Col>
+              <Col xs={24} md={12}><label className="field-label">打印触发点（跟随结算模式）</label><Select disabled value={section.triggerEvent} style={{ width: '100%' }} options={[{ value: 'PAYMENT_SUCCESS', label: '付款成功后打印' }, { value: 'ORDER_CREATED', label: '下单后打印（含每次加菜）' }]} /><Typography.Text type="secondary">先结账后用餐为付款后打印；先用餐后结账为下单后打印，此处只展示。</Typography.Text></Col>
               {activeRole === 'ITEM' ? (
                 <Col xs={24}>
                   <label className="field-label">标签纸尺寸（宽 × 高）</label>

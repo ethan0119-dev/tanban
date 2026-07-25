@@ -39,6 +39,23 @@ describe('storefront domain normalization', () => {
     expect(order.tableAreaName).toBe('露台');
   });
 
+  it('keeps paid and remaining amounts separate for a split settlement', () => {
+    const order = normalizeOrder({
+      id: 2,
+      orderNo: 'TB-SPLIT',
+      status: 'PREPARING',
+      amount: 0,
+      createdAt: '',
+      items: [],
+      total_cents: 3600,
+      paid_cents: 1200,
+      remaining_cents: 2400,
+    } as never);
+    expect(order.amount).toBe(36);
+    expect(order.paidAmount).toBe(12);
+    expect(order.remainingAmount).toBe(24);
+  });
+
   it('normalizes a snake-case table-code response and defaults to a stable miniapp path', () => {
     const table = normalizeTableCode({
       id: 3,

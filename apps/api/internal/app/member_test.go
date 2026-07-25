@@ -206,14 +206,14 @@ func TestCreateMemberLevelOrderAcceptsLegacyAmountField(t *testing.T) {
 	mock.ExpectQuery("SELECT id FROM customers").
 		WithArgs(int64(3), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(3))
-	mock.ExpectQuery("SELECT name,price_cents FROM member_levels").
+	mock.ExpectQuery("SELECT name,price_cents,valid_days,benefits_json FROM member_levels").
 		WithArgs(int64(4), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"name", "price_cents"}).AddRow("金卡", 1234))
+		WillReturnRows(sqlmock.NewRows([]string{"name", "price_cents", "valid_days", "benefits_json"}).AddRow("金卡", 1234, 0, `{"discount":88}`))
 	mock.ExpectQuery("SELECT id FROM members").
 		WithArgs(int64(9), int64(3)).
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec("INSERT INTO member_level_orders").
-		WithArgs(int64(9), sqlmock.AnyArg(), int64(3), nil, int64(4), sqlmock.AnyArg(), int64(1234), "MANUAL", "RECORDED", "COMPLETED", "", "level-order-legacy", sqlmock.AnyArg(), int64(2), sqlmock.AnyArg()).
+		WithArgs(int64(9), sqlmock.AnyArg(), int64(3), nil, int64(4), sqlmock.AnyArg(), int64(1234), "MANUAL", "RECORDED", "RECORDED", "", "level-order-legacy", sqlmock.AnyArg(), int64(2), nil).
 		WillReturnResult(sqlmock.NewResult(21, 1))
 	mock.ExpectExec("INSERT INTO audit_logs").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
@@ -221,7 +221,7 @@ func TestCreateMemberLevelOrderAcceptsLegacyAmountField(t *testing.T) {
 	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
 	router := chi.NewRouter()
 	router.Post("/member-level-orders", server.createMemberLevelOrder)
-	request := httptest.NewRequest(http.MethodPost, "/member-level-orders", bytes.NewBufferString(`{"customer_id":3,"level_id":4,"amount":12.34,"amount_cents":1234,"payment_method":"MANUAL","status":"COMPLETED"}`))
+	request := httptest.NewRequest(http.MethodPost, "/member-level-orders", bytes.NewBufferString(`{"customer_id":3,"level_id":4,"amount":12.34,"amount_cents":1234,"payment_method":"MANUAL","status":"RECORDED"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "level-order-legacy")
 	request = request.WithContext(context.WithValue(request.Context(), identityKey{}, identity{UserID: 2, TenantID: 9, Role: RoleMerchantManager}))

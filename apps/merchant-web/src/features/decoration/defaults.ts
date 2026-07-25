@@ -36,6 +36,7 @@ export const DEFAULT_DECORATION: DecorationConfig = {
     showSales: false,
     loadMode: 'BY_CATEGORY',
     productActionMode: 'SKU_SHEET',
+    cartTemplate: 'CLASSIC',
   },
   navigation: [
     { id: 'home', key: 'HOME', label: '首页', enabled: true },
