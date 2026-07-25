@@ -1,3 +1,4 @@
+.menu-stage { position: relative; height: 100vh; overflow: hidden; background: var(--surface); }
 .menu-page { display: flex; height: 100vh; padding-bottom: 112rpx; box-sizing: border-box; flex-direction: column; overflow: hidden; background: var(--surface); }
 .menu-overview { flex: none; padding: 18rpx 26rpx 12rpx; border-bottom: 1rpx solid var(--line); background: var(--surface); }
 .menu-store-row { display: flex; align-items: center; justify-content: space-between; gap: 22rpx; }
