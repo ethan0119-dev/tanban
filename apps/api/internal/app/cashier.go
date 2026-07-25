@@ -23,6 +23,10 @@ type cashierDinerCountInput struct {
 	DinerCount int `json:"diner_count"`
 }
 
+type cashierHandoverInput struct {
+	Remark string `json:"remark"`
+}
+
 func cashierTokenPathAllowed(path string) bool {
 	for _, exact := range []string{
 		"/api/v1/auth/me",
@@ -31,6 +35,7 @@ func cashierTokenPathAllowed(path string) bool {
 		"/api/v1/merchant/table-board",
 		"/api/v1/merchant/cashier/session",
 		"/api/v1/merchant/cashier/context",
+		"/api/v1/merchant/cashier/handover",
 	} {
 		if path == exact {
 			return true
@@ -115,6 +120,28 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logoUrl": logoURL,
 		"operatorName": actor.DisplayName, "role": actor.Role,
+	})
+}
+
+func (s *Server) handoverCashierSession(w http.ResponseWriter, r *http.Request) {
+	var input cashierHandoverInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Remark = strings.TrimSpace(input.Remark)
+	if len([]rune(input.Remark)) > 255 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "remark must not exceed 255 characters")
+		return
+	}
+	actor := currentIdentity(r.Context())
+	handedOverAt := time.Now()
+	s.audit(r.Context(), actor, "cashier.shift.handover", "account", int64String(actor.UserID), map[string]any{
+		"remark":         input.Remark,
+		"handed_over_at": handedOverAt.UTC().Format(time.RFC3339),
+	}, r)
+	writeData(w, http.StatusOK, map[string]any{
+		"handedOverAt": handedOverAt.UTC().Format(time.RFC3339),
+		"operatorName": actor.DisplayName,
 	})
 }
 

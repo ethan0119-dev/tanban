@@ -11,6 +11,7 @@ func TestCashierTokenPathAllowed(t *testing.T) {
 		"/api/v1/merchant/table-board",
 		"/api/v1/merchant/cashier/session",
 		"/api/v1/merchant/cashier/context",
+		"/api/v1/merchant/cashier/handover",
 		"/api/v1/merchant/orders",
 		"/api/v1/merchant/orders/42",
 		"/api/v1/merchant/orders/42/cashier-settle",

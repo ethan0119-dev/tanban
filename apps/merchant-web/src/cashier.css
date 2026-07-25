@@ -358,6 +358,12 @@
   cursor: pointer;
 }
 
+.cashier-alerts button.active {
+  border-color: #d56a37;
+  background: #fff8f3;
+  box-shadow: 0 0 0 2px rgba(205, 100, 40, .1);
+}
+
 .cashier-alerts button .anticon {
   width: 29px;
   height: 29px;
@@ -520,7 +526,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
   padding: 20px 22px 12px;
   border-left: 1px solid var(--cashier-line);
   background: #fff;
@@ -539,7 +545,8 @@
 }
 
 .cashier-order-panel {
-  min-height: 573px;
+  min-height: 240px;
+  flex: 1 1 auto;
   overflow: auto;
   border: 1px solid #e5dfda;
   border-radius: 11px;
@@ -728,11 +735,25 @@
   font-size: 20px;
 }
 
+.cashier-action-dock {
+  flex: 0 0 auto;
+  padding-top: 14px;
+  background: #fff;
+}
+
 .cashier-primary-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-top: 14px;
+  margin-top: 0;
+}
+
+.cashier-more-actions {
+  width: 100%;
+  height: 46px;
+  display: none;
+  margin-top: 10px;
+  font-size: 16px;
 }
 
 .cashier-primary-actions .ant-btn {
@@ -788,6 +809,34 @@
   height: 45px;
   border-color: #39845d;
   color: #337e56;
+}
+
+.cashier-handover-modal > p {
+  margin: 0 0 16px;
+  color: #766f69;
+  line-height: 1.7;
+}
+
+.cashier-handover-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cashier-handover-summary span {
+  padding: 11px;
+  border-radius: 8px;
+  color: #746b65;
+  background: #f8f5f2;
+  font-size: 12px;
+}
+
+.cashier-handover-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: #332a24;
+  font-size: 15px;
 }
 
 .cashier-summary {
@@ -1161,6 +1210,26 @@
   color: var(--cashier-muted);
 }
 
+.cashier-number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.cashier-number-field .ant-input-number {
+  width: 100%;
+  border-radius: 6px 0 0 6px;
+}
+
+.cashier-number-field > span {
+  display: grid;
+  place-items: center;
+  border: 1px solid #d9d9d9;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  color: #655d57;
+  background: #fafafa;
+}
+
 .cashier-loading {
   position: fixed;
   inset: 0;
@@ -1207,6 +1276,34 @@
   }
   .cashier-table-grid {
     grid-template-columns: repeat(3, minmax(135px, 1fr));
+  }
+  .cashier-operation {
+    padding: 16px 16px 10px;
+  }
+  .cashier-operation-title {
+    margin-bottom: 10px;
+  }
+  .cashier-order-panel {
+    min-height: 180px;
+  }
+  .cashier-primary-actions {
+    gap: 8px;
+  }
+  .cashier-primary-actions .ant-btn {
+    height: 56px;
+    font-size: 15px;
+  }
+  .cashier-primary-actions .anticon {
+    font-size: 20px;
+  }
+  .cashier-primary-actions .ant-btn.ant-btn-dangerous {
+    font-size: 17px;
+  }
+  .cashier-secondary-actions {
+    display: none;
+  }
+  .cashier-more-actions {
+    display: block;
   }
 }
 
@@ -1286,7 +1383,6 @@
     flex: 1 1 auto;
   }
   .cashier-primary-actions,
-  .cashier-secondary-actions,
   .cashier-status-actions {
     flex: 0 0 auto;
   }
@@ -1305,6 +1401,83 @@
   }
   .cashier-takeout-grid {
     grid-template-columns: repeat(2, minmax(170px, 1fr));
+  }
+}
+
+@media (max-height: 800px) and (min-width: 721px) {
+  .cashier-stage {
+    grid-template-rows: 68px minmax(0, 1fr) 68px;
+  }
+  .cashier-topbar {
+    padding-inline: 18px;
+  }
+  .cashier-title strong {
+    font-size: 23px;
+  }
+  .cashier-handover {
+    height: 42px;
+    padding-inline: 18px;
+  }
+  .cashier-board {
+    padding-top: 16px;
+  }
+  .cashier-mode-tabs {
+    height: 86px;
+  }
+  .cashier-area-tabs {
+    height: 54px;
+    margin-top: 14px;
+  }
+  .cashier-alerts {
+    margin-top: 12px;
+  }
+  .cashier-alerts button {
+    height: 48px;
+  }
+  .cashier-table-grid {
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .cashier-table-card {
+    min-height: 126px;
+    padding: 18px 16px 12px;
+  }
+  .cashier-table-card > strong {
+    font-size: 23px;
+  }
+  .cashier-table-meta {
+    margin-top: 10px;
+  }
+  .cashier-operation {
+    padding-top: 12px;
+  }
+  .cashier-operation-title {
+    margin-bottom: 8px;
+  }
+  .cashier-operation-title > strong {
+    font-size: 21px;
+  }
+  .cashier-action-dock {
+    padding-top: 8px;
+  }
+  .cashier-primary-actions {
+    gap: 7px;
+  }
+  .cashier-primary-actions .ant-btn {
+    height: 49px;
+  }
+  .cashier-more-actions {
+    height: 40px;
+    margin-top: 7px;
+  }
+  .cashier-status-actions {
+    margin-top: 7px;
+  }
+  .cashier-status-actions .ant-btn {
+    height: 40px;
+  }
+  .cashier-summary > div {
+    gap: 10px;
   }
 }
 
@@ -1377,5 +1550,8 @@
   }
   .cashier-cart-footer {
     flex-wrap: wrap;
+  }
+  .cashier-handover-summary {
+    grid-template-columns: 1fr;
   }
 }

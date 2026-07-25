@@ -20,6 +20,7 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	r.Get("/dashboard", s.merchantDashboard)
 	r.Post("/cashier/session", s.createCashierSession)
 	r.Get("/cashier/context", s.getCashierContext)
+	r.Post("/cashier/handover", s.handoverCashierSession)
 	r.Get("/stores", s.listMerchantStores)
 	r.Get("/orders", s.listOrders)
 	r.Get("/orders/{orderID}", s.getOrder)

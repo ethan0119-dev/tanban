@@ -160,6 +160,20 @@ paths:
       security: [{bearerAuth: []}]
       responses:
         '200': {description: Current store and cashier operator}
+  /merchant/cashier/handover:
+    post:
+      summary: 完成当前收银班次交接并记录审计信息
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Handover timestamp and operator}
   /merchant/table-board:
     get:
       summary: 收银台桌台状态看板

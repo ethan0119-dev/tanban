@@ -11,6 +11,7 @@ import {
   MenuOutlined,
   MergeCellsOutlined,
   MinusOutlined,
+  MoreOutlined,
   PlusOutlined,
   PrinterOutlined,
   ReloadOutlined,
@@ -30,6 +31,7 @@ import {
   Button,
   Checkbox,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   InputNumber,
@@ -133,6 +135,7 @@ interface CartLine {
 }
 
 type CashierMode = 'DINE_IN' | 'TAKEOUT';
+type CashierTableFilter = 'ALL' | 'UNSETTLED' | 'OPENED' | 'OVERDUE';
 
 const tableMeta: Record<TableBoardTable['state'], { label: string; className: string }> = {
   UNOPENED: { label: '空闲', className: 'is-free' },
@@ -298,6 +301,21 @@ function elapsedLabel(openedAt?: string): string {
     : `${minutes.toString().padStart(2, '0')}:00`;
 }
 
+function elapsedMinutes(openedAt?: string): number {
+  if (!openedAt) return 0;
+  const parsed = new Date(openedAt.replace(' ', 'T')).getTime();
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor((Date.now() - parsed) / 60_000));
+}
+
+function elapsedLabelMinutes(label: string): number {
+  const parts = label.split(':').map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return 0;
+  if (parts.length === 3) return parts[0] * 60 + parts[1];
+  if (parts.length === 2) return parts[0];
+  return 0;
+}
+
 function previewElapsed(tableName?: string): string {
   return ({
     A02: '00:05',
@@ -321,7 +339,7 @@ function nextIdempotencyKey(): string {
 export function CashierPage({ previewMode = false }: { previewMode?: boolean }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const [loading, setLoading] = useState(!previewMode);
   const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState<CashierMode>('DINE_IN');
@@ -335,6 +353,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const [dashboard, setDashboard] = useState<DashboardData>(previewMode ? { todayRevenue: 3286.5, todayOrders: 48, pendingOrders: 7, averageOrderValue: 68.47 } : { todayRevenue: 0, todayOrders: 0, pendingOrders: 0, averageOrderValue: 0 });
   const [catalog, setCatalog] = useState<CashierCatalog>(previewMode ? previewCatalog : { categories: [], products: [] });
   const [areaID, setAreaID] = useState<string>('ALL');
+  const [tableFilter, setTableFilter] = useState<CashierTableFilter>('ALL');
   const [cartOpen, setCartOpen] = useState(false);
   const [cartMode, setCartMode] = useState<CashierMode>('DINE_IN');
   const [cartTable, setCartTable] = useState<TableBoardTable | null>(null);
@@ -352,13 +371,28 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const [returnItemID, setReturnItemID] = useState<string | number>();
   const [returnQuantity, setReturnQuantity] = useState(1);
   const [returnReason, setReturnReason] = useState('');
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [handoverRemark, setHandoverRemark] = useState('');
   const [clock, setClock] = useState(new Date());
 
   const allTables = useMemo(() => board?.areas.flatMap((area) => area.tables) ?? [], [board]);
-  const visibleTables = useMemo(() => areaID === 'ALL' ? allTables : allTables.filter((table) => String(table.areaId) === areaID), [allTables, areaID]);
   const unsettledTables = allTables.filter((table) => table.state === 'UNSETTLED');
   const newOrderTables = allTables.filter((table) => table.state === 'OPENED');
-  const overdueTables = allTables.filter((table) => table.orderId && (previewMode ? previewElapsed(table.name) : elapsedLabel(table.openedAt)).startsWith('01:'));
+  const overdueTables = allTables.filter((table) => table.orderId && (
+    previewMode
+      ? elapsedLabelMinutes(previewElapsed(table.name)) >= 60
+      : elapsedMinutes(table.openedAt) >= 60
+  ));
+  const visibleTables = useMemo(() => {
+    const byArea = areaID === 'ALL' ? allTables : allTables.filter((table) => String(table.areaId) === areaID);
+    if (tableFilter === 'UNSETTLED') return byArea.filter((table) => table.state === 'UNSETTLED');
+    if (tableFilter === 'OPENED') return byArea.filter((table) => table.state === 'OPENED');
+    if (tableFilter === 'OVERDUE') {
+      const overdueIDs = new Set(overdueTables.map((table) => String(table.id)));
+      return byArea.filter((table) => overdueIDs.has(String(table.id)));
+    }
+    return byArea;
+  }, [allTables, areaID, overdueTables, tableFilter]);
   const pendingAmount = unsettledTables.reduce((sum, table) => sum + Number(table.totalCents ?? 0) / 100, 0);
   const cartTotalCents = cart.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
 
@@ -610,14 +644,14 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const settle = () => {
     if (!selectedOrder) return;
-    Modal.confirm({
+    const settlementModal = modal.confirm({
       title: `结账 ${yuan(selectedOrder.remainingAmount ?? selectedOrder.amount)}`,
       content: (
         <div className="cashier-settle-choice">
           <p>请确认顾客已经完成付款，再选择实际收款方式。</p>
           <Space direction="vertical" style={{ width: '100%' }}>
-            <Button size="large" block icon={<DollarOutlined />} onClick={() => { Modal.destroyAll(); void confirmSettlement('CASH'); }}>现金收款</Button>
-            <Button size="large" block icon={<WalletOutlined />} onClick={() => { Modal.destroyAll(); void confirmSettlement('EXTERNAL'); }}>系统外支付</Button>
+            <Button size="large" block icon={<DollarOutlined />} onClick={() => { settlementModal.destroy(); void confirmSettlement('CASH'); }}>现金收款</Button>
+            <Button size="large" block icon={<WalletOutlined />} onClick={() => { settlementModal.destroy(); void confirmSettlement('EXTERNAL'); }}>系统外支付</Button>
           </Space>
         </div>
       ),
@@ -652,21 +686,26 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const updateDinerCount = () => {
     if (!selectedOrder) return;
     let nextCount = selectedOrder.dinerCount || 1;
-    Modal.confirm({
+    modal.confirm({
       title: '修改就餐人数',
-      content: <InputNumber min={1} max={99} defaultValue={nextCount} onChange={(value) => { nextCount = Number(value || 1); }} addonAfter="人" style={{ width: '100%' }} />,
+      content: <div className="cashier-number-field"><InputNumber min={1} max={99} defaultValue={nextCount} onChange={(value) => { nextCount = Number(value || 1); }} /><span>人</span></div>,
       okText: '保存人数',
       cancelText: '取消',
       onOk: async () => {
-        if (previewMode) {
-          setSelectedOrder((current) => current ? { ...current, dinerCount: nextCount } : current);
+        try {
+          if (previewMode) {
+            setSelectedOrder((current) => current ? { ...current, dinerCount: nextCount } : current);
+            message.success('就餐人数已更新');
+            return;
+          }
+          const updated = normalizeOrder(await api.post<Order>(`/merchant/orders/${selectedOrder.id}/diner-count`, { diner_count: nextCount }));
+          setSelectedOrder(updated);
           message.success('就餐人数已更新');
-          return;
+          await load(true);
+        } catch (error) {
+          message.error(errorMessage(error));
+          throw error;
         }
-        const updated = normalizeOrder(await api.post<Order>(`/merchant/orders/${selectedOrder.id}/diner-count`, { diner_count: nextCount }));
-        setSelectedOrder(updated);
-        message.success('就餐人数已更新');
-        await load(true);
       },
     });
   };
@@ -675,19 +714,24 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     if (!selectedOrder) return;
     const options = allTables.filter((table) => !table.orderId).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.id) }));
     let target = options[0]?.value;
-    Modal.confirm({
+    modal.confirm({
       title: '转台',
       content: options.length ? <Select options={options} defaultValue={target} onChange={(value) => { target = value; }} style={{ width: '100%' }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可用空桌" />,
       okText: '确认转台',
       okButtonProps: { disabled: !options.length },
       onOk: async () => {
-        if (previewMode) {
+        try {
+          if (previewMode) {
+            message.success('转台完成');
+            return;
+          }
+          await api.post(`/merchant/orders/${selectedOrder.id}/transfer-table`, { target_table_id: Number(target), remark: '收银台转台' });
           message.success('转台完成');
-          return;
+          await load(true);
+        } catch (error) {
+          message.error(errorMessage(error));
+          throw error;
         }
-        await api.post(`/merchant/orders/${selectedOrder.id}/transfer-table`, { target_table_id: Number(target), remark: '收银台转台' });
-        message.success('转台完成');
-        await load(true);
       },
     });
   };
@@ -696,19 +740,24 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     if (!selectedOrder) return;
     const options = allTables.filter((table) => table.orderId && String(table.orderId) !== String(selectedOrder.id)).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.orderId) }));
     let sourceOrderID = options[0]?.value;
-    Modal.confirm({
+    modal.confirm({
       title: '并台',
       content: options.length ? <Select options={options} defaultValue={sourceOrderID} onChange={(value) => { sourceOrderID = value; }} style={{ width: '100%' }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可合并桌台" />,
       okText: '确认并台',
       okButtonProps: { disabled: !options.length },
       onOk: async () => {
-        if (previewMode) {
+        try {
+          if (previewMode) {
+            message.success('并台完成');
+            return;
+          }
+          await api.post(`/merchant/orders/${selectedOrder.id}/merge`, { source_order_id: Number(sourceOrderID), remark: '收银台并台' });
           message.success('并台完成');
-          return;
+          await load(true);
+        } catch (error) {
+          message.error(errorMessage(error));
+          throw error;
         }
-        await api.post(`/merchant/orders/${selectedOrder.id}/merge`, { source_order_id: Number(sourceOrderID), remark: '收银台并台' });
-        message.success('并台完成');
-        await load(true);
       },
     });
   };
@@ -756,6 +805,33 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     navigate('/dashboard');
   };
 
+  const toggleTableFilter = (nextFilter: CashierTableFilter) => {
+    setAreaID('ALL');
+    setTableFilter((current) => current === nextFilter ? 'ALL' : nextFilter);
+  };
+
+  const startHandover = () => {
+    setHandoverRemark('');
+    setHandoverOpen(true);
+  };
+
+  const submitHandover = async () => {
+    setSubmitting(true);
+    try {
+      if (!previewMode) {
+        await api.post('/merchant/cashier/handover', { remark: handoverRemark.trim() });
+        localStorage.removeItem(CASHIER_TOKEN_KEY);
+      }
+      setHandoverOpen(false);
+      message.success('交接班已完成，本班数据已留档');
+      if (!previewMode) navigate('/dashboard');
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const signOut = () => {
     if (previewMode) return;
     logout();
@@ -789,7 +865,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           <div className="cashier-clock"><strong>{previewMode ? '15:26' : clock.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</strong><small>{previewMode ? '2026-07-25　周六' : clock.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' })}</small></div>
           <div className="cashier-device"><PrinterOutlined /><span>打印机<small><i />正常</small></span></div>
           <div className="cashier-device"><WifiOutlined /><span>网络<small><i />正常</small></span></div>
-          <Button className="cashier-handover" onClick={leaveCashier}>交接班</Button>
+          <Button className="cashier-handover" onClick={startHandover}>交接班</Button>
         </header>
 
         <div className="cashier-workspace">
@@ -808,13 +884,13 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
             {mode === 'DINE_IN' ? (
               <>
                 <div className="cashier-area-tabs">
-                  <button type="button" className={areaID === 'ALL' ? 'active' : ''} onClick={() => setAreaID('ALL')}>全部</button>
-                  {board?.areas.map((area) => <button type="button" className={areaID === String(area.id) ? 'active' : ''} key={String(area.id)} onClick={() => setAreaID(String(area.id))}>{area.name}</button>)}
+                  <button type="button" className={areaID === 'ALL' && tableFilter === 'ALL' ? 'active' : ''} onClick={() => { setAreaID('ALL'); setTableFilter('ALL'); }}>全部</button>
+                  {board?.areas.map((area) => <button type="button" className={areaID === String(area.id) && tableFilter === 'ALL' ? 'active' : ''} key={String(area.id)} onClick={() => { setAreaID(String(area.id)); setTableFilter('ALL'); }}>{area.name}</button>)}
                 </div>
                 <div className="cashier-alerts">
-                  <button type="button" onClick={() => setAreaID('ALL')}><DollarOutlined /><span>{unsettledTables.length}桌待结账</span><b>›</b></button>
-                  <button type="button"><BellOutlined /><span>{newOrderTables.length}个新订单</span><b>›</b></button>
-                  <button type="button"><ClockCircleOutlined /><span>{overdueTables.length || 1}单超时待取</span><b>›</b></button>
+                  <button type="button" className={tableFilter === 'UNSETTLED' ? 'active' : ''} aria-pressed={tableFilter === 'UNSETTLED'} onClick={() => toggleTableFilter('UNSETTLED')}><DollarOutlined /><span>{unsettledTables.length}桌待结账</span><b>›</b></button>
+                  <button type="button" className={tableFilter === 'OPENED' ? 'active' : ''} aria-pressed={tableFilter === 'OPENED'} onClick={() => toggleTableFilter('OPENED')}><BellOutlined /><span>{newOrderTables.length}个新订单</span><b>›</b></button>
+                  <button type="button" className={tableFilter === 'OVERDUE' ? 'active' : ''} aria-pressed={tableFilter === 'OVERDUE'} onClick={() => toggleTableFilter('OVERDUE')}><ClockCircleOutlined /><span>{overdueTables.length}单超时待取</span><b>›</b></button>
                 </div>
                 <div className="cashier-table-grid" aria-busy={loading || refreshing}>
                   {visibleTables.map((table) => {
@@ -894,24 +970,38 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
               )}
             </div>
 
-            <div className="cashier-primary-actions">
-              <Button size="large" icon={<PlusOutlined />} disabled={mode !== 'DINE_IN' || !selectedTable} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedOrder ? '加菜' : '点单开台'}</Button>
-              <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={updateDinerCount}>修改人数</Button>
-              <Button size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
-              <Button size="large" type="primary" danger icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} loading={submitting} onClick={settle}>结账 {selectedOrder?.paymentStatus === 'UNPAID' ? yuan(selectedOrder.remainingAmount ?? selectedOrder.amount) : ''}</Button>
-            </div>
-            <div className="cashier-secondary-actions">
-              <Button icon={<RetweetOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={transferTable}>转台</Button>
-              <Button icon={<MergeCellsOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={mergeTable}>并台</Button>
-              <Button icon={<MinusOutlined />} disabled={!selectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
-            </div>
-            {selectedOrder && selectedOrder.paymentStatus === 'PAID' && (
-              <div className="cashier-status-actions">
-                {selectedOrder.status === 'PAID' && <Button block onClick={() => void updateStatus('PREPARING')}>开始制作</Button>}
-                {selectedOrder.status === 'PREPARING' && <Button block onClick={() => void updateStatus('READY')}>完成制作 / 待取餐</Button>}
-                {selectedOrder.status === 'READY' && <Button block onClick={() => void updateStatus('COMPLETED')}>完成订单</Button>}
+            <div className="cashier-action-dock">
+              <div className="cashier-primary-actions">
+                <Button size="large" icon={<PlusOutlined />} disabled={mode !== 'DINE_IN' || !selectedTable} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedOrder ? '加菜' : '点单开台'}</Button>
+                <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={updateDinerCount}>修改人数</Button>
+                <Button size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
+                <Button size="large" type="primary" danger icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} loading={submitting} onClick={settle}>结账 {selectedOrder?.paymentStatus === 'UNPAID' ? yuan(selectedOrder.remainingAmount ?? selectedOrder.amount) : ''}</Button>
               </div>
-            )}
+              <div className="cashier-secondary-actions">
+                <Button icon={<RetweetOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={transferTable}>转台</Button>
+                <Button icon={<MergeCellsOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={mergeTable}>并台</Button>
+                <Button icon={<MinusOutlined />} disabled={!selectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
+              </div>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    { key: 'transfer', icon: <RetweetOutlined />, label: '转台', disabled: !selectedOrder || mode !== 'DINE_IN', onClick: transferTable },
+                    { key: 'merge', icon: <MergeCellsOutlined />, label: '并台', disabled: !selectedOrder || mode !== 'DINE_IN', onClick: mergeTable },
+                    { key: 'return', icon: <MinusOutlined />, label: '退菜', disabled: !selectedOrder, onClick: () => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); } },
+                  ],
+                }}
+              >
+                <Button className="cashier-more-actions" icon={<MoreOutlined />}>更多操作</Button>
+              </Dropdown>
+              {selectedOrder && selectedOrder.paymentStatus === 'PAID' && (
+                <div className="cashier-status-actions">
+                  {selectedOrder.status === 'PAID' && <Button block onClick={() => void updateStatus('PREPARING')}>开始制作</Button>}
+                  {selectedOrder.status === 'PREPARING' && <Button block onClick={() => void updateStatus('READY')}>完成制作 / 待取餐</Button>}
+                  {selectedOrder.status === 'READY' && <Button block onClick={() => void updateStatus('COMPLETED')}>完成订单</Button>}
+                </div>
+              )}
+            </div>
           </aside>
         </div>
 
@@ -980,6 +1070,18 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           <InputNumber value={returnQuantity} onChange={(value) => setReturnQuantity(Number(value || 1))} min={1} max={selectedOrder?.items.find((item) => String(item.id) === String(returnItemID))?.quantity || 1} addonAfter="份" style={{ width: '100%' }} />
           <Input.TextArea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} maxLength={255} rows={3} placeholder="填写退菜原因" />
         </Space>
+      </Modal>
+
+      <Modal title="交接班" open={handoverOpen} onCancel={() => setHandoverOpen(false)} okText="确认交接并退出收银台" cancelText="继续本班" confirmLoading={submitting} onOk={() => void submitHandover()}>
+        <div className="cashier-handover-modal">
+          <p>系统会记录本班操作人、交接时间和当日收银概览，完成后退出收银台。</p>
+          <div className="cashier-handover-summary">
+            <span>今日实收<strong>{yuan(dashboard.todayRevenue)}</strong></span>
+            <span>今日订单<strong>{dashboard.todayOrders} 单</strong></span>
+            <span>待结账<strong>{unsettledTables.length} 桌 / {yuan(pendingAmount)}</strong></span>
+          </div>
+          <Input.TextArea value={handoverRemark} onChange={(event) => setHandoverRemark(event.target.value)} maxLength={255} rows={3} showCount placeholder="交接备注（可选），例如待处理订单、设备情况" />
+        </div>
       </Modal>
 
       {(loading && !previewMode) && <div className="cashier-loading"><Spin size="large" /><span>正在同步桌台与订单...</span></div>}
