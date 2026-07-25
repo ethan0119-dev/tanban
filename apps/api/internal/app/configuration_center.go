@@ -345,7 +345,7 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.public_id,t.area_id,a.name,t.name,t.table_code,t.capacity,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.public_scene,t.area_id,a.name,t.name,t.table_code,t.capacity,
 		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.payment_status,''),
 		COALESCE(o.settlement_mode_snapshot,''),COALESCE(o.addition_count,0),COALESCE(o.diner_count,0),
 		COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
