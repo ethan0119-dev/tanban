@@ -11,7 +11,6 @@ import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { scanAndBindTableCode } from "../../utils/table-scanner";
-import { customerGuestKey } from "../../utils/customer";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -107,7 +106,6 @@ Page({
       const catalog = await request<Catalog>({
         url: `/public/stores/${encodeURIComponent(storeCode)}/catalog`,
         method: "GET",
-        header: { "X-Customer-Key": customerGuestKey() },
       });
       if (catalog.store?.nextOpenAt) catalog.store.nextOpenAt = formatBeijingDateTime(catalog.store.nextOpenAt);
       const decoration = normalizeDecoration(catalog.store?.decoration, catalog.store);
@@ -324,7 +322,7 @@ Page({
       wx.showToast({ title: "购物车还是空的", icon: "none" });
       return;
     }
-    this.setData({ cartVisible: true });
+    this.setData({ cartVisible: !this.data.cartVisible });
   },
   closeCart() { this.setData({ cartVisible: false }); },
   closeSkuPicker() {

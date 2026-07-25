@@ -5,7 +5,6 @@ import { tableContextForStore } from "../../utils/table-context";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { showUnavailableFeature } from "../../utils/availability";
 import { request } from "../../utils/request";
-import { customerGuestKey } from "../../utils/customer";
 
 interface PublicMembership {
   available: boolean;
@@ -17,15 +16,14 @@ interface PublicMembership {
 Page({
   data: { version: "v0.2.5", storeCode: "", store: null as Store | null, membership: null as PublicMembership | null, channelScope: "TAKEOUT", couponCount: 0, appearanceStyle: "" },
   async onShow() {
-    const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-    this.setData({ storeCode, couponCount: localCouponCount(storeCode), channelScope: tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT" });
     try {
       const appearance = await loadPageAppearance();
+      const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+      this.setData({ storeCode, couponCount: localCouponCount(storeCode), channelScope: tableContextForStore(storeCode) ? "DINE_IN" : "TAKEOUT" });
       this.setData({ store: appearance.store, appearanceStyle: appearance.appearanceStyle });
       const membership = await request<PublicMembership>({
         url: `/public/stores/${encodeURIComponent(storeCode)}/membership`,
         method: "GET",
-        header: { "X-Customer-Key": customerGuestKey() },
       });
       this.setData({ membership });
     } catch {
@@ -43,13 +41,7 @@ Page({
       wx.showModal({ title: "会员服务", content: "当前门店暂未开启会员卡。", showCancel: false });
       return;
     }
-    const levelLines = membership.levels.slice(0, 6).map((level) => {
-      const discount = level.discountPercent < 100 ? `${(level.discountPercent / 10).toFixed(level.discountPercent % 10 ? 1 : 0)} 折` : "无折扣";
-      const recharge = level.rechargeCents ? `充值 ¥${(level.rechargeCents / 100).toFixed(2)}` : "免费";
-      return `${level.name}：${recharge} · ${discount}`;
-    });
-    const memberLine = membership.member?.levelName ? `当前等级：${membership.member.levelName}\n` : "";
-    wx.showModal({ title: membership.card?.name || "会员卡", content: `${memberLine}${levelLines.join("\n") || "暂无可用等级"}`, showCancel: false });
+    wx.navigateTo({ url: "/pages/membership/index" });
   },
   goLegal() { wx.navigateTo({ url: "/pages/legal/index" }); },
   unavailable(event: WechatMiniprogram.BaseEvent) {

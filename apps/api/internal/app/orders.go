@@ -550,8 +550,9 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type paymentInput struct {
-	OpenID   string `json:"openid"`
-	SubAppID string `json:"sub_appid"`
+	OpenID     string `json:"openid"`
+	SubAppID   string `json:"sub_appid"`
+	CustomerID int64  `json:"-"`
 }
 
 const paymentStatusCreating = "CREATING"
@@ -684,15 +685,6 @@ func (s *Server) createPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, tenantID, orderID int64, input paymentInput) {
-	enabled, err := s.paymentAcceptanceEnabled(r.Context())
-	if err != nil {
-		handleSQLError(w, err)
-		return
-	}
-	if !enabled {
-		writeError(w, http.StatusServiceUnavailable, "PAYMENTS_DISABLED", "payment acceptance is disabled by the platform")
-		return
-	}
 	conn, release, err := s.acquirePaymentOrderLock(r.Context(), tenantID, orderID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", err.Error())
@@ -736,14 +728,6 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
 		return
 	}
-	if tenantPaymentProvider != s.Payment.Name() {
-		writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "merchant payment provider is not active on the platform")
-		return
-	}
-	if tenantPaymentProvider == "wechat_partner" && (merchantNo == "" || onboardingStatus != "ACTIVE" || productAuthorizationStatus != "AUTHORIZED") {
-		writeError(w, http.StatusConflict, "WECHAT_PAY_MERCHANT_NOT_READY", "WeChat Pay sub-merchant onboarding or product authorization is incomplete")
-		return
-	}
 	newReservation := false
 	if !postPay {
 		var reserveErr error
@@ -768,6 +752,35 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			handleSQLError(w, err)
 			return
 		}
+	}
+	balancePayment, err := s.applyOrderBalancePaymentLocked(r.Context(), conn, tenantID, orderID, input.CustomerID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if balancePayment.FullyPaid {
+		writePaymentResponse(w, http.StatusCreated, balancePayment.ID, "balance", balancePayment.Reference, string(provider.PaymentSuccess), map[string]string{"mode": "balance"})
+		return
+	}
+	if balancePayment.AmountCents > 0 {
+		amount = balancePayment.RemainingCents
+	}
+	enabled, err := s.paymentAcceptanceEnabled(r.Context())
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if !enabled {
+		writeError(w, http.StatusServiceUnavailable, "PAYMENTS_DISABLED", "payment acceptance is disabled by the platform")
+		return
+	}
+	if tenantPaymentProvider != s.Payment.Name() {
+		writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "merchant payment provider is not active on the platform")
+		return
+	}
+	if tenantPaymentProvider == "wechat_partner" && (merchantNo == "" || onboardingStatus != "ACTIVE" || productAuthorizationStatus != "AUTHORIZED") {
+		writeError(w, http.StatusConflict, "WECHAT_PAY_MERCHANT_NOT_READY", "WeChat Pay sub-merchant onboarding or product authorization is incomplete")
+		return
 	}
 	var existingID int64
 	var existingProvider, existingNo, existingStatus, raw string

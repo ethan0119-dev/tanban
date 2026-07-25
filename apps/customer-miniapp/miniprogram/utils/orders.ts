@@ -16,3 +16,18 @@ export function rememberOrder(storeCode: string, orderNo: string): void {
 export function localOrderNumbers(storeCode: string): string[] {
   return readHistory()[storeCode] || [];
 }
+
+function orderTime(value: string): number {
+  const source = String(value || "").trim();
+  if (!source) return 0;
+  const normalized = source.includes("T") ? source : `${source.replace(" ", "T")}+08:00`;
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+export function sortCustomerOrders<T extends { current: boolean; createdAt: string; id: number }>(orders: T[]): T[] {
+  return [...orders].sort((left, right) => {
+    if (left.current !== right.current) return left.current ? -1 : 1;
+    return orderTime(right.createdAt) - orderTime(left.createdAt) || right.id - left.id;
+  });
+}

@@ -2,6 +2,7 @@ import { env } from "./config/env";
 import { customerSafeErrorMessage } from "./utils/availability";
 import type { DecorationConfig, FastFoodOrderingContext, Store, TableOrderingContext } from "./types/domain";
 import { clearFastFoodContext, resolveFastFoodContext, saveFastFoodContext } from "./utils/fast-food-context";
+import { createCustomerSession } from "./utils/customer-session";
 import { orderingEntryKey, parseOrderingEntry, type OrderingEntryOptions } from "./utils/store-route";
 import { clearTableOrderingContext, resolveTableOrderingContext, saveTableOrderingContext } from "./utils/table-context";
 
@@ -22,6 +23,7 @@ export interface TanbanAppOption {
     appearanceStyle: string;
   };
   prepareOrderingEntry(options: OrderingEntryOptions, restoreWhenEmpty?: boolean): Promise<void>;
+  refreshCustomerSession(): Promise<void>;
 }
 
 App<TanbanAppOption>({
@@ -43,11 +45,36 @@ App<TanbanAppOption>({
   onLaunch(options) {
     const token = wx.getStorageSync<string>("tanban_customer_token");
     if (token) this.globalData.customerToken = token;
-    this.globalData.routeReady = this.prepareOrderingEntry(options, true);
+    this.globalData.routeReady = this.prepareOrderingEntry(options, true).then(() => this.refreshCustomerSession());
   },
   onShow(options) {
     const route = parseOrderingEntry(options);
-    if (route.kind !== "NONE") this.globalData.routeReady = this.prepareOrderingEntry(options, false);
+    if (route.kind !== "NONE") {
+      this.globalData.routeReady = this.prepareOrderingEntry(options, false).then(() => this.refreshCustomerSession());
+    }
+  },
+  async refreshCustomerSession() {
+    const storeCode = this.globalData.storeCode;
+    if (!storeCode) return;
+    const tokenStore = wx.getStorageSync<string>("tanban_customer_token_store");
+    const issuedAt = Number(wx.getStorageSync<number>("tanban_customer_token_issued_at") || 0);
+    if (this.globalData.customerToken && tokenStore === storeCode && Date.now() - issuedAt < 29 * 24 * 60 * 60 * 1000) {
+      return;
+    }
+    if (this.globalData.customerToken && tokenStore !== storeCode) {
+      this.globalData.customerToken = "";
+      wx.removeStorageSync("tanban_customer_token");
+      wx.removeStorageSync("tanban_customer_token_issued_at");
+    }
+    try {
+      const token = await createCustomerSession(storeCode);
+      this.globalData.customerToken = token;
+      wx.setStorageSync("tanban_customer_token", token);
+      wx.setStorageSync("tanban_customer_token_store", storeCode);
+      wx.setStorageSync("tanban_customer_token_issued_at", Date.now());
+    } catch (error) {
+      console.warn("customer session unavailable", error);
+    }
   },
   prepareOrderingEntry(options, restoreWhenEmpty = true) {
     const route = parseOrderingEntry(options);

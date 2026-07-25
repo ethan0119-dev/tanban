@@ -30,8 +30,9 @@ type WeChatPayPartner struct {
 }
 
 type WeChatMiniApp struct {
-	AppID     string
-	AppSecret string
+	APIBaseURL string
+	AppID      string
+	AppSecret  string
 }
 
 type WeChatOfficialAccount struct {
@@ -110,8 +111,9 @@ func Load() (Config, error) {
 			RefundNotifyURL:      strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_REFUND_NOTIFY_URL")),
 		},
 		WeChatMiniApp: WeChatMiniApp{
-			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_ID")),
-			AppSecret: strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_SECRET")),
+			APIBaseURL: strings.TrimRight(env("TB_WECHAT_MINIAPP_API_BASE_URL", "https://api.weixin.qq.com"), "/"),
+			AppID:      strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_ID")),
+			AppSecret:  strings.TrimSpace(os.Getenv("TB_WECHAT_MINIAPP_APP_SECRET")),
 		},
 		WeChatOfficialAccount: WeChatOfficialAccount{
 			AppID:     strings.TrimSpace(os.Getenv("TB_WECHAT_OFFICIAL_ACCOUNT_APP_ID")),

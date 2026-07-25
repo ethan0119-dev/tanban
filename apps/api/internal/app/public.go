@@ -16,12 +16,17 @@ import (
 )
 
 func (s *Server) publicRoutes(r chi.Router) {
+	r.Post("/customer/session", s.publicCreateCustomerSession)
 	r.Get("/table-codes/{code}", s.publicResolveTableCode)
 	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)
 	r.Get("/stores/{storeCode}", s.publicStore)
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
 	r.Get("/stores/{storeCode}/membership", s.publicMembership)
 	r.Get("/stores/{storeCode}/stored-value", s.publicStoredValue)
+	r.Post("/stores/{storeCode}/membership/orders", s.publicCreateMembershipOrder)
+	r.Post("/stores/{storeCode}/stored-value/orders", s.publicCreateStoredValueOrder)
+	r.Get("/account-payments/{paymentID}", s.publicGetAccountPayment)
+	r.Post("/account-payments/{paymentID}/mock-confirm", s.publicAccountPaymentMockConfirm)
 	r.Post("/stores/{storeCode}/orders", s.publicCreateOrder)
 	r.Get("/orders/{orderNo}", s.publicGetOrder)
 	r.Post("/orders/{orderNo}/pay", s.publicPayOrder)
@@ -76,13 +81,8 @@ func (s *Server) publicMembership(w http.ResponseWriter, r *http.Request) {
 		"card":      map[string]any{"name": cardName, "color": cardColor, "imageUrl": cardImageURL, "agreementUrl": agreementURL, "showBalance": showBalance},
 		"levels":    levels,
 	}
-	guestKey := strings.TrimSpace(r.Header.Get("X-Customer-Key"))
-	openID := strings.TrimSpace(r.Header.Get("X-Wechat-Openid"))
-	if enabled && (guestKey != "" || openID != "") {
-		identityColumn, identityValue := "guest_key", guestKey
-		if openID != "" {
-			identityColumn, identityValue = "wechat_openid", openID
-		}
+	session, hasSession := s.optionalPublicCustomerSession(r.Context(), r, store.TenantID)
+	if enabled && hasSession {
 		var memberID sql.NullInt64
 		var memberNo, levelName string
 		var levelID sql.NullInt64
@@ -93,8 +93,8 @@ func (s *Server) publicMembership(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
 			LEFT JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id AND l.status='ACTIVE' AND l.deleted_at IS NULL
 			LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id
-			WHERE c.tenant_id=? AND c.`+identityColumn+`=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
-			store.TenantID, identityValue).Scan(&memberID, &memberNo, &levelID, &levelName, &principal, &bonus)
+			WHERE c.tenant_id=? AND c.id=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
+			store.TenantID, session.CustomerID).Scan(&memberID, &memberNo, &levelID, &levelName, &principal, &bonus)
 		if memberErr == nil {
 			view["member"] = map[string]any{"memberId": memberID.Int64, "memberNo": memberNo, "levelId": levelID.Int64, "levelName": levelName, "principalCents": principal, "bonusCents": bonus, "balanceCents": principal + bonus}
 		} else if !errors.Is(memberErr, sql.ErrNoRows) {
@@ -127,7 +127,8 @@ func (s *Server) publicStoredValue(w http.ResponseWriter, r *http.Request) {
 	available := settings.Enabled && settings.ShowInMiniapp
 	rules := []map[string]any{}
 	if available {
-		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%d %H:%i:%s')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%d %H:%i:%s')) FROM stored_value_rules WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) ORDER BY recharge_cents,id`, store.TenantID)
+		rows, queryErr := s.DB.QueryContext(r.Context(), `SELECT id,name,recharge_cents,gift_cents,gift_growth,per_customer_limit,IF(starts_at IS NULL,NULL,DATE_FORMAT(starts_at,'%Y-%m-%d %H:%i:%s')),IF(ends_at IS NULL,NULL,DATE_FORMAT(ends_at,'%Y-%m-%d %H:%i:%s')) FROM stored_value_rules WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL AND recharge_cents BETWEEN ? AND ? AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) ORDER BY recharge_cents,id`,
+			store.TenantID, settings.MinRechargeCents, settings.MaxRechargeCents)
 		if queryErr != nil {
 			handleSQLError(w, queryErr)
 			return
@@ -156,9 +157,25 @@ func (s *Server) publicStoredValue(w http.ResponseWriter, r *http.Request) {
 	if available {
 		message = "请选择储值金额"
 	}
+	balance := map[string]any{"principalCents": int64(0), "bonusCents": int64(0), "balanceCents": int64(0)}
+	session, hasSession := s.optionalPublicCustomerSession(r.Context(), r, store.TenantID)
+	if hasSession {
+		var principal, bonus int64
+		balanceErr := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(ba.principal_cents,0),COALESCE(ba.bonus_cents,0)
+			FROM customers c LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id
+			WHERE c.tenant_id=? AND c.id=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
+			store.TenantID, session.CustomerID).Scan(&principal, &bonus)
+		if balanceErr == nil {
+			balance = map[string]any{"principalCents": principal, "bonusCents": bonus, "balanceCents": principal + bonus}
+		} else if !errors.Is(balanceErr, sql.ErrNoRows) {
+			handleSQLError(w, balanceErr)
+			return
+		}
+	}
 	writeData(w, http.StatusOK, map[string]any{
 		"available": available,
 		"message":   message,
+		"balance":   balance,
 		"settings": map[string]any{
 			"minRechargeCents": settings.MinRechargeCents,
 			"maxRechargeCents": settings.MaxRechargeCents,
@@ -184,7 +201,10 @@ func (s *Server) publicCatalog(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	memberBenefit, err := s.publicMemberBenefitByIdentity(r.Context(), store.TenantID, strings.TrimSpace(r.Header.Get("X-Customer-Key")), strings.TrimSpace(r.Header.Get("X-Wechat-Openid")))
+	memberBenefit := publicMemberBenefit{DiscountPercent: 100}
+	if session, ok := s.optionalPublicCustomerSession(r.Context(), r, store.TenantID); ok {
+		memberBenefit, err = publicMemberBenefitByCustomer(r.Context(), s.DB, store.TenantID, session.CustomerID)
+	}
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -375,6 +395,7 @@ type publicOrderInput struct {
 	CouponCampaignID            int64                  `json:"couponCampaignId"`
 	DisableStorePromotion       bool                   `json:"disableStorePromotion"`
 	DinerCount                  int                    `json:"dinerCount"`
+	VerifiedCustomerID          int64                  `json:"-"`
 }
 
 type publicMemberBenefit struct {
@@ -412,35 +433,6 @@ func decodeMemberDiscount(benefitsJSON string) int {
 		return 100
 	}
 	return discount
-}
-
-func (s *Server) publicMemberBenefitByIdentity(ctx context.Context, tenantID int64, guestKey, openID string) (publicMemberBenefit, error) {
-	if guestKey == "" && openID == "" {
-		return publicMemberBenefit{DiscountPercent: 100}, nil
-	}
-	identityColumn, identityValue := "guest_key", guestKey
-	if openID != "" {
-		identityColumn, identityValue = "wechat_openid", openID
-	}
-	var result publicMemberBenefit
-	var benefitsJSON string
-	err := s.DB.QueryRowContext(ctx, `SELECT c.id,m.id,l.id,l.name,l.benefits_json
-		FROM customers c
-		JOIN membership_settings ms ON ms.tenant_id=c.tenant_id AND ms.enabled=1
-		JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
-			AND (m.expires_at IS NULL OR m.expires_at>NOW(3))
-		JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id
-			AND l.status='ACTIVE' AND l.deleted_at IS NULL
-		WHERE c.tenant_id=? AND c.`+identityColumn+`=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
-		tenantID, identityValue).Scan(&result.CustomerID, &result.MemberID, &result.LevelID, &result.LevelName, &benefitsJSON)
-	if errors.Is(err, sql.ErrNoRows) {
-		return publicMemberBenefit{DiscountPercent: 100}, nil
-	}
-	if err != nil {
-		return publicMemberBenefit{}, err
-	}
-	result.DiscountPercent = decodeMemberDiscount(benefitsJSON)
-	return result, nil
 }
 
 func publicMemberBenefitByCustomer(ctx context.Context, queryer sqlQueryer, tenantID, customerID int64) (publicMemberBenefit, error) {
@@ -566,7 +558,13 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	} else {
 		input.DinerCount = 1
 	}
-	input.OpenID = strings.TrimSpace(input.OpenID)
+	// OpenID is accepted only from the signed customer session. A request-body
+	// value is untrusted and must never unlock member pricing or stored value.
+	input.OpenID = ""
+	if session, ok := s.optionalPublicCustomerSession(r.Context(), r, store.TenantID); ok {
+		input.VerifiedCustomerID = session.CustomerID
+		input.OpenID = session.OpenID
+	}
 	input.CustomerKey = strings.TrimSpace(input.CustomerKey)
 	input.CustomerName = strings.TrimSpace(input.CustomerName)
 	input.CustomerPhone = strings.TrimSpace(input.CustomerPhone)
@@ -738,10 +736,13 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	memberBenefit, err := publicMemberBenefitByCustomer(r.Context(), tx, store.TenantID, customerID)
-	if err != nil {
-		handleSQLError(w, err)
-		return
+	memberBenefit := publicMemberBenefit{CustomerID: customerID, DiscountPercent: 100}
+	if input.VerifiedCustomerID > 0 {
+		memberBenefit, err = publicMemberBenefitByCustomer(r.Context(), tx, store.TenantID, input.VerifiedCustomerID)
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
 	}
 	type resolvedItem struct {
 		productID, skuID, basePrice, modifierPrice, unitPrice               int64
@@ -1038,10 +1039,28 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 // upsertPublicOrderCustomer links a checkout to a stable CRM customer without
-// treating a client-provided identifier as authentication. A verified WeChat
-// OpenID wins when present; otherwise an install-scoped guest key groups repeat
-// anonymous orders until the real wx.login flow is connected.
+// treating a client-provided identifier as authentication. A signed customer
+// session wins when present; otherwise an install-scoped guest key groups
+// anonymous orders but never grants member pricing or balance access.
 func upsertPublicOrderCustomer(ctx context.Context, tx *sql.Tx, store storeDTO, input publicOrderInput) (int64, error) {
+	if input.VerifiedCustomerID > 0 {
+		var customerID int64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM customers WHERE tenant_id=? AND id=?
+			AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`, store.TenantID, input.VerifiedCustomerID).Scan(&customerID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE customers SET
+			source_store_id=COALESCE(source_store_id,?),name=IF(?='',name,?),phone=IF(?='',phone,?),
+			source='MINIPROGRAM',last_seen_at=NOW(3) WHERE tenant_id=? AND id=?`,
+			store.ID, input.CustomerName, input.CustomerName, input.CustomerPhone, input.CustomerPhone,
+			store.TenantID, customerID); err != nil {
+			return 0, err
+		}
+		if err := ensureAutoMembershipTx(ctx, tx, store.TenantID, customerID); err != nil {
+			return 0, err
+		}
+		return customerID, nil
+	}
 	identityColumn := "guest_key"
 	identityValue := input.CustomerKey
 	source := "MINIPROGRAM_GUEST"
@@ -1157,7 +1176,13 @@ func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "PAYMENT_PROVIDER_UNAVAILABLE", "requested payment provider is not active")
 		return
 	}
-	s.createPaymentForOrder(w, r, tenantID, id, paymentInput{OpenID: requested.OpenID, SubAppID: requested.SubAppID})
+	var session publicCustomerSession
+	if current, ok := s.optionalPublicCustomerSession(r.Context(), r, tenantID); ok {
+		session = current
+	}
+	s.createPaymentForOrder(w, r, tenantID, id, paymentInput{
+		OpenID: session.OpenID, SubAppID: requested.SubAppID, CustomerID: session.CustomerID,
+	})
 }
 
 func (s *Server) publicMockConfirm(w http.ResponseWriter, r *http.Request) {
@@ -1189,8 +1214,47 @@ func (s *Server) publicMockConfirm(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{"id": paymentID, "provider": "mock", "status": "SUCCEEDED"})
 }
 
-func (s *Server) publicCustomerOrders(w http.ResponseWriter, _ *http.Request) {
-	writeData(w, http.StatusOK, []any{})
+func (s *Server) publicCustomerOrders(w http.ResponseWriter, r *http.Request) {
+	storeCode := strings.TrimSpace(r.URL.Query().Get("storeCode"))
+	if storeCode == "" {
+		writeError(w, http.StatusBadRequest, "STORE_CODE_REQUIRED", "storeCode is required")
+		return
+	}
+	store, err := s.findPublicStore(r.Context(), storeCode)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	session, ok := s.requirePublicCustomerSession(w, r, store.TenantID)
+	if !ok {
+		return
+	}
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT id FROM orders WHERE tenant_id=? AND store_id=? AND customer_id=?
+		ORDER BY id DESC LIMIT 100`, store.TenantID, store.ID, session.CustomerID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer rows.Close()
+	orderIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		orderIDs = append(orderIDs, id)
+	}
+	orders := make([]map[string]any, 0, len(orderIDs))
+	for _, id := range orderIDs {
+		order, loadErr := s.loadOrder(r.Context(), store.TenantID, id, "")
+		if loadErr != nil {
+			handleSQLError(w, loadErr)
+			return
+		}
+		orders = append(orders, publicOrderView(order))
+	}
+	writeData(w, http.StatusOK, orders)
 }
 
 func publicOrderView(order orderDTO) map[string]any {

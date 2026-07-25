@@ -7,6 +7,7 @@
     "pages/order-detail/index",
     "pages/coupons/index",
     "pages/my-coupons/index",
+    "pages/membership/index",
     "pages/recharge/index",
     "pages/lottery/index",
     "pages/legal/index",

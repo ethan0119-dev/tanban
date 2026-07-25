@@ -1040,14 +1040,127 @@ paths:
       responses:
         '201': {description: Order created with stable business-day pickup code}
         '409': {description: Store closed or idempotency conflict}
+  /public/customer/session:
+    post:
+      summary: 用微信小程序登录凭证创建顾客会话
+      description: 服务端通过微信 code2session 校验临时 code，并签发仅限所属商户的顾客 JWT；guestKey 仅用于关联该设备此前的匿名订单，不作为认证凭据。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, guestKey, storeCode]
+              properties:
+                code: {type: string, maxLength: 256}
+                guestKey: {type: string, minLength: 12, maxLength: 128}
+                storeCode: {type: string}
+      responses:
+        '200': {description: Customer bearer token}
+        '429': {description: Too many login attempts}
+        '502': {description: WeChat code exchange failed}
+        '503': {description: Mini-program AppID or secret is not configured}
+  /public/stores/{storeCode}/membership/orders:
+    post:
+      summary: 开通或升级会员等级
+      description: 支付成功后原子生效会员等级，并将等级配置金额计入本金余额。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [levelId]
+              properties:
+                levelId: {type: integer, format: int64}
+      responses:
+        '201': {description: Membership payment created or free membership activated}
+        '409': {description: Membership level is unavailable or idempotency conflict}
+  /public/stores/{storeCode}/stored-value/orders:
+    post:
+      summary: 按储值规则发起在线充值
+      description: 支付成功后原子记入本金与赠送金，重复通知不会重复到账。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ruleId]
+              properties:
+                ruleId: {type: integer, format: int64}
+      responses:
+        '201': {description: Stored-value payment created}
+        '409': {description: Rule limit or account balance limit reached}
+  /public/account-payments/{paymentID}:
+    get:
+      summary: 查询当前顾客的会员或储值支付状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: paymentID
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Account payment and fulfillment status}
+        '404': {description: Payment does not belong to the current customer}
+  /public/account-payments/{paymentID}/mock-confirm:
+    post:
+      summary: 开发环境确认会员或储值模拟支付
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: paymentID
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Payment confirmed and account benefit fulfilled}
+        '404': {description: Mock confirmation disabled or payment not owned by customer}
+  /public/customer/orders:
+    get:
+      summary: 当前微信顾客在指定门店的订单列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Up to 100 newest customer orders}
   /public/orders/{orderNo}/payments:
     post:
-      summary: 使用平台当前运行且与商户绑定一致的适配器发起支付
+      summary: 余额足够时优先使用顾客余额，否则使用商户当前支付适配器
       security: []
       parameters:
         - in: path
           name: orderNo
           required: true
+          schema: {type: string}
+        - in: header
+          name: Authorization
+          required: false
+          description: 顾客 JWT；提供且订单属于该顾客时，若余额足够支付整单则优先扣减余额。
           schema: {type: string}
       requestBody:
         required: false
@@ -1060,7 +1173,7 @@ paths:
                 openid: {type: string}
                 subAppId: {type: string}
       responses:
-        '201': {description: Payment created}
+        '201': {description: Balance payment completed or external payment created}
         '503': {description: Platform payment is disabled, provider mismatch, or selected adapter is not implemented/configured}
   /payments/wechat-partner/callback:
     post:

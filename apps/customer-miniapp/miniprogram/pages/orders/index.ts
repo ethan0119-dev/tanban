@@ -1,12 +1,11 @@
 import type { TanbanAppOption } from "../../app";
 import type { Order } from "../../types/domain";
-import { localOrderNumbers } from "../../utils/orders";
+import { localOrderNumbers, sortCustomerOrders } from "../../utils/orders";
 import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { showUnavailableFeature } from "../../utils/availability";
 
-type PrimaryTab = "CURRENT" | "HISTORY";
 type SceneTab = "ALL" | "DELIVERY" | "DINE_IN" | "TAKEOUT" | "COUNTER" | "QUEUE" | "RESERVATION";
 
 interface OrderView extends Order {
@@ -46,7 +45,6 @@ Page({
     allOrders: [] as OrderView[],
     orders: [] as OrderView[],
     loading: true,
-    primaryTab: "CURRENT" as PrimaryTab,
     sceneTab: "ALL" as SceneTab,
     sceneTabs: [
       { key: "ALL", text: "全部" }, { key: "DELIVERY", text: "外卖" }, { key: "DINE_IN", text: "堂食" },
@@ -63,16 +61,21 @@ Page({
   async loadOrders() {
     try {
       const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
-      const numbers = localOrderNumbers(storeCode);
-      const results = await Promise.allSettled(numbers.map((orderNo) => request<Order>({ url: `/public/orders/${encodeURIComponent(orderNo)}`, method: "GET" })));
-      const allOrders = results.flatMap((result) => result.status === "fulfilled" ? [decorate(result.value)] : []);
+      let sourceOrders: Order[] = [];
+      try {
+        sourceOrders = await request<Order[]>({
+          url: `/public/customer/orders?storeCode=${encodeURIComponent(storeCode)}`,
+          method: "GET",
+        });
+      } catch {
+        const numbers = localOrderNumbers(storeCode);
+        const results = await Promise.allSettled(numbers.map((orderNo) => request<Order>({ url: `/public/orders/${encodeURIComponent(orderNo)}`, method: "GET" })));
+        sourceOrders = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      }
+      const allOrders = sortCustomerOrders(sourceOrders.map(decorate));
       this.setData({ allOrders, loading: false });
       this.applyFilters();
     } catch { this.setData({ allOrders: [], orders: [], loading: false }); }
-  },
-  choosePrimary(event: WechatMiniprogram.BaseEvent) {
-    this.setData({ primaryTab: String(event.currentTarget.dataset.tab) as PrimaryTab });
-    this.applyFilters();
   },
   chooseScene(event: WechatMiniprogram.BaseEvent) {
     const sceneTab = String(event.currentTarget.dataset.tab) as SceneTab;
@@ -89,11 +92,7 @@ Page({
     this.applyFilters();
   },
   applyFilters() {
-    const orders = this.data.allOrders.filter((item) => {
-      const primaryMatch = this.data.primaryTab === "CURRENT" ? item.current : !item.current;
-      const sceneMatch = this.data.sceneTab === "ALL" || item.scene === this.data.sceneTab;
-      return primaryMatch && sceneMatch;
-    });
+    const orders = this.data.allOrders.filter((item) => this.data.sceneTab === "ALL" || item.scene === this.data.sceneTab);
     this.setData({ orders });
   },
   openOrder(event: WechatMiniprogram.BaseEvent) { wx.navigateTo({ url: `/pages/order-detail/index?orderNo=${encodeURIComponent(String(event.currentTarget.dataset.no))}` }); },

@@ -1558,10 +1558,6 @@ func (s *Server) updateStoredValueSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid stored-value settings")
 		return
 	}
-	if input.ShowInMiniapp {
-		writeError(w, http.StatusConflict, "MINIAPP_RECHARGE_NOT_READY", "mini-program recharge is not connected in V1")
-		return
-	}
 	_, err := s.DB.ExecContext(r.Context(), `INSERT INTO stored_value_settings(tenant_id,enabled,min_recharge_cents,max_recharge_cents,max_balance_cents,deduction_order,refund_policy,agreement_url,show_in_miniapp,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),min_recharge_cents=VALUES(min_recharge_cents),max_recharge_cents=VALUES(max_recharge_cents),max_balance_cents=VALUES(max_balance_cents),deduction_order=VALUES(deduction_order),refund_policy=VALUES(refund_policy),agreement_url=VALUES(agreement_url),show_in_miniapp=VALUES(show_in_miniapp),updated_by=VALUES(updated_by)`, actor.TenantID, input.Enabled, input.MinRechargeCents, input.MaxRechargeCents, input.MaxBalanceCents, input.DeductionOrder, input.RefundPolicy, input.AgreementURL, input.ShowInMiniapp, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)

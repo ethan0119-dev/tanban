@@ -15,7 +15,7 @@ import { bestEligibleCoupon, eligibleCoupons, forgetClaimedCoupon } from "../../
 
 interface PaymentResult {
   id: number;
-  provider: "mock" | "tianque" | "wechat_partner";
+  provider: "balance" | "mock" | "tianque" | "wechat_partner";
   status: string;
   wxPayParams?: WechatMiniprogram.RequestPaymentOption;
 }
@@ -303,8 +303,14 @@ Page({
       }
       // 支付通道由服务端根据平台当前运行适配器和商户绑定选择；
       // 小程序不缓存通道名，避免平台切换后继续请求旧通道。
-      const payment = await request<PaymentResult>({ url: `/public/orders/${order.orderNo}/payments`, method: "POST", data: {} });
-      if (payment.provider === "mock") {
+      const payment = await request<PaymentResult>({
+        url: `/public/orders/${order.orderNo}/payments`,
+        method: "POST",
+        data: {},
+      });
+      if (payment.provider === "balance") {
+        wx.showToast({ title: "余额支付成功", icon: "success" });
+      } else if (payment.provider === "mock") {
         await request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" });
       } else if (payment.provider === "wechat_partner" && validWechatPayParams(payment.wxPayParams)) {
         await new Promise<void>((resolve, reject) => wx.requestPayment({ ...payment.wxPayParams!, success: () => resolve(), fail: reject }));

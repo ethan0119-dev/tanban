@@ -1,5 +1,5 @@
 <view class="page recharge-page" style="{{appearanceStyle}}">
-  <view class="balance-card"><text>账户余额</text><text class="balance">--</text><text>储值服务开通后可查看</text></view>
+  <view class="balance-card"><text>账户余额</text><text class="balance">¥{{balanceCents / 100}}</text><text>本金 ¥{{principalCents / 100}} · 赠送金 ¥{{bonusCents / 100}}</text></view>
   <view class="section-title"><text>充值金额</text><text>{{message}}</text></view>
   <view class="rule-grid" wx:if="{{rules.length}}">
     <view class="rule {{selectedRuleId === item.id ? 'selected' : ''}}" wx:for="{{rules}}" wx:key="id" data-id="{{item.id}}" bindtap="chooseRule"><text>¥{{item.rechargeText}}</text><text wx:if="{{item.giftCents}}">赠 ¥{{item.giftText}}</text><text wx:else>{{item.name}}</text></view>
@@ -7,5 +7,5 @@
   <view class="unavailable" wx:elif="{{!loading}}"><text>储值服务暂未开通</text><text>开通后可在这里选择储值优惠并查看余额，具体开放时间请关注门店通知。</text></view>
   <view class="empty" wx:else>正在加载充值规则…</view>
   <view class="safety"><text>温馨提示</text><text>本店储值服务开放后，请按页面展示的付款方式和到账结果操作。</text></view>
-  <button class="primary recharge-button" wx:if="{{available}}" bindtap="recharge">立即充值</button>
+  <button class="primary recharge-button" wx:if="{{available}}" loading="{{recharging}}" disabled="{{recharging || !selectedRuleId}}" bindtap="recharge">立即充值</button>
 </view>

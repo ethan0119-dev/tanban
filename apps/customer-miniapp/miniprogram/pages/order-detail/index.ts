@@ -7,7 +7,7 @@ import { formatBeijingDateTime } from "../../utils/datetime";
 
 interface PaymentResult {
   id: number;
-  provider: "mock" | "tianque" | "wechat_partner";
+  provider: "balance" | "mock" | "tianque" | "wechat_partner";
   status: string;
   wxPayParams?: WechatMiniprogram.RequestPaymentOption;
 }
@@ -100,8 +100,14 @@ Page({
     if (!order?.canPay || this.data.paying) return;
     this.setData({ paying: true });
     try {
-      const payment = await request<PaymentResult>({ url: `/public/orders/${encodeURIComponent(order.orderNo)}/payments`, method: "POST", data: {} });
-      if (payment.provider === "mock") {
+      const payment = await request<PaymentResult>({
+        url: `/public/orders/${encodeURIComponent(order.orderNo)}/payments`,
+        method: "POST",
+        data: {},
+      });
+      if (payment.provider === "balance") {
+        // 服务端已在同一事务中完成余额扣减和订单结账。
+      } else if (payment.provider === "mock") {
         await request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" });
       } else if (payment.provider === "wechat_partner" && validWechatPayParams(payment.wxPayParams)) {
         await new Promise<void>((resolve, reject) => wx.requestPayment({ ...payment.wxPayParams!, success: () => resolve(), fail: reject }));

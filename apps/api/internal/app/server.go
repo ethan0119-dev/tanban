@@ -30,6 +30,7 @@ type Server struct {
 	Payment               provider.PaymentProvider
 	MockPayment           *provider.MockPayment
 	Printer               provider.PrinterProvider
+	HTTPClient            *http.Client
 	AllowMockConfirmation bool
 	publicRateMu          sync.Mutex
 }
@@ -78,7 +79,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 	}))
 	server := &Server{
 		DB: db, Config: cfg, Logger: logger, Cache: cache.NewMemory(),
-		Payment: payment, MockPayment: mockPayment, Printer: printer,
+		Payment: payment, MockPayment: mockPayment, Printer: printer, HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		AllowMockConfirmation: cfg.AllowMockConfirmation,
 	}
 	server.loadPrinterProviderRuntime(context.Background())
