@@ -189,6 +189,51 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/ProductInput'}
       responses: {'200': {description: Created product}}
+  /merchant/products/import-template:
+    get:
+      summary: 下载菜单批量导入 Excel 模板
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: XLSX template with product, SKU, attribute and modifier worksheets
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: {type: string, format: binary}
+  /merchant/products/import/preview:
+    post:
+      summary: 预检菜单批量导入文件
+      description: 分类按名称复用或计划新建；属性组和加料组按名称复用，缺少时要求模板中提供完整定义。不会写入数据。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '200': {description: Import preview, row issues and create/reuse summary}
+        '400': {description: Invalid, encrypted or oversized workbook}
+  /merchant/products/import:
+    post:
+      summary: 事务性批量导入菜单
+      description: 重新校验文件后一次性创建分类、配置库、商品、图片、SKU 和库存；任一错误会回滚整批导入。只新增商品，不覆盖已有商品。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201': {description: Created product and configuration counts}
+        '400': {description: Invalid, encrypted or oversized workbook}
+        '422': {description: Workbook no longer passes validation}
   /merchant/products/{productID}:
     parameters:
       - in: path
@@ -1277,6 +1322,31 @@ components:
           type: array
           minItems: 1
           items: {$ref: '#/components/schemas/ProductSKUInput'}
+    MenuImportIssue:
+      type: object
+      required: [level, sheet, code, message]
+      properties:
+        level: {type: string, enum: [ERROR, WARNING]}
+        sheet: {type: string}
+        row: {type: integer, minimum: 1}
+        field: {type: string}
+        code: {type: string}
+        message: {type: string}
+    MenuImportPreview:
+      type: object
+      required: [valid, product_count, sku_count, new_categories, new_attribute_groups, new_modifier_groups, products, issues]
+      properties:
+        valid: {type: boolean}
+        product_count: {type: integer, minimum: 0, maximum: 500}
+        sku_count: {type: integer, minimum: 0, maximum: 2000}
+        existing_category_count: {type: integer, minimum: 0}
+        new_categories: {type: array, items: {type: string}}
+        existing_attribute_groups: {type: array, items: {type: string}}
+        new_attribute_groups: {type: array, items: {type: string}}
+        existing_modifier_groups: {type: array, items: {type: string}}
+        new_modifier_groups: {type: array, items: {type: string}}
+        products: {type: array, items: {type: object}}
+        issues: {type: array, items: {$ref: '#/components/schemas/MenuImportIssue'}}
     ProductActionInput:
       type: object
       required: [action]

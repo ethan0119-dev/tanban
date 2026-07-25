@@ -5,7 +5,9 @@ import {
   CheckCircleOutlined,
   CopyOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
+  FileExcelOutlined,
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -14,12 +16,15 @@ import {
   StarFilled,
   StarOutlined,
   StopOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   Avatar,
   Button,
   Card,
   Col,
+  Descriptions,
   Divider,
   Drawer,
   Dropdown,
@@ -38,6 +43,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
   message,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -130,6 +136,46 @@ interface ProductConfiguration {
   }>;
   modifier_groups: ModifierGroupOption[];
   resource_ids: number[];
+}
+
+interface MenuImportIssue {
+  level: 'ERROR' | 'WARNING';
+  sheet: string;
+  row?: number;
+  field?: string;
+  code: string;
+  message: string;
+}
+
+interface MenuImportPreview {
+  valid: boolean;
+  product_count: number;
+  sku_count: number;
+  existing_category_count: number;
+  new_categories: string[];
+  existing_attribute_groups: string[];
+  new_attribute_groups: string[];
+  existing_modifier_groups: string[];
+  new_modifier_groups: string[];
+  products: Array<{
+    code: string;
+    name: string;
+    category_name: string;
+    sku_count: number;
+    image_count: number;
+    attribute_groups: string[];
+    modifier_groups: string[];
+  }>;
+  issues: MenuImportIssue[];
+}
+
+interface MenuImportResult {
+  product_count: number;
+  sku_count: number;
+  created_categories: string[];
+  created_attribute_groups: string[];
+  created_modifier_groups: string[];
+  warnings: number;
 }
 
 const DEFAULT_SKU_NAME = '默认规格';
@@ -282,6 +328,11 @@ export function ProductsPage() {
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupOption[]>([]);
   const [attributeGroups, setAttributeGroups] = useState<AttributeGroupOption[]>([]);
   const [catalogResources, setCatalogResources] = useState<CatalogResourceOption[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File>();
+  const [importPreview, setImportPreview] = useState<MenuImportPreview>();
+  const [importPreviewing, setImportPreviewing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [form] = Form.useForm<ProductFormValues>();
   const [categoryForm] = Form.useForm<{ name: string; sort?: number; inStoreEnabled: boolean; deliveryEnabled: boolean }>();
   const [messageApi, contextHolder] = message.useMessage();
@@ -626,6 +677,75 @@ export function ProductsPage() {
     }
   };
 
+  const resetMenuImport = () => {
+    if (importPreviewing || importing) return;
+    setImportOpen(false);
+    setImportFile(undefined);
+    setImportPreview(undefined);
+  };
+
+  const downloadMenuImportTemplate = async () => {
+    try {
+      const blob = await api.getBlob('/merchant/products/import-template');
+      const objectURL = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectURL;
+      link.download = '探伴菜单批量导入模板.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectURL), 0);
+      messageApi.success('模板已下载');
+    } catch (error) {
+      messageApi.error(`模板下载失败：${errorMessage(error)}`);
+    }
+  };
+
+  const previewMenuImport = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      messageApi.error('仅支持 .xlsx 文件，请使用下载的模板');
+      return;
+    }
+    setImportFile(file);
+    setImportPreview(undefined);
+    setImportPreviewing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const preview = await api.postForm<MenuImportPreview>('/merchant/products/import/preview', formData);
+      setImportPreview(preview);
+      if (preview.valid) {
+        messageApi.success(`预检通过：将新增 ${preview.product_count} 个商品`);
+      } else {
+        messageApi.warning('预检发现错误，请按列表修改 Excel 后重新选择文件');
+      }
+    } catch (error) {
+      messageApi.error(`预检失败：${errorMessage(error)}`);
+    } finally {
+      setImportPreviewing(false);
+    }
+  };
+
+  const confirmMenuImport = async () => {
+    if (!importFile || !importPreview?.valid || importing) return;
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const result = await api.postForm<MenuImportResult>('/merchant/products/import', formData);
+      setImportOpen(false);
+      setImportFile(undefined);
+      setImportPreview(undefined);
+      setCategoryId('ALL');
+      await load();
+      messageApi.success(`导入完成：新增 ${result.product_count} 个商品、${result.sku_count} 个规格`);
+    } catch (error) {
+      messageApi.error(`导入失败，未写入任何商品：${errorMessage(error)}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const deliveryUnavailable = () => messageApi.info('外卖暂未开放，当前版本仅支持堂食和门店自取');
 
   return (
@@ -633,8 +753,8 @@ export function ProductsPage() {
       {contextHolder}
       <PageHeading
         title="商品管理"
-        description="维护商品图片、规格库存、上下架与推荐状态，并查看成交统计"
-        extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openProduct()}>新增商品</Button></Space>}
+        description="维护商品图片、规格库存、点单配置与销售状态，支持使用 Excel 批量导入菜单"
+        extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button><Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>批量导入菜单</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openProduct()}>新增商品</Button></Space>}
       />
       <Row gutter={[16, 16]} align="stretch">
         <Col xs={24} lg={6} xl={5}>
@@ -757,6 +877,104 @@ export function ProductsPage() {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        title={<Space><FileExcelOutlined style={{ color: '#16a34a' }} />批量导入菜单</Space>}
+        width={980}
+        open={importOpen}
+        destroyOnHidden
+        maskClosable={!importPreviewing && !importing}
+        closable={!importPreviewing && !importing}
+        onCancel={resetMenuImport}
+        footer={(
+          <Space>
+            <Button icon={<DownloadOutlined />} disabled={importPreviewing || importing} onClick={() => void downloadMenuImportTemplate()}>下载模板</Button>
+            <Button disabled={importPreviewing || importing} onClick={resetMenuImport}>取消</Button>
+            <Button type="primary" icon={<UploadOutlined />} loading={importing} disabled={!importPreview?.valid || importPreviewing} onClick={() => void confirmMenuImport()}>
+              确认导入 {importPreview?.valid ? `${importPreview.product_count} 个商品` : ''}
+            </Button>
+          </Space>
+        )}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="先预检，确认后一次性导入"
+          description="分类按名称匹配，没有则自动创建；属性组和加料组优先复用门店已有同名配置，缺少时可在模板对应工作表中完整定义后自动创建。导入只新增商品，不覆盖原商品。"
+          style={{ marginBottom: 16 }}
+        />
+        <Upload.Dragger
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          maxCount={1}
+          disabled={importPreviewing || importing}
+          beforeUpload={(file) => {
+            void previewMenuImport(file);
+            return false;
+          }}
+          onRemove={() => {
+            setImportFile(undefined);
+            setImportPreview(undefined);
+          }}
+        >
+          <p className="ant-upload-drag-icon"><FileExcelOutlined style={{ color: '#16a34a' }} /></p>
+          <p className="ant-upload-text">{importPreviewing ? '正在预检菜单…' : '点击或拖入填写好的 Excel 模板'}</p>
+          <p className="ant-upload-hint">仅支持最新模板生成的 .xlsx 文件，最大 10MB</p>
+        </Upload.Dragger>
+
+        {importPreview ? (
+          <Space direction="vertical" size={14} style={{ width: '100%', marginTop: 18 }}>
+            <Alert
+              type={importPreview.valid ? 'success' : 'error'}
+              showIcon
+              message={importPreview.valid ? '预检通过，可以导入' : `预检未通过：发现 ${importPreview.issues.filter((issue) => issue.level === 'ERROR').length} 个错误`}
+              description={importPreview.valid ? '正式导入仍会再次校验，并在同一个事务中写入全部数据。' : '请根据下方位置修改 Excel，然后重新选择文件。当前不会写入任何数据。'}
+            />
+            <Descriptions bordered size="small" column={4}>
+              <Descriptions.Item label="商品">{importPreview.product_count}</Descriptions.Item>
+              <Descriptions.Item label="规格">{importPreview.sku_count}</Descriptions.Item>
+              <Descriptions.Item label="复用分类">{importPreview.existing_category_count}</Descriptions.Item>
+              <Descriptions.Item label="新建分类">{importPreview.new_categories.length}</Descriptions.Item>
+              <Descriptions.Item label="新分类" span={4}>
+                {importPreview.new_categories.length ? <Space wrap>{importPreview.new_categories.map((name) => <Tag color="orange" key={name}>{name}</Tag>)}</Space> : '无'}
+              </Descriptions.Item>
+              <Descriptions.Item label="点单属性" span={2}>
+                复用 {importPreview.existing_attribute_groups.length} 个，新建 {importPreview.new_attribute_groups.length} 个
+              </Descriptions.Item>
+              <Descriptions.Item label="加料组" span={2}>
+                复用 {importPreview.existing_modifier_groups.length} 个，新建 {importPreview.new_modifier_groups.length} 个
+              </Descriptions.Item>
+            </Descriptions>
+            {importPreview.issues.length > 0 ? (
+              <Table<MenuImportIssue>
+                size="small"
+                rowKey={(issue) => `${issue.code}-${issue.sheet}-${issue.row || 0}-${issue.field || ''}-${issue.message}`}
+                pagination={false}
+                scroll={{ y: 220 }}
+                dataSource={importPreview.issues}
+                columns={[
+                  { title: '级别', dataIndex: 'level', width: 90, render: (value: MenuImportIssue['level']) => <Tag color={value === 'ERROR' ? 'error' : 'warning'}>{value === 'ERROR' ? '错误' : '提醒'}</Tag> },
+                  { title: '位置', key: 'location', width: 190, render: (_, issue) => `${issue.sheet}${issue.row ? ` 第 ${issue.row} 行` : ''}${issue.field ? ` · ${issue.field}` : ''}` },
+                  { title: '说明', dataIndex: 'message' },
+                ]}
+              />
+            ) : null}
+            <Table<MenuImportPreview['products'][number]>
+              size="small"
+              rowKey="code"
+              pagination={{ pageSize: 6, hideOnSinglePage: true }}
+              dataSource={importPreview.products}
+              columns={[
+                { title: '商品编号', dataIndex: 'code', width: 130 },
+                { title: '商品名称', dataIndex: 'name' },
+                { title: '分类', dataIndex: 'category_name', width: 150 },
+                { title: '规格', dataIndex: 'sku_count', width: 80, render: (value: number) => `${value} 个` },
+                { title: '图片', dataIndex: 'image_count', width: 80, render: (value: number) => `${value} 张` },
+                { title: '点单配置', key: 'configuration', width: 220, render: (_, item) => [...item.attribute_groups, ...item.modifier_groups].join('、') || '无' },
+              ]}
+            />
+          </Space>
+        ) : null}
+      </Modal>
 
       <Drawer
         title={editing ? '编辑商品' : '新增商品'}

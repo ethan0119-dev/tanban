@@ -124,11 +124,17 @@ async function requestList<T>(url: string, params?: unknown): Promise<ListResult
   return toListResult<T>(payload);
 }
 
+async function requestBlob(url: string): Promise<Blob> {
+  const response = await http.request<Blob>({ method: 'GET', url, responseType: 'blob' });
+  return response.data;
+}
+
 export const api = {
   get: <T>(url: string, params?: unknown) => request<T>({ method: 'GET', url, params }),
+  getBlob: (url: string) => requestBlob(url),
   getList: <T>(url: string, params?: unknown) => requestList<T>(url, params),
   post: <T>(url: string, data?: unknown) => request<T>({ method: 'POST', url, data }),
-  postForm: <T>(url: string, data: FormData) => request<T>({ method: 'POST', url, data, headers: { 'Content-Type': 'multipart/form-data' } }),
+  postForm: <T>(url: string, data: FormData, timeout = 60_000) => request<T>({ method: 'POST', url, data, timeout, headers: { 'Content-Type': 'multipart/form-data' } }),
   postIdempotent: <T>(url: string, data: unknown, idempotencyKey: string) => request<T>({ method: 'POST', url, data, headers: { 'Idempotency-Key': idempotencyKey } }),
   put: <T>(url: string, data?: unknown) => request<T>({ method: 'PUT', url, data }),
   patch: <T>(url: string, data?: unknown) => request<T>({ method: 'PATCH', url, data }),
