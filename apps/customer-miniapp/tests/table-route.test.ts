@@ -80,9 +80,18 @@ describe('miniapp ordering entry routes', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now);
     saveTableOrderingContext(context);
 
-    expect(readTableOrderingContext(now)).toMatchObject({ storeCode: 'manong-coffee', tableName: 'B02桌' });
+    expect(readTableOrderingContext(now)).toMatchObject({ storeCode: 'manong-coffee', tableName: 'B02桌', returnHomeOnScan: true });
     expect(tableOrderFields(context)).toEqual({ order_scene: 'DINE_IN', table_public_id: 'table-public-b02' });
     expect(tableOrderFields(null)).toEqual({});
     expect(readTableOrderingContext(context.validUntil + 1)).toBeNull();
+  });
+
+  it('honors a store setting that sends table scans directly to the menu', () => {
+    const context = normalizeTableCodeResolution('0123456789abcdef0123456789ab', {
+      returnHomeOnScan: false,
+      store: { id: 1, code: 'manong-coffee', name: '码农咖啡' },
+      table: { publicId: 'table-public-b02', name: 'B02桌' },
+    }, 1_800_000_000_000);
+    expect(context.returnHomeOnScan).toBe(false);
   });
 });

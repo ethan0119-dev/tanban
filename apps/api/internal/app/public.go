@@ -315,18 +315,18 @@ func (s *Server) publicStoreView(ctx context.Context, store storeDTO) map[string
 	view["decoration"] = decoration
 	view["decorationVersion"] = version
 	var settlementMode, orderingMode, customerServicePhone, customerServiceWechat, customerServiceQRURL, privacyPolicyText, userAgreementText string
-	var distanceCheckEnabled, requireCustomerPhone, allowOrderRemark, allowItemRemark bool
+	var distanceCheckEnabled, requireCustomerPhone, allowOrderRemark, allowItemRemark, payAfterOnlinePaymentEnabled bool
 	var distanceLimitM int
 	var storeLatitude, storeLongitude sql.NullFloat64
-	err = s.DB.QueryRowContext(ctx, `SELECT settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,require_customer_phone,
+	err = s.DB.QueryRowContext(ctx, `SELECT settlement_mode,ordering_mode,pay_after_online_payment_enabled,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,require_customer_phone,
 		allow_order_remark,allow_item_remark,customer_service_phone,customer_service_wechat,customer_service_qr_url,
 		privacy_policy_text,user_agreement_text FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
-		Scan(&settlementMode, &orderingMode, &distanceCheckEnabled, &distanceLimitM, &storeLatitude, &storeLongitude, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
+		Scan(&settlementMode, &orderingMode, &payAfterOnlinePaymentEnabled, &distanceCheckEnabled, &distanceLimitM, &storeLatitude, &storeLongitude, &requireCustomerPhone, &allowOrderRemark, &allowItemRemark,
 			&customerServicePhone, &customerServiceWechat, &customerServiceQRURL, &privacyPolicyText, &userAgreementText)
 	if err == nil {
 		view["orderingSettings"] = map[string]any{"settlementMode": settlementMode, "orderingMode": orderingMode, "distanceCheckEnabled": distanceCheckEnabled,
 			"distanceLimitM": distanceLimitM, "requireCustomerPhone": requireCustomerPhone, "allowOrderRemark": allowOrderRemark,
-			"allowItemRemark": allowItemRemark}
+			"allowItemRemark": allowItemRemark, "payAfterOnlinePaymentEnabled": payAfterOnlinePaymentEnabled}
 		if storeLatitude.Valid && storeLongitude.Valid {
 			view["location"] = map[string]any{"latitude": storeLatitude.Float64, "longitude": storeLongitude.Float64}
 		}
@@ -647,11 +647,11 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	policy := storeOperationSettings{SettlementMode: "PAY_BEFORE", OrderingMode: "MULTI_PERSON", DistanceLimitM: 5000, AllowOrderRemark: true, AllowItemRemark: true}
+	policy := storeOperationSettings{SettlementMode: "PAY_BEFORE", OrderingMode: "MULTI_PERSON", PayBeforeClearMode: "AFTER_ORDER_COMPLETION", DistanceLimitM: 5000, AllowOrderRemark: true, AllowItemRemark: true}
 	var storeLatitude, storeLongitude sql.NullFloat64
-	err = tx.QueryRowContext(r.Context(), `SELECT settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,
+	err = tx.QueryRowContext(r.Context(), `SELECT settlement_mode,ordering_mode,pay_before_clear_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,
 		require_customer_phone,allow_order_remark,allow_item_remark FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, store.TenantID, store.ID).
-		Scan(&policy.SettlementMode, &policy.OrderingMode, &policy.DistanceCheckEnabled, &policy.DistanceLimitM, &storeLatitude, &storeLongitude,
+		Scan(&policy.SettlementMode, &policy.OrderingMode, &policy.PayBeforeClearMode, &policy.DistanceCheckEnabled, &policy.DistanceLimitM, &storeLatitude, &storeLongitude,
 			&policy.RequireCustomerPhone, &policy.AllowOrderRemark, &policy.AllowItemRemark)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		handleSQLError(w, err)
@@ -717,8 +717,9 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON c.id=o.customer_id AND c.tenant_id=o.tenant_id
 			WHERE o.tenant_id=? AND o.store_id=? AND o.table_id=? AND o.order_type='DINE_IN'
 			AND o.status IN ('PENDING_PAYMENT','PAID','ACCEPTED','PREPARING','READY')
+			AND NOT (?='IMMEDIATE_AFTER_PAYMENT' AND o.settlement_mode_snapshot='PAY_BEFORE' AND o.payment_status='PAID')
 			AND NOT ((?<>'' AND o.customer_openid=?) OR (?<>'' AND c.guest_key=?))`, store.TenantID, store.ID, table.ID,
-			input.OpenID, input.OpenID, input.CustomerKey, input.CustomerKey).Scan(&occupied)
+			policy.PayBeforeClearMode, input.OpenID, input.OpenID, input.CustomerKey, input.CustomerKey).Scan(&occupied)
 		if err != nil {
 			handleSQLError(w, err)
 			return
@@ -986,7 +987,8 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	initialStatus := "PENDING_PAYMENT"
-	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
+	settlementModeSnapshot := settlementModeForOrder(input.OrderType, policy.SettlementMode)
+	if settlementModeSnapshot == "PAY_AFTER" {
 		initialStatus = "PAID"
 	}
 	sourceChannelKey := customerSession.MiniAppChannelKey
@@ -1000,7 +1002,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		customerSession.MiniAppID = ""
 	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,source,source_miniapp_channel_key,source_miniapp_appid,customer_openid,customer_id,member_id_snapshot,member_level_id_snapshot,member_level_name_snapshot,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,member_discount_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, orderSource, sourceChannelKey, customerSession.MiniAppID, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, orderSource, sourceChannelKey, customerSession.MiniAppID, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, settlementModeSnapshot, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -1179,12 +1181,20 @@ type publicPaymentInput struct {
 func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 	orderNo := chi.URLParam(r, "orderNo")
 	var tenantID, id int64
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT o.tenant_id,o.id FROM orders o
+	var settlementMode string
+	var payAfterOnlinePaymentEnabled bool
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT o.tenant_id,o.id,o.settlement_mode_snapshot,
+		COALESCE(os.pay_after_online_payment_enabled,1) FROM orders o
 		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
 			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
-		WHERE o.order_no=?`, orderNo).Scan(&tenantID, &id); err != nil {
+		LEFT JOIN store_operation_settings os ON os.tenant_id=o.tenant_id AND os.store_id=o.store_id
+		WHERE o.order_no=?`, orderNo).Scan(&tenantID, &id, &settlementMode, &payAfterOnlinePaymentEnabled); err != nil {
 		handleSQLError(w, err)
+		return
+	}
+	if settlementMode == "PAY_AFTER" && !payAfterOnlinePaymentEnabled {
+		writeError(w, http.StatusConflict, "ONLINE_PAYMENT_DISABLED", "该门店已关闭餐后线上支付，请到收银台结账")
 		return
 	}
 	var requested publicPaymentInput

@@ -9,6 +9,7 @@ func TestCashierTokenPathAllowed(t *testing.T) {
 		"/api/v1/auth/workspaces",
 		"/api/v1/merchant/dashboard",
 		"/api/v1/merchant/table-board",
+		"/api/v1/merchant/pickup-display",
 		"/api/v1/merchant/cashier/session",
 		"/api/v1/merchant/cashier/context",
 		"/api/v1/merchant/cashier/handover",

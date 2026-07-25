@@ -31,6 +31,7 @@ import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { OperationSettingsPage } from './pages/OperationSettingsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { CashierPage } from './pages/CashierPage';
+import { PickupDisplayPage } from './pages/PickupDisplayPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -46,6 +47,14 @@ function ProtectedCashier() {
   if (loading) return <div className="app-loading"><Spin size="large" /><span>正在进入摊伴收银台...</span></div>;
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   return <CashierPage />;
+}
+
+function ProtectedPickupDisplay() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <div className="app-loading"><Spin size="large" /><span>正在连接取餐大屏...</span></div>;
+  if (!user) return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}` }} replace />;
+  return <PickupDisplayPage />;
 }
 
 function ManagementOnly({ children }: { children: ReactElement }) {
@@ -65,9 +74,12 @@ function AppRoutes() {
             element={<BusinessPrintTemplatePage businessType="DINE_IN" previewMode />}
           />
           <Route path="/__preview/cashier" element={<CashierPage previewMode />} />
+          <Route path="/__preview/operation-settings" element={<OperationSettingsPage section="ORDER" previewMode />} />
+          <Route path="/__preview/pickup-display" element={<PickupDisplayPage previewMode />} />
         </>
       )}
       <Route path="/cashier" element={<ProtectedCashier />} />
+      <Route path="/pickup-display" element={<ProtectedPickupDisplay />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

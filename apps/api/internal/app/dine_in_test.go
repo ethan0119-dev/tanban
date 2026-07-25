@@ -31,6 +31,17 @@ func TestNormalizeOrderTypeSupportsCanonicalAndLegacyNames(t *testing.T) {
 	}
 }
 
+func TestSettlementModeOnlyAppliesPayAfterToDineIn(t *testing.T) {
+	if actual := settlementModeForOrder(orderTypeDineIn, "PAY_AFTER"); actual != "PAY_AFTER" {
+		t.Fatalf("dine-in should inherit pay-after, got %s", actual)
+	}
+	for _, orderType := range []string{orderTypeTakeout, orderTypeDelivery} {
+		if actual := settlementModeForOrder(orderType, "PAY_AFTER"); actual != "PAY_BEFORE" {
+			t.Fatalf("%s must remain pay-before, got %s", orderType, actual)
+		}
+	}
+}
+
 func TestTablePublicIDFitsPrefixedWeChatScene(t *testing.T) {
 	t.Parallel()
 	publicID, err := newTablePublicID()

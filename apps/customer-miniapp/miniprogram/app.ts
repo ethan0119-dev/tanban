@@ -17,12 +17,15 @@ export interface TanbanAppOption {
     routeRevision: number;
     lastEntryKey: string;
     lastEntryAt: number;
+    lastEntryNavigationKey: string;
+    lastEntryNavigationAt: number;
     appearanceStoreCode: string;
     appearanceStore: Store | null;
     appearanceDecoration: DecorationConfig | null;
     appearanceStyle: string;
   };
   prepareOrderingEntry(options: OrderingEntryOptions, restoreWhenEmpty?: boolean): Promise<void>;
+  handleResolvedOrderingEntry(options: OrderingEntryOptions): void;
   refreshCustomerSession(): Promise<void>;
 }
 
@@ -37,6 +40,8 @@ App<TanbanAppOption>({
     routeRevision: 0,
     lastEntryKey: "",
     lastEntryAt: 0,
+    lastEntryNavigationKey: "",
+    lastEntryNavigationAt: 0,
     appearanceStoreCode: "",
     appearanceStore: null,
     appearanceDecoration: null,
@@ -45,12 +50,47 @@ App<TanbanAppOption>({
   onLaunch(options) {
     const token = wx.getStorageSync<string>("tanban_customer_token");
     if (token) this.globalData.customerToken = token;
-    this.globalData.routeReady = this.prepareOrderingEntry(options, true).then(() => this.refreshCustomerSession());
+    this.globalData.routeReady = this.prepareOrderingEntry(options, true).then(() => {
+      this.handleResolvedOrderingEntry(options);
+      return this.refreshCustomerSession();
+    });
   },
   onShow(options) {
     const route = parseOrderingEntry(options);
     if (route.kind !== "NONE") {
-      this.globalData.routeReady = this.prepareOrderingEntry(options, false).then(() => this.refreshCustomerSession());
+      this.globalData.routeReady = this.prepareOrderingEntry(options, false).then(() => {
+        this.handleResolvedOrderingEntry(options);
+        return this.refreshCustomerSession();
+      });
+    }
+  },
+  handleResolvedOrderingEntry(options) {
+    const route = parseOrderingEntry(options);
+    if (route.kind !== "TABLE" || !this.globalData.tableContext || this.globalData.routeError) return;
+    const key = orderingEntryKey(route);
+    const now = Date.now();
+    if (key === this.globalData.lastEntryNavigationKey && now - this.globalData.lastEntryNavigationAt < 2_000) return;
+    this.globalData.lastEntryNavigationKey = key;
+    this.globalData.lastEntryNavigationAt = now;
+    const context = this.globalData.tableContext;
+    if (context.returnHomeOnScan === false) {
+      wx.switchTab({ url: "/pages/menu/index" });
+      return;
+    }
+    const showConfirmation = () => wx.showModal({
+      title: `已识别 ${context.tableName}`,
+      content: "是否进入当前桌台开始点单？",
+      confirmText: "进入点单",
+      cancelText: "先看首页",
+      success: (result) => {
+        if (result.confirm) wx.switchTab({ url: "/pages/menu/index" });
+      },
+    });
+    const currentRoute = getCurrentPages().slice(-1)[0]?.route || "";
+    if (currentRoute === "pages/home/index") {
+      setTimeout(showConfirmation, 0);
+    } else {
+      wx.switchTab({ url: "/pages/home/index", success: showConfirmation, fail: showConfirmation });
     }
   },
   async refreshCustomerSession() {

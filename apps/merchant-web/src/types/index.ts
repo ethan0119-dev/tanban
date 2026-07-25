@@ -415,6 +415,9 @@ export interface MerchantOperationSettings {
   storeId: Id;
   settlementMode: 'PAY_BEFORE' | 'PAY_AFTER';
   orderingMode: 'SINGLE_PERSON' | 'MULTI_PERSON';
+  tableScanReturnHome: boolean;
+  payBeforeClearMode: 'AFTER_ORDER_COMPLETION' | 'IMMEDIATE_AFTER_PAYMENT';
+  payAfterOnlinePaymentEnabled: boolean;
   distanceCheckEnabled: boolean;
   distanceLimitM: number;
   storeLatitude?: number;
@@ -506,7 +509,7 @@ export interface TableBoardTable {
   name: string;
   tableCode: string;
   capacity: number;
-  state: 'UNOPENED' | 'OPENED' | 'DINING' | 'UNSETTLED';
+  state: 'UNOPENED' | 'PENDING_PAYMENT' | 'SETTLED' | 'DINING' | 'UNSETTLED';
   orderId?: Id;
   orderNo?: string;
   orderStatus?: string;

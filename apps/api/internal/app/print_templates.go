@@ -309,6 +309,10 @@ func normalizePrintTemplateInput(input *printTemplateInput) error {
 func ensureDefaultPrintTemplates(ctx context.Context, executor sqlExecer, tenantID, storeID int64) error {
 	for _, businessType := range []string{orderTypeDineIn, orderTypeTakeout, orderTypeDelivery} {
 		prefix := map[string]string{orderTypeDineIn: "店内", orderTypeTakeout: "自提", orderTypeDelivery: "外卖"}[businessType]
+		triggerExpression := "default_print_trigger"
+		if businessType != orderTypeDineIn {
+			triggerExpression = "'PAYMENT_SUCCESS'"
+		}
 		specs := []struct {
 			templateType, copyRole, name, content, status string
 		}{
@@ -323,7 +327,7 @@ func ensureDefaultPrintTemplates(ctx context.Context, executor sqlExecer, tenant
 				return err
 			}
 			if _, err = executor.ExecContext(ctx, `INSERT IGNORE INTO print_templates(tenant_id,store_id,business_type,template_type,copy_role,name,content_text,trigger_event,copies,paper_width,layout_json,status)
-				SELECT ?,id,?,?,?,?,?,default_print_trigger,1,58,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, tenantID, businessType, spec.templateType, spec.copyRole, spec.name, spec.content, layoutJSON, spec.status, storeID, tenantID); err != nil {
+				SELECT ?,id,?,?,?,?,?,`+triggerExpression+`,1,58,?,? FROM stores WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, tenantID, businessType, spec.templateType, spec.copyRole, spec.name, spec.content, layoutJSON, spec.status, storeID, tenantID); err != nil {
 				return err
 			}
 		}

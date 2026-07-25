@@ -7,6 +7,7 @@ export const TABLE_CONTEXT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 interface TableCodeResolution {
   tableCode?: string;
   expiresAt?: string;
+  returnHomeOnScan?: boolean;
   store?: { id?: number; code?: string; name?: string };
   table?: {
     publicId?: string | number;
@@ -55,6 +56,7 @@ export function normalizeTableCodeResolution(
     tableName,
     ...(asText(response.table?.tableCode || response.tableCode) ? { tableCode: asText(response.table?.tableCode || response.tableCode) } : {}),
     ...(asText(response.table?.areaName) ? { areaName: asText(response.table?.areaName) } : {}),
+    returnHomeOnScan: response.returnHomeOnScan !== false,
     resolvedAt,
     validUntil,
   };
@@ -68,6 +70,7 @@ export function tableContextIsValid(context: unknown, now = Date.now()): context
     && asText(value.storeCode)
     && asText(value.tablePublicId)
     && asText(value.tableName)
+    && (value.returnHomeOnScan === undefined || typeof value.returnHomeOnScan === "boolean")
     && typeof value.resolvedAt === "number"
     && typeof value.validUntil === "number"
     && value.resolvedAt <= now + 60_000

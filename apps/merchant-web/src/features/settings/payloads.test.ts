@@ -12,11 +12,17 @@ describe('settings write payloads', () => {
       storeId: 1,
       settlementMode: 'PAY_BEFORE',
       orderingMode: 'MULTI_PERSON',
+      tableScanReturnHome: true,
+      payBeforeClearMode: 'AFTER_ORDER_COMPLETION',
+      payAfterOnlinePaymentEnabled: true,
       distanceCheckEnabled: false,
       distanceLimitM: 5000,
     } as MerchantOperationSettings;
 
-    expect(operationSettingsWritePayload(settings, { distanceLimitM: undefined }).distanceLimitM).toBe(5000);
+    const payload = operationSettingsWritePayload(settings, { distanceLimitM: undefined });
+    expect(payload.distanceLimitM).toBe(5000);
+    expect(payload.tableScanReturnHome).toBe(true);
+    expect(payload.payAfterOnlinePaymentEnabled).toBe(true);
   });
 
   it('removes read-only license fields from merchant settings updates', () => {

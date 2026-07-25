@@ -31,14 +31,14 @@ function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): v
   return Boolean(value?.timeStamp && value.nonceStr && value.package && value.signType && value.paySign);
 }
 
-function decorateOrder(order: Order): OrderView {
+function decorateOrder(order: Order, payAfterOnlinePaymentEnabled: boolean): OrderView {
   const paymentStatus = String(order.paymentStatus || "").toUpperCase();
   const orderStatus = String(order.status || "").toUpperCase();
   const paymentSucceeded = paymentStatus === "SUCCEEDED" || paymentStatus === "PAID";
   const payAfterMeal = order.settlementMode === "PAY_AFTER";
   const paidAmount = Math.max(Number(order.paidAmount || 0), 0);
   const remainingAmount = Math.max(Number(order.remainingAmount ?? (order.amount - paidAmount)), 0);
-  const canPay = payAfterMeal && !paymentSucceeded && !["CLOSED", "CANCELED", "CANCELLED", "REFUNDED"].includes(orderStatus);
+  const canPay = payAfterMeal && payAfterOnlinePaymentEnabled && !paymentSucceeded && !["CLOSED", "CANCELED", "CANCELLED", "REFUNDED"].includes(orderStatus);
   const paymentPending = !payAfterMeal && !paymentSucceeded
     && ["", "UNPAID", "PENDING", "CREATED", "PROCESSING"].includes(paymentStatus)
     && order.status === "PENDING_PAYMENT";
@@ -52,10 +52,10 @@ function decorateOrder(order: Order): OrderView {
     canPay,
     paymentSucceeded,
     paymentPending,
-    statusTitle: paymentSucceeded ? "支付成功" : canPay ? "用餐中 · 待结账" : paymentPending ? "正在确认支付结果" : order.status === "CLOSED" ? "订单已关闭" : "支付尚未成功",
+    statusTitle: paymentSucceeded ? "支付成功" : canPay ? "用餐中 · 待结账" : payAfterMeal ? "用餐中 · 请到收银台结账" : paymentPending ? "正在确认支付结果" : order.status === "CLOSED" ? "订单已关闭" : "支付尚未成功",
     statusMessage: paymentSucceeded
       ? "商家已收到订单，请留意制作进度"
-      : canPay ? (paidAmount > 0 ? "订单已部分结账，请支付剩余金额；部分结账后不能继续加菜" : "订单已提交，可继续加菜；用餐结束后在此完成支付") : paymentPending ? "请勿重复付款，页面会自动刷新支付结果" : "商家尚未确认收款，请返回订单后重试或联系商家",
+      : canPay ? (paidAmount > 0 ? "订单已部分结账，请支付剩余金额；部分结账后不能继续加菜" : "订单已提交，可继续加菜；用餐结束后在此完成支付") : payAfterMeal ? "门店已关闭线上支付，请用餐结束后到收银台结账" : paymentPending ? "请勿重复付款，页面会自动刷新支付结果" : "商家尚未确认收款，请返回订单后重试或联系商家",
     orderStatusText: payAfterMeal && !paymentSucceeded && orderStatus === "PAID" ? "已下单" : ({ PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "待取餐", COMPLETED: "已完成", CLOSED: "已关闭", CANCELED: "已取消", CANCELLED: "已取消", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[orderStatus] || "状态更新中",
     paymentStatusText: ({ UNPAID: "待付款", PENDING: "确认中", CREATED: "待付款", PROCESSING: "确认中", SUCCEEDED: "支付成功", PAID: "支付成功", FAILED: "支付未完成", CLOSED: "已关闭", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[paymentStatus] || "状态更新中",
     displayTableName: order.tableName || order.table?.name || order.tableCode || order.table?.tableCode || "当前桌台",
@@ -67,12 +67,12 @@ function decorateOrder(order: Order): OrderView {
 let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
 
 Page({
-  data: { order: null as OrderView | null, loading: true, paying: false, orderNo: "", storeCode: "", confirmationAttempts: 0, appearanceStyle: "" },
+  data: { order: null as OrderView | null, loading: true, paying: false, orderNo: "", storeCode: "", confirmationAttempts: 0, payAfterOnlinePaymentEnabled: true, appearanceStyle: "" },
   onLoad(options: Record<string, string>) { this.setData({ orderNo: options.orderNo || "" }); },
   async onShow() {
     const appearance = await loadPageAppearance();
     this.setData({ storeCode: getApp<TanbanAppOption>().globalData.storeCode });
-    this.setData({ appearanceStyle: appearance.appearanceStyle });
+    this.setData({ appearanceStyle: appearance.appearanceStyle, payAfterOnlinePaymentEnabled: appearance.store.orderingSettings?.payAfterOnlinePaymentEnabled !== false });
     if (!this.data.orderNo) return;
     this.setData({ confirmationAttempts: 0 });
     void this.loadOrder();
@@ -82,7 +82,7 @@ Page({
     if (confirmationTimer) clearTimeout(confirmationTimer);
     try {
       const order = await request<Order>({ url: `/public/orders/${encodeURIComponent(this.data.orderNo)}`, method: "GET" });
-      const decorated = decorateOrder(order);
+      const decorated = decorateOrder(order, this.data.payAfterOnlinePaymentEnabled);
       this.setData({ order: decorated, loading: false });
       if (decorated.paymentPending && this.data.confirmationAttempts < 10) {
         this.setData({ confirmationAttempts: this.data.confirmationAttempts + 1 });

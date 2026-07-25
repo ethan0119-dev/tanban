@@ -122,7 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     const bootstrap = async () => {
-      const hasCashierSession = window.location.pathname === '/cashier' && localStorage.getItem(CASHIER_TOKEN_KEY);
+      const terminalRoute = window.location.pathname === '/cashier' || window.location.pathname === '/pickup-display';
+      const hasCashierSession = terminalRoute && localStorage.getItem(CASHIER_TOKEN_KEY);
       if (!localStorage.getItem(TOKEN_KEY) && !hasCashierSession) {
         setLoading(false);
         return;

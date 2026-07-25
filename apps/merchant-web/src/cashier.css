@@ -426,8 +426,12 @@
   background: var(--cashier-green);
 }
 
-.cashier-table-card.is-opened::before {
+.cashier-table-card.is-pending-payment::before {
   background: #ec811d;
+}
+
+.cashier-table-card.is-settled::before {
+  background: #4a9b70;
 }
 
 .cashier-table-card.is-dining::before {
@@ -462,8 +466,12 @@
   font-size: 16px;
 }
 
-.cashier-table-card.is-opened .cashier-table-state {
+.cashier-table-card.is-pending-payment .cashier-table-state {
   color: #e17317;
+}
+
+.cashier-table-card.is-settled .cashier-table-state {
+  color: #39845d;
 }
 
 .cashier-table-card.is-dining .cashier-table-state {
@@ -544,13 +552,22 @@
   font-size: 23px;
 }
 
-.cashier-order-panel {
+.cashier-order-card {
   min-height: 240px;
   flex: 1 1 auto;
-  overflow: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid #e5dfda;
   border-radius: 11px;
   background: #fff;
+}
+
+.cashier-order-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
 }
 
 .cashier-order-hero {
@@ -667,7 +684,11 @@
 }
 
 .cashier-order-total {
+  flex: 0 0 auto;
   padding: 8px 19px 13px;
+  border-top: 1px solid #eee8e3;
+  background: #fffdfb;
+  box-shadow: 0 -7px 18px rgba(65, 43, 28, .045);
 }
 
 .cashier-order-total > div {
@@ -690,7 +711,6 @@
   min-height: 91px;
   display: block;
   padding-top: 11px;
-  border-top: 1px solid #eee8e3;
 }
 
 .cashier-order-total > div:last-child span {
@@ -821,6 +841,10 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cashier-handover-modal .ant-alert {
   margin-bottom: 16px;
 }
 

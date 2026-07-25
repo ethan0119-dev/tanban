@@ -86,6 +86,158 @@ No actionable P0/P1/P2 findings remain.
 
 final result: passed
 
+# 快餐取餐大屏视觉验收
+
+- source visual truth paths:
+  - `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-158fdb9a-1012-4db2-bde4-bb55c9fed59e.png`
+  - `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-9cd2cf09-a895-4780-9851-5983f47e844a.png`
+- implementation URL:
+  - `http://127.0.0.1:4177/__preview/pickup-display?layout=landscape`
+  - `http://127.0.0.1:4177/__preview/pickup-display?layout=portrait`
+- implementation screenshots:
+  - `/Users/lxy/works/salesyyp/.qa/pickup-display-landscape-1920x1080.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/pickup-display-portrait-900x1600.jpg`
+- combined comparison evidence:
+  - `/Users/lxy/works/salesyyp/.qa/pickup-display-landscape-comparison.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/pickup-display-portrait-comparison.jpg`
+- source pixels: `2048 × 1365` landscape reference and `844 × 2048` portrait photo
+- implementation pixels / CSS viewport / density: `1920 × 1080` at `1920 × 1080`, and `900 × 1600` at `900 × 1600`; browser capture used `deviceScaleFactor: 1`
+- state: realistic store name with five preparing and three ready pickup codes
+
+## Source interpretation
+
+The two screenshots are reference systems rather than a pixel-identical brand target. Their shared visual truth is a large store identity, a clear preparing/ready split, very large pickup codes, and a layout that remains legible on both horizontal and vertical public displays. The implementation intentionally uses the existing Tanban warm-brown brand shell and a green ready state instead of copying the competitors' neutral gray or photographic header.
+
+## Full-view comparison
+
+- Landscape keeps the source's two equal operational columns and strengthens long-distance scanning with bordered number cards, a high-contrast dark surround, and a dedicated store/time header.
+- Portrait changes the reference photo's narrow side-by-side columns into stacked preparing and ready regions. This is intentional: each pickup code remains materially larger at a 9:16 viewing distance.
+- Both target viewports have `scrollWidth === innerWidth` and `scrollHeight === innerHeight`; no region or persistent footer overflows.
+
+## Required fidelity surfaces
+
+- Fonts and typography: system Chinese sans-serif with 900-weight pickup numbers; store, state, helper copy, and metadata use distinct optical scales. Four-character pickup codes remain unwrapped.
+- Spacing and layout: consistent outer shell gaps, large rounded panels, aligned headings, and bounded number grids. Landscape uses two columns; portrait uses two rows.
+- Colors and tokens: warm near-black shell and cream panel map to Tanban's merchant brand. Ready uses a semantic green surface and text with strong contrast.
+- Image quality and assets: the screen does not require decorative raster imagery. A real store logo from the API is rendered when configured; operational icons come from the existing Ant Design icon library.
+- Copy and content: store name, business date, live time, active count, update state, preparing instructions, and pickup instructions remain independently understandable on a public screen.
+- Accessibility and resilience: semantic section labels, button label, reduced-motion handling, no text overlap, and no viewport overflow at both tested aspect ratios.
+
+## Interaction and runtime evidence
+
+- The landscape and portrait query modes were both opened in the browser and rendered the expected layout.
+- The fullscreen control is visible and keyboard-addressable. The automation browser declined fullscreen permission; the component showed its supported fallback instruction instead of failing.
+- Polling, visibility refresh, rotating pagination, reconnect copy, empty-state copy, and newly-ready highlighting are implemented.
+- Browser console contains no application error; only the repository's existing React Router v7 future notices were recorded.
+
+## Focused comparison
+
+A separate crop was not necessary because the combined comparisons keep the store header, state headings, icons, and complete four-character pickup codes legible. The original-size implementation screenshots were also inspected for border, shadow, line-height, and icon alignment.
+
+## Comparison history
+
+### Pass 1
+
+No actionable P0/P1/P2 difference was found. The implementation preserves the reference information hierarchy while deliberately adapting the portrait layout for larger pickup codes.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain.
+
+## Follow-up polish
+
+- [P3] After the first real shop trial, measure the longest comfortable viewing distance and tune the maximum number-card page size if a display is smaller than 32 inches.
+
+final result: passed
+
+# 堂食结算状态、点餐设置与收银台合计区视觉验收
+
+- source visual truth paths:
+  - `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-e6a376cd-377f-4f95-8d4d-8707b65280e6.png`
+  - `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-f075a92f-f6bc-4fd8-a3fb-bdced654459c.png`
+  - `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-f4fd8ce5-a1c4-4a92-90f3-fe1a1e401715.png`
+  - `/Users/lxy/Downloads/IMG_0003.PNG`（收银台既有 iPad 失败状态）
+- implementation URLs:
+  - `http://127.0.0.1:4177/__preview/operation-settings`
+  - `http://127.0.0.1:4177/__preview/cashier`
+- implementation screenshots:
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-settings-pay-before-1440x1000.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-settings-pay-after-1440x1000.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-cashier-1180x688.jpg`
+- combined comparison paths:
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-settings-comparison.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-settings-pay-before-focused.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-settings-pay-after-focused.jpg`
+  - `/Users/lxy/works/salesyyp/.qa/ordering-flow-cashier-comparison.jpg`
+- viewports:
+  - settings desktop: `1440 × 1000` CSS px, `deviceScaleFactor: 1`
+  - settings tablet check: `1024 × 768` CSS px, `deviceScaleFactor: 1`
+  - cashier iPad content: `1180 × 688` CSS px, `deviceScaleFactor: 1`
+- source pixel dimensions: `986 × 224`, `789 × 177`, `783 × 170`; the cashier source was normalized from its browser-content crop to `1180 × 688`
+- implementation pixel dimensions: settings captures `1418 × 985`; cashier capture `1180 × 688`
+- state: pay-before settings, pay-after settings, pay-after online payment disabled, and cashier B03 pay-after bill with a fixed total region
+
+## Source interpretation
+
+The three supplied setting screenshots are functional references, not a request to replace the merchant console’s existing Ant Design visual language. Their source truth is the behavior and hierarchy: unpaid-order timeout, table-scan landing choice, dine-in settlement mode, clear-table policy, and pay-after online-payment switch. The cashier source is a reported responsive failure state; the implementation must keep the current product language while preserving the receipt total and actions inside the iPad content viewport.
+
+## Full-view comparison evidence
+
+The combined settings comparison places all supplied controls and both rendered implementation modes in one image. The implementation includes every referenced capability and makes mode-dependent controls explicit: pay-before shows the clear-table policy, while pay-after shows the customer online-payment switch. The full cashier comparison places the normalized prior iPad state above the revised implementation; the revised receipt total is pinned immediately above the action dock and all primary actions remain visible.
+
+## Focused comparison evidence
+
+The two focused settings comparisons place each source mode and the matching rendered settings card in one image at readable scale. The implementation intentionally renames the ambiguous source option “定时清台” to “完成订单后清台” and explains its exact lifecycle. A separate cashier crop was not required because the full `1180 × 688` comparison renders the receipt total and complete action dock at readable size.
+
+## Primary interactions tested
+
+- Switched堂食结算模式 from先结账后用餐 to先用餐后结账; the clear-table control was replaced by the online-payment switch.
+- Disabled顾客线上支付 and verified the switch state changed to off.
+- Saved the preview form and received the validation-success message.
+- Verified the table board renders “已结账” instead of “待点单” for paid pay-before orders.
+- Opened交接班 and verified its lightweight-record limitation, daily overview, remark field, and exit action are visible.
+- At `1180 × 688`, measured the scrollable receipt detail, fixed total, and action dock as separate non-overlapping regions.
+- At `1024 × 768`, verified the settings page has no horizontal overflow.
+
+## Required fidelity surfaces
+
+- Fonts and typography: retained the existing PingFang SC / Microsoft YaHei / system stack and the merchant console hierarchy; mode descriptions remain readable at desktop and tablet widths.
+- Spacing and layout rhythm: settings use the existing card, divider, row, and control rhythm. The cashier receipt details are the only scrolling region; the total and action dock are fixed below it.
+- Colors and visual tokens: reused existing merchant brown, semantic green/orange/red states, Ant Design alerts, borders, and switch tokens. The new “已结账” table state uses the established green family.
+- Image quality and asset fidelity: this flow introduces no raster illustration or replacement asset; existing Ant Design icons remain vector-sharp at the tested density.
+- Copy and content: the implementation preserves the reference capabilities while clarifying scope:堂食模式 does not change带走 orders, clear-table policy affects occupancy rather than kitchen production, and轻量交接 does not claim cash-drawer reconciliation.
+- Accessibility and interaction states: settings use labelled radio groups and switches; active, checked, and disabled states are exposed in the browser accessibility tree. Primary cashier controls remain visible and touch-sized.
+
+## Comparison history
+
+### Pass 1 — blocked
+
+- [P1] A paid pay-before table was mapped to the legacy “待点单” state, contradicting the paid order shown in当前操作.
+- [P1] The reference settings did not exist as executable merchant controls.
+- [P2] The receipt total lived inside the scrolling order panel rather than a fixed bottom region.
+- [P2] The existing handover copy implied more complete shift archiving than the current audit-only implementation provides.
+
+Fixes: introduced explicit `PENDING_PAYMENT`, `SETTLED`, `DINING`, and `UNSETTLED` table states; added the three referenced mode-dependent controls and server enforcement; pinned the receipt total below the scrollable item list; and corrected the handover explanation.
+
+### Final pass
+
+No actionable P0/P1/P2 visual or interaction findings remain for the requested flows.
+
+## Runtime and test checks
+
+- Browser-rendered implementation checked at all three viewports above.
+- No application exception, failed resource, or layout overflow was observed.
+- Existing React Router future notices and Ant Design v5 / React 19 compatibility and deprecation warnings remain dependency-level P3 follow-up.
+- API full Go test suite passes.
+- Merchant web production build and all 65 tests pass.
+- Customer miniapp typecheck and all 41 tests pass.
+
+## Follow-up polish
+
+- [P3] Upgrade Ant Design and migrate deprecated `bordered` / `addonAfter` props in a separate dependency-focused change.
+
+final result: passed
+
 # 收银台 iPad 操作区与按钮功能验收
 
 - source visual truth path: `/Users/lxy/Downloads/IMG_0003.PNG`

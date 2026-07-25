@@ -169,6 +169,7 @@ export interface Store {
     requireCustomerPhone: boolean;
     allowOrderRemark: boolean;
     allowItemRemark: boolean;
+    payAfterOnlinePaymentEnabled?: boolean;
   };
   customerService?: { phone?: string; wechat?: string; qrUrl?: string };
   platformBranding?: {
@@ -259,6 +260,7 @@ export interface TableOrderingContext {
   tableName: string;
   tableCode?: string;
   areaName?: string;
+  returnHomeOnScan?: boolean;
   resolvedAt: number;
   validUntil: number;
 }

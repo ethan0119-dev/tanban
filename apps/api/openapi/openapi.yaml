@@ -550,6 +550,13 @@ paths:
           name: endAt
           schema: {type: string, format: date-time}
       responses: {'200': {description: Order page}}
+  /merchant/pickup-display:
+    get:
+      summary: 当前营业日快餐取餐大屏
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Store identity and active TAKEOUT pickup codes grouped by preparing and ready
   /merchant/table-areas:
     get:
       summary: 桌台区域列表

@@ -64,8 +64,8 @@ function SettingRow({ title, description, control, tag }: { title: string; descr
   return <div className="setting-switch-row"><div><strong>{title}</strong><p>{description}</p></div>{control || tag}</div>;
 }
 
-export function OperationSettingsPage({ section }: { section: SettingsSection }) {
-  const [form] = Form.useForm<Partial<MerchantOperationSettings & MerchantSettings>>();
+export function OperationSettingsPage({ section, previewMode = false }: { section: SettingsSection; previewMode?: boolean }) {
+  const [form] = Form.useForm<Partial<MerchantOperationSettings & MerchantSettings & { autoCloseUnpaidOrders: boolean }>>();
   const [operation, setOperation] = useState<MerchantOperationSettings | null>(null);
   const [operationMeta, setOperationMeta] = useState<MerchantOperationSettingsResponse | null>(null);
   const [merchantSettings, setMerchantSettings] = useState<MerchantSettings | null>(null);
@@ -75,9 +75,42 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
   const [qrLibraryOpen, setQrLibraryOpen] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const distanceEnabled = Form.useWatch('distanceCheckEnabled', form);
+  const settlementMode = Form.useWatch('settlementMode', form);
+  const autoCloseUnpaidOrders = Form.useWatch('autoCloseUnpaidOrders', form);
 
   const load = useCallback(async () => {
     setLoading(true);
+    if (previewMode) {
+      const previewOperation = {
+        storeId: 1,
+        settlementMode: 'PAY_BEFORE',
+        orderingMode: 'MULTI_PERSON',
+        tableScanReturnHome: false,
+        payBeforeClearMode: 'AFTER_ORDER_COMPLETION',
+        payAfterOnlinePaymentEnabled: true,
+        distanceCheckEnabled: false,
+        distanceLimitM: 5000,
+        requireCustomerPhone: false,
+        allowOrderRemark: true,
+        allowItemRemark: true,
+        orderReminderEnabled: true,
+        orderReminderIntervalMinutes: 5,
+        takeawayVerificationEnabled: false,
+        reviewsEnabled: false,
+        officialAccountNotifyEnabled: false,
+        officialAccountEvents: ['ORDER_PAID', 'PRINT_FAILED'],
+      } satisfies MerchantOperationSettings;
+      const previewMerchant = {
+        storeName: '川味小馆（天府店）',
+        allowLatePayment: false,
+        paymentTimeoutMinutes: 15,
+      } satisfies MerchantSettings;
+      setOperation(previewOperation);
+      setMerchantSettings(previewMerchant);
+      form.setFieldsValue({ ...previewOperation, ...previewMerchant, autoCloseUnpaidOrders: true });
+      setLoading(false);
+      return;
+    }
     try {
       if (section === 'PAYMENT') {
         setPayment(await api.get<MerchantPaymentSettings>('/merchant/payment-settings'));
@@ -89,14 +122,14 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
         setOperation(response.settings);
         setOperationMeta(response);
         setMerchantSettings(storeSettings);
-        form.setFieldsValue({ ...response.settings, ...storeSettings });
+        form.setFieldsValue({ ...response.settings, ...storeSettings, autoCloseUnpaidOrders: storeSettings.allowLatePayment === false });
       }
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [form, messageApi, section]);
+  }, [form, messageApi, previewMode, section]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -104,12 +137,19 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
     if (!operation) return;
     await form.validateFields();
     const values = form.getFieldsValue(true);
+    if (previewMode) {
+      messageApi.success('预览设置校验通过');
+      return;
+    }
     setSaving(true);
     try {
       if (section !== 'PRINT') {
         const operationPatch: Partial<MerchantOperationSettings> = section === 'ORDER' ? {
           settlementMode: values.settlementMode,
           orderingMode: values.orderingMode,
+          tableScanReturnHome: values.tableScanReturnHome,
+          payBeforeClearMode: values.payBeforeClearMode,
+          payAfterOnlinePaymentEnabled: values.payAfterOnlinePaymentEnabled,
           distanceCheckEnabled: values.distanceCheckEnabled,
           distanceLimitM: values.distanceLimitM,
           storeLatitude: values.storeLatitude,
@@ -134,7 +174,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
       }
       if (section === 'ORDER' && merchantSettings) {
         await api.put('/merchant/settings', merchantSettingsWritePayload(merchantSettings, {
-          allowLatePayment: values.allowLatePayment,
+          allowLatePayment: !values.autoCloseUnpaidOrders,
           paymentTimeoutMinutes: values.paymentTimeoutMinutes,
         }));
       } else if (section === 'PRINT' && merchantSettings) {
@@ -178,7 +218,41 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
                     <Radio.Button value="PAY_AFTER">先用餐后结账</Radio.Button>
                   </Radio.Group>
                 </Form.Item>
-                <Alert type="info" showIcon message="先用餐后结账已开放" description="顾客下单后直接进入订单详情，可继续加菜并在用餐结束后支付；店员也可在桌台订单中登记现金或系统外收款并完成结账。" />
+                <Typography.Paragraph type="secondary">
+                  {settlementMode === 'PAY_AFTER'
+                    ? '顾客下单后商家即可备餐，顾客用餐后线上支付或由店员登记线下结账，并可在未开始收款前继续加菜。'
+                    : '顾客先完成支付，订单才进入备餐；带走订单始终使用该流程，不随堂食模式切换。'}
+                </Typography.Paragraph>
+                {settlementMode === 'PAY_BEFORE' ? (
+                  <Form.Item label="清台设置" name="payBeforeClearMode" rules={[{ required: true }]}>
+                    <Radio.Group>
+                      <Radio value="AFTER_ORDER_COMPLETION">完成订单后清台</Radio>
+                      <Radio value="IMMEDIATE_AFTER_PAYMENT">付款后立即清台</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                ) : (
+                  <SettingRow
+                    title="顾客线上支付"
+                    description="关闭后，小程序订单详情不显示支付按钮，只能由店员在收银台登记现金或系统外收款。"
+                    control={<Form.Item name="payAfterOnlinePaymentEnabled" valuePropName="checked" noStyle><Switch checkedChildren="开启" unCheckedChildren="关闭" /></Form.Item>}
+                  />
+                )}
+                <Alert
+                  type="info"
+                  showIcon
+                  message={settlementMode === 'PAY_BEFORE' ? '清台只影响桌台占用，不影响订单制作' : '后付订单结账后自动释放桌台'}
+                  description={settlementMode === 'PAY_BEFORE'
+                    ? '“完成订单后清台”会保留桌台到订单完成；“付款后立即清台”会立刻释放桌台，但订单仍可继续制作和出餐。'
+                    : '桌台账单收足后订单完成，桌台恢复空闲；未结账期间桌台明确显示“待结账”。'}
+                />
+                <Divider />
+                <Form.Item label="桌码扫码后进入方式" name="tableScanReturnHome">
+                  <Radio.Group>
+                    <Radio value={false}>直接进入当前桌台</Radio>
+                    <Radio value={true}>先回首页，再确认进入桌台</Radio>
+                  </Radio.Group>
+                </Form.Item>
+                <Typography.Paragraph type="secondary">直接进入适合到店即点；先回首页适合先展示门店活动、公告和会员权益。</Typography.Paragraph>
                 <Divider />
                 <Form.Item label="堂食点餐模式" name="orderingMode">
                   <Radio.Group>
@@ -207,8 +281,16 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
               <Card bordered={false} className="content-card settings-card" title="订单时效与提醒">
                 <SettingRow title="自动接单" description={merchantFeatureCopy.AUTO_ACCEPT_ORDER.description} tag={<Tag>暂未开放</Tag>} />
                 <SettingRow title="后台语音提醒" description={merchantFeatureCopy.ORDER_VOICE_NOTICE.description} tag={<Tag>暂未开放</Tag>} />
-                <SettingRow title="超时后允许继续付款" description="关闭后，超过支付提示时间的未付款订单会被关单；关闭订单后始终禁止付款。" control={<Form.Item name="allowLatePayment" valuePropName="checked" noStyle><Switch /></Form.Item>} />
-                <Form.Item label="未支付提示 / 关单时长" name="paymentTimeoutMinutes" rules={[{ required: true }]}><InputNumber min={1} max={1440} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
+                <SettingRow
+                  title="下单未付款订单自动关闭"
+                  description={settlementMode === 'PAY_BEFORE' ? '开启后，超过设定时间仍未付款的订单会自动关单并释放库存。' : '当前堂食后付订单不受影响；仍用于始终先付款的带走订单。'}
+                  control={<Form.Item name="autoCloseUnpaidOrders" valuePropName="checked" noStyle><Switch /></Form.Item>}
+                />
+                {autoCloseUnpaidOrders && (
+                  <Form.Item label="未付款自动关单时长" name="paymentTimeoutMinutes" rules={[{ required: true }]}>
+                    <InputNumber min={1} max={1440} precision={0} addonAfter="分钟后关闭" style={{ width: 260 }} />
+                  </Form.Item>
+                )}
                 <SettingRow title="允许顾客催单" description={merchantFeatureCopy.ORDER_REMINDER.description} control={<Form.Item name="orderReminderEnabled" valuePropName="checked" noStyle><Switch disabled /></Form.Item>} />
                 <Form.Item label="催单最短间隔" name="orderReminderIntervalMinutes"><InputNumber min={1} max={120} precision={0} addonAfter="分钟" style={{ width: 240 }} /></Form.Item>
               </Card>
@@ -279,7 +361,7 @@ export function OperationSettingsPage({ section }: { section: SettingsSection })
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={15}>
               <Card bordered={false} className="content-card settings-card" title={<Space><PrinterOutlined />打印总策略</Space>}>
-                <Alert type="info" showIcon message="打印触发点跟随堂食结算模式" description={operation?.settlementMode === 'PAY_AFTER' ? '当前为先用餐后结账：订单提交后立即打印，确保后厨及时收到首次点单和每次加菜。此处只展示，不能单独修改。' : '当前为先结账后用餐：支付成功后打印，避免未付款订单进入制作。此处只展示，不能单独修改。'} />
+                <Alert type="info" showIcon message="堂食打印触发点跟随结算模式" description={operation?.settlementMode === 'PAY_AFTER' ? '当前堂食为先用餐后结账：堂食订单提交后立即打印，确保后厨及时收到首次点单和每次加菜；带走订单仍在支付成功后打印。此处只展示，不能单独修改。' : '当前堂食为先结账后用餐：堂食和带走订单均在支付成功后打印，避免未付款订单进入制作。此处只展示，不能单独修改。'} />
                 <Form.Item label="新模板默认触发点" name="printTrigger" rules={[{ required: true }]} style={{ marginTop: 18 }}>
                   <Radio.Group disabled>
                     <Radio.Button value="PAYMENT_SUCCESS"><BankOutlined /> 付款后打印</Radio.Button>

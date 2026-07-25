@@ -70,7 +70,7 @@ const http = axios.create({
 });
 
 http.interceptors.request.use((config) => {
-  const cashierRoute = window.location.pathname === '/cashier';
+  const cashierRoute = window.location.pathname === '/cashier' || window.location.pathname === '/pickup-display';
   const accessToken = localStorage.getItem(TOKEN_KEY);
   const cashierToken = localStorage.getItem(CASHIER_TOKEN_KEY);
   const issuingCashierSession = String(config.url || '').endsWith('/merchant/cashier/session');
@@ -97,7 +97,7 @@ http.interceptors.response.use(
   },
   (error: AxiosError<ApiEnvelope<unknown>>) => {
     if (error.response?.status === 401) {
-      if (window.location.pathname === '/cashier') localStorage.removeItem(CASHIER_TOKEN_KEY);
+      if (window.location.pathname === '/cashier' || window.location.pathname === '/pickup-display') localStorage.removeItem(CASHIER_TOKEN_KEY);
       localStorage.removeItem(TOKEN_KEY);
       window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
     }

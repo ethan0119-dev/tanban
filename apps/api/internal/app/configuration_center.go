@@ -13,6 +13,9 @@ type storeOperationSettings struct {
 	StoreID                      int64    `json:"storeId"`
 	SettlementMode               string   `json:"settlementMode"`
 	OrderingMode                 string   `json:"orderingMode"`
+	TableScanReturnHome          bool     `json:"tableScanReturnHome"`
+	PayBeforeClearMode           string   `json:"payBeforeClearMode"`
+	PayAfterOnlinePaymentEnabled bool     `json:"payAfterOnlinePaymentEnabled"`
 	DistanceCheckEnabled         bool     `json:"distanceCheckEnabled"`
 	DistanceLimitM               int      `json:"distanceLimitM"`
 	StoreLatitude                *float64 `json:"storeLatitude"`
@@ -43,13 +46,15 @@ func (s *Server) loadStoreOperationSettings(r *http.Request, tenantID, storeID i
 	var item storeOperationSettings
 	var latitude, longitude sql.NullFloat64
 	var eventsJSON string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT store_id,settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,
+	err := s.DB.QueryRowContext(r.Context(), `SELECT store_id,settlement_mode,ordering_mode,table_scan_return_home,pay_before_clear_mode,
+		pay_after_online_payment_enabled,distance_check_enabled,distance_limit_m,
 		store_latitude,store_longitude,require_customer_phone,allow_order_remark,allow_item_remark,order_reminder_enabled,
 		order_reminder_interval_minutes,takeaway_verification_enabled,reviews_enabled,customer_service_phone,
 		customer_service_wechat,customer_service_qr_url,privacy_policy_text,user_agreement_text,official_account_notify_enabled,
 		official_account_events_json,notification_recipient_label
 		FROM store_operation_settings WHERE tenant_id=? AND store_id=?`, tenantID, storeID).
-		Scan(&item.StoreID, &item.SettlementMode, &item.OrderingMode, &item.DistanceCheckEnabled, &item.DistanceLimitM,
+		Scan(&item.StoreID, &item.SettlementMode, &item.OrderingMode, &item.TableScanReturnHome, &item.PayBeforeClearMode,
+			&item.PayAfterOnlinePaymentEnabled, &item.DistanceCheckEnabled, &item.DistanceLimitM,
 			&latitude, &longitude, &item.RequireCustomerPhone, &item.AllowOrderRemark, &item.AllowItemRemark,
 			&item.OrderReminderEnabled, &item.OrderReminderIntervalMinutes, &item.TakeawayVerificationEnabled,
 			&item.ReviewsEnabled, &item.CustomerServicePhone, &item.CustomerServiceWechat, &item.CustomerServiceQRURL,
@@ -85,6 +90,9 @@ func validateOperationSettings(input storeOperationSettings) error {
 	if !validStatus(input.OrderingMode, "SINGLE_PERSON", "MULTI_PERSON") {
 		return errors.New("orderingMode must be SINGLE_PERSON or MULTI_PERSON")
 	}
+	if !validStatus(input.PayBeforeClearMode, "AFTER_ORDER_COMPLETION", "IMMEDIATE_AFTER_PAYMENT") {
+		return errors.New("payBeforeClearMode must be AFTER_ORDER_COMPLETION or IMMEDIATE_AFTER_PAYMENT")
+	}
 	if input.DistanceLimitM < 100 || input.DistanceLimitM > 100000 {
 		return errors.New("distanceLimitM must be between 100 and 100000")
 	}
@@ -115,6 +123,9 @@ func validateOperationSettings(input storeOperationSettings) error {
 }
 
 func applyOperationSettingsDefaults(input *storeOperationSettings) {
+	if strings.TrimSpace(input.PayBeforeClearMode) == "" {
+		input.PayBeforeClearMode = "AFTER_ORDER_COMPLETION"
+	}
 	if !input.DistanceCheckEnabled && input.DistanceLimitM == 0 {
 		input.DistanceLimitM = 5000
 	}
@@ -164,6 +175,7 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 	applyOperationSettingsDefaults(&input)
 	input.SettlementMode = strings.ToUpper(strings.TrimSpace(input.SettlementMode))
 	input.OrderingMode = strings.ToUpper(strings.TrimSpace(input.OrderingMode))
+	input.PayBeforeClearMode = strings.ToUpper(strings.TrimSpace(input.PayBeforeClearMode))
 	if err = validateOperationSettings(input); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
@@ -199,12 +211,15 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO store_operation_settings(
-		store_id,tenant_id,settlement_mode,ordering_mode,distance_check_enabled,distance_limit_m,store_latitude,store_longitude,
+		store_id,tenant_id,settlement_mode,ordering_mode,table_scan_return_home,pay_before_clear_mode,pay_after_online_payment_enabled,
+		distance_check_enabled,distance_limit_m,store_latitude,store_longitude,
 		require_customer_phone,allow_order_remark,allow_item_remark,order_reminder_enabled,order_reminder_interval_minutes,
 		takeaway_verification_enabled,reviews_enabled,customer_service_phone,customer_service_wechat,customer_service_qr_url,
 		privacy_policy_text,user_agreement_text,official_account_notify_enabled,official_account_events_json,notification_recipient_label
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON DUPLICATE KEY UPDATE settlement_mode=VALUES(settlement_mode),ordering_mode=VALUES(ordering_mode),
+		table_scan_return_home=VALUES(table_scan_return_home),pay_before_clear_mode=VALUES(pay_before_clear_mode),
+		pay_after_online_payment_enabled=VALUES(pay_after_online_payment_enabled),
 		distance_check_enabled=VALUES(distance_check_enabled),distance_limit_m=VALUES(distance_limit_m),store_latitude=VALUES(store_latitude),
 		store_longitude=VALUES(store_longitude),require_customer_phone=VALUES(require_customer_phone),allow_order_remark=VALUES(allow_order_remark),
 		allow_item_remark=VALUES(allow_item_remark),order_reminder_enabled=VALUES(order_reminder_enabled),
@@ -213,7 +228,8 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		customer_service_qr_url=VALUES(customer_service_qr_url),privacy_policy_text=VALUES(privacy_policy_text),user_agreement_text=VALUES(user_agreement_text),
 		official_account_notify_enabled=VALUES(official_account_notify_enabled),official_account_events_json=VALUES(official_account_events_json),
 		notification_recipient_label=VALUES(notification_recipient_label)`,
-		storeID, actor.TenantID, input.SettlementMode, input.OrderingMode, input.DistanceCheckEnabled, input.DistanceLimitM,
+		storeID, actor.TenantID, input.SettlementMode, input.OrderingMode, input.TableScanReturnHome, input.PayBeforeClearMode,
+		input.PayAfterOnlinePaymentEnabled, input.DistanceCheckEnabled, input.DistanceLimitM,
 		nullableFloat64(input.StoreLatitude), nullableFloat64(input.StoreLongitude), input.RequireCustomerPhone, input.AllowOrderRemark,
 		input.AllowItemRemark, input.OrderReminderEnabled, input.OrderReminderIntervalMinutes, input.TakeawayVerificationEnabled,
 		input.ReviewsEnabled, strings.TrimSpace(input.CustomerServicePhone), strings.TrimSpace(input.CustomerServiceWechat),
@@ -229,7 +245,7 @@ func (s *Server) updateMerchantOperationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), `UPDATE print_templates SET trigger_event=?,updated_at=NOW(3)
-		WHERE tenant_id=? AND store_id=? AND deleted_at IS NULL`, printTrigger, actor.TenantID, storeID); err != nil {
+		WHERE tenant_id=? AND store_id=? AND business_type='DINE_IN' AND deleted_at IS NULL`, printTrigger, actor.TenantID, storeID); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -345,6 +361,11 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	settings, err := s.loadStoreOperationSettings(r, actor.TenantID, storeID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.public_scene,t.area_id,a.name,t.name,t.table_code,t.capacity,
 		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.payment_status,''),
 		COALESCE(o.settlement_mode_snapshot,''),COALESCE(o.addition_count,0),COALESCE(o.diner_count,0),
@@ -353,10 +374,11 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		FROM table_codes t JOIN table_areas a ON a.id=t.area_id AND a.tenant_id=t.tenant_id AND a.store_id=t.store_id
 		LEFT JOIN orders o ON o.id=(SELECT o2.id FROM orders o2 WHERE o2.tenant_id=t.tenant_id AND o2.store_id=t.store_id
 			AND o2.table_id=t.id AND o2.order_type='DINE_IN' AND o2.status IN ('PENDING_PAYMENT','PAID','ACCEPTED','PREPARING','READY')
+			AND NOT (?='IMMEDIATE_AFTER_PAYMENT' AND o2.settlement_mode_snapshot='PAY_BEFORE' AND o2.payment_status='PAID')
 			ORDER BY o2.id DESC LIMIT 1)
 		WHERE t.tenant_id=? AND t.store_id=? AND t.status='ACTIVE' AND t.deleted_at IS NULL
 			AND a.status='ACTIVE' AND a.deleted_at IS NULL
-		ORDER BY a.sort_order,a.id,t.sort_order,t.id`, actor.TenantID, storeID)
+		ORDER BY a.sort_order,a.id,t.sort_order,t.id`, settings.PayBeforeClearMode, actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -372,14 +394,7 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, err)
 			return
 		}
-		item.State = "UNOPENED"
-		if item.SettlementMode == "PAY_AFTER" && item.PaymentStatus == "UNPAID" {
-			item.State = "UNSETTLED"
-		} else if item.OrderStatus == "PENDING_PAYMENT" || item.OrderStatus == "PAID" {
-			item.State = "OPENED"
-		} else if item.OrderStatus != "" {
-			item.State = "DINING"
-		}
+		item.State = tableBoardState(item.OrderStatus, item.PaymentStatus, item.SettlementMode)
 		index, exists := areaIndex[item.AreaID]
 		if !exists {
 			index = len(areas)
@@ -392,12 +407,23 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	settings, settingsErr := s.loadStoreOperationSettings(r, actor.TenantID, storeID)
-	if settingsErr != nil {
-		handleSQLError(w, settingsErr)
-		return
-	}
 	writeData(w, http.StatusOK, map[string]any{"areas": areas, "settlementMode": settings.SettlementMode, "orderingMode": settings.OrderingMode})
+}
+
+func tableBoardState(orderStatus, paymentStatus, settlementMode string) string {
+	if orderStatus == "" {
+		return "UNOPENED"
+	}
+	if settlementMode == "PAY_AFTER" && paymentStatus == "UNPAID" {
+		return "UNSETTLED"
+	}
+	if orderStatus == "PENDING_PAYMENT" {
+		return "PENDING_PAYMENT"
+	}
+	if settlementMode == "PAY_BEFORE" && paymentStatus == "PAID" && orderStatus == "PAID" {
+		return "SETTLED"
+	}
+	return "DINING"
 }
 
 func distanceMeters(lat1, lon1, lat2, lon2 float64) float64 {

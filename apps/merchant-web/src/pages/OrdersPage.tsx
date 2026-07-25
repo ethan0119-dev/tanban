@@ -2,6 +2,7 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
   CoffeeOutlined,
+  DesktopOutlined,
   EyeOutlined,
   NumberOutlined,
   PrinterOutlined,
@@ -9,6 +10,7 @@ import {
   SearchOutlined,
   SyncOutlined,
   TableOutlined,
+  TabletOutlined,
 } from '@ant-design/icons';
 import {
   Alert,
@@ -40,7 +42,7 @@ import {
 import type { TablePaginationConfig } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, errorMessage } from '../api/client';
+import { api, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { canManageMerchant } from '../auth/permissions';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
@@ -396,6 +398,24 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
     });
   };
 
+  const openPickupDisplay = (layout: 'landscape' | 'portrait') => {
+    const url = `/pickup-display?layout=${layout}`;
+    const popup = window.open(url, `tanban-pickup-display-${layout}`, 'popup=yes');
+    if (!popup) {
+      messageApi.error('浏览器阻止了新窗口，请允许本站打开弹窗后重试');
+      return;
+    }
+    popup.opener = null;
+    popup.focus();
+    void api.post<{ accessToken: string }>('/merchant/cashier/session')
+      .then((session) => {
+        if (session.accessToken) localStorage.setItem(CASHIER_TOKEN_KEY, session.accessToken);
+      })
+      .catch(() => {
+        messageApi.warning('取餐大屏已打开，将暂时沿用当前后台登录会话');
+      });
+  };
+
   const counts = useMemo(() => result.items.reduce<Record<string, number>>((acc, item) => {
     acc[item.status] = (acc[item.status] ?? 0) + 1;
     return acc;
@@ -450,7 +470,13 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
             : sceneMode === 'TAKEOUT'
               ? '集中处理快餐与到店自取订单，按取餐号和码牌安排放餐'
               : '查看店内订单，统一处理支付、制作与出单'}
-        extra={<Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>}
+        extra={sceneMode === 'TAKEOUT' ? (
+          <Space wrap>
+            <Button type="primary" icon={<DesktopOutlined />} onClick={() => openPickupDisplay('landscape')}>横屏取餐大屏</Button>
+            <Button icon={<TabletOutlined />} onClick={() => openPickupDisplay('portrait')}>竖屏取餐大屏</Button>
+            <Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>
+          </Space>
+        ) : <Button icon={<ReloadOutlined />} loading={loading} disabled={unavailable} onClick={() => void load()}>刷新</Button>}
       />
       {unavailable && <Alert className="order-domain-alert" type="warning" showIcon message={merchantFeatureCopy.DELIVERY.title} description={merchantFeatureCopy.DELIVERY.description} />}
       {sceneMode === 'DINE_IN' && <Card bordered={false} className="content-card order-view-tabs-card">
@@ -676,7 +702,8 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
 
 const tableStateMeta: Record<TableBoardTable['state'], { label: string; color: string; hint: string }> = {
   UNOPENED: { label: '未开台', color: '#a5a5a5', hint: '当前没有活动订单' },
-  OPENED: { label: '已开台', color: '#52c7a5', hint: '已下单但尚未进入制作' },
+  PENDING_PAYMENT: { label: '待付款', color: '#fa8c16', hint: '先付订单尚未完成收款' },
+  SETTLED: { label: '已结账', color: '#52a378', hint: '已收款，等待制作或接单' },
   DINING: { label: '就餐中', color: '#faad14', hint: '商户已开始制作或待出餐' },
   UNSETTLED: { label: '待结账', color: '#ff4d4f', hint: '用餐账单尚未完成收款' },
 };
@@ -687,7 +714,7 @@ function TableBoard({ board, loading, onRefresh, onOpenOrder }: { board: TableBo
       <div className="table-board-intro">
         <div>
           <Typography.Title level={5}>桌台现场</Typography.Title>
-          <Typography.Paragraph type="secondary">未开台表示空闲；已开台表示已产生订单；就餐中表示正在制作或出餐；待结账表示后付账订单尚未完成收款。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">未开台表示空闲；待付款与已结账分别展示先付订单的收款前后状态；就餐中表示正在制作或出餐；待结账表示后付账订单尚未完成收款。</Typography.Paragraph>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>刷新桌台</Button>
       </div>

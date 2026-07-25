@@ -94,6 +94,13 @@ func normalizeOrderType(orderType, orderScene, fulfillment string) (string, erro
 	}
 }
 
+func settlementModeForOrder(orderType, storeSettlementMode string) string {
+	if orderType == orderTypeDineIn && strings.EqualFold(strings.TrimSpace(storeSettlementMode), "PAY_AFTER") {
+		return "PAY_AFTER"
+	}
+	return "PAY_BEFORE"
+}
+
 func legacyFulfillmentType(orderType string) string {
 	if orderType == orderTypeDineIn {
 		return orderTypeDineIn
@@ -521,16 +528,19 @@ func (s *Server) publicResolveTableCode(w http.ResponseWriter, r *http.Request) 
 	}
 	var storeID, tenantID int64
 	var storeCode, storeName string
+	var tableScanReturnHome bool
 	var table orderTableReference
 	var capacity int
 	var remark string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT st.id,st.tenant_id,st.code,st.name,c.id,c.public_scene,a.name,c.name,c.table_code,c.capacity,c.remark
+	err := s.DB.QueryRowContext(r.Context(), `SELECT st.id,st.tenant_id,st.code,st.name,c.id,c.public_scene,a.name,c.name,c.table_code,c.capacity,c.remark,
+		COALESCE(os.table_scan_return_home,1)
 		FROM table_codes c JOIN table_areas a ON a.id=c.area_id AND a.tenant_id=c.tenant_id AND a.store_id=c.store_id
 		JOIN stores st ON st.id=c.store_id AND st.tenant_id=c.tenant_id JOIN tenants t ON t.id=c.tenant_id
+		LEFT JOIN store_operation_settings os ON os.tenant_id=c.tenant_id AND os.store_id=c.store_id
 		WHERE c.public_scene=? AND c.status='ACTIVE' AND c.deleted_at IS NULL
 		AND a.status='ACTIVE' AND a.deleted_at IS NULL AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		AND t.status='ACTIVE' AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL`, publicID).
-		Scan(&storeID, &tenantID, &storeCode, &storeName, &table.ID, &table.PublicID, &table.AreaName, &table.Name, &table.TableCode, &capacity, &remark)
+		Scan(&storeID, &tenantID, &storeCode, &storeName, &table.ID, &table.PublicID, &table.AreaName, &table.Name, &table.TableCode, &capacity, &remark, &tableScanReturnHome)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "TABLE_CODE_NOT_FOUND", "table code not found")
@@ -541,9 +551,10 @@ func (s *Server) publicResolveTableCode(w http.ResponseWriter, r *http.Request) 
 	}
 	_ = tenantID // Deliberately not exposed by the public contract.
 	writeData(w, http.StatusOK, map[string]any{
-		"store":      map[string]any{"id": storeID, "code": storeCode, "name": storeName},
-		"table":      map[string]any{"publicId": table.PublicID, "name": table.Name, "areaName": table.AreaName, "tableCode": table.TableCode, "capacity": capacity, "remark": remark},
-		"tableCode":  table.TableCode,
-		"orderScene": orderTypeDineIn,
+		"store":            map[string]any{"id": storeID, "code": storeCode, "name": storeName},
+		"table":            map[string]any{"publicId": table.PublicID, "name": table.Name, "areaName": table.AreaName, "tableCode": table.TableCode, "capacity": capacity, "remark": remark},
+		"tableCode":        table.TableCode,
+		"orderScene":       orderTypeDineIn,
+		"returnHomeOnScan": tableScanReturnHome,
 	})
 }

@@ -15,6 +15,7 @@ func TestValidateOperationSettingsRequiresCoordinatesForDistanceCheck(t *testing
 	input := storeOperationSettings{
 		SettlementMode:               "PAY_BEFORE",
 		OrderingMode:                 "MULTI_PERSON",
+		PayBeforeClearMode:           "AFTER_ORDER_COMPLETION",
 		DistanceCheckEnabled:         true,
 		DistanceLimitM:               1000,
 		OrderReminderIntervalMinutes: 5,
@@ -33,6 +34,7 @@ func TestValidateOperationSettingsAcceptsPayAfterMeal(t *testing.T) {
 	input := storeOperationSettings{
 		SettlementMode:               "PAY_AFTER",
 		OrderingMode:                 "MULTI_PERSON",
+		PayBeforeClearMode:           "AFTER_ORDER_COMPLETION",
 		DistanceLimitM:               1000,
 		OrderReminderIntervalMinutes: 5,
 	}
@@ -47,6 +49,24 @@ func TestSettlementPrintTriggerFollowsSettlementMode(t *testing.T) {
 	}
 	if got := settlementPrintTrigger("PAY_BEFORE"); got != "PAYMENT_SUCCESS" {
 		t.Fatalf("pay-before mode must print after payment, got %s", got)
+	}
+}
+
+func TestTableBoardStateKeepsPaymentAndTableLifecycleDistinct(t *testing.T) {
+	tests := []struct {
+		orderStatus, paymentStatus, settlementMode, expected string
+	}{
+		{"", "", "", "UNOPENED"},
+		{"PENDING_PAYMENT", "UNPAID", "PAY_BEFORE", "PENDING_PAYMENT"},
+		{"PAID", "PAID", "PAY_BEFORE", "SETTLED"},
+		{"PREPARING", "PAID", "PAY_BEFORE", "DINING"},
+		{"PAID", "UNPAID", "PAY_AFTER", "UNSETTLED"},
+		{"READY", "UNPAID", "PAY_AFTER", "UNSETTLED"},
+	}
+	for _, test := range tests {
+		if actual := tableBoardState(test.orderStatus, test.paymentStatus, test.settlementMode); actual != test.expected {
+			t.Fatalf("tableBoardState(%q,%q,%q)=%q want %q", test.orderStatus, test.paymentStatus, test.settlementMode, actual, test.expected)
+		}
 	}
 }
 
@@ -81,8 +101,26 @@ func TestMerchantTableBoardUsesStablePublicScene(t *testing.T) {
 	mock.ExpectQuery("SELECT id FROM stores WHERE tenant_id=").
 		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(11))
-	mock.ExpectQuery(`SELECT t\.id,t\.public_scene,t\.area_id`).
+	mock.ExpectExec("INSERT IGNORE INTO store_operation_settings").
+		WithArgs(int64(11), int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT store_id,settlement_mode,ordering_mode").
 		WithArgs(int64(7), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"store_id", "settlement_mode", "ordering_mode", "table_scan_return_home", "pay_before_clear_mode",
+			"pay_after_online_payment_enabled", "distance_check_enabled", "distance_limit_m",
+			"store_latitude", "store_longitude", "require_customer_phone", "allow_order_remark", "allow_item_remark",
+			"order_reminder_enabled", "order_reminder_interval_minutes", "takeaway_verification_enabled",
+			"reviews_enabled", "customer_service_phone", "customer_service_wechat", "customer_service_qr_url",
+			"privacy_policy_text", "user_agreement_text", "official_account_notify_enabled",
+			"official_account_events_json", "notification_recipient_label",
+		}).AddRow(
+			11, "PAY_AFTER", "MULTI_PERSON", 1, "AFTER_ORDER_COMPLETION", 1, 0, 5000,
+			nil, nil, 0, 1, 1, 1, 5, 1,
+			1, "", "", "", "", "", 0, "[]", "",
+		))
+	mock.ExpectQuery(`SELECT t\.id,t\.public_scene,t\.area_id`).
+		WithArgs("AFTER_ORDER_COMPLETION", int64(7), int64(11)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "public_scene", "area_id", "area_name", "name", "table_code", "capacity",
 			"order_id", "order_no", "order_status", "payment_status", "settlement_mode",
@@ -90,23 +128,6 @@ func TestMerchantTableBoardUsesStablePublicScene(t *testing.T) {
 		}).AddRow(
 			3, "0123456789abcdef0123456789ab", 2, "大厅", "A01", "A01", 4,
 			0, "", "", "", "", 0, 0, "", 0, "",
-		))
-	mock.ExpectExec("INSERT IGNORE INTO store_operation_settings").
-		WithArgs(int64(11), int64(7)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectQuery("SELECT store_id,settlement_mode,ordering_mode").
-		WithArgs(int64(7), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"store_id", "settlement_mode", "ordering_mode", "distance_check_enabled", "distance_limit_m",
-			"store_latitude", "store_longitude", "require_customer_phone", "allow_order_remark", "allow_item_remark",
-			"order_reminder_enabled", "order_reminder_interval_minutes", "takeaway_verification_enabled",
-			"reviews_enabled", "customer_service_phone", "customer_service_wechat", "customer_service_qr_url",
-			"privacy_policy_text", "user_agreement_text", "official_account_notify_enabled",
-			"official_account_events_json", "notification_recipient_label",
-		}).AddRow(
-			11, "PAY_AFTER", "MULTI_PERSON", 0, 5000,
-			nil, nil, 0, 1, 1, 1, 5, 1,
-			1, "", "", "", "", "", 0, "[]", "",
 		))
 
 	server := &Server{DB: db, Logger: slog.Default()}
