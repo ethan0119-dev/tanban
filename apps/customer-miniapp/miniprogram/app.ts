@@ -57,11 +57,12 @@ App<TanbanAppOption>({
     const storeCode = this.globalData.storeCode;
     if (!storeCode) return;
     const tokenStore = wx.getStorageSync<string>("tanban_customer_token_store");
+    const tokenChannel = wx.getStorageSync<string>("tanban_customer_token_channel");
     const issuedAt = Number(wx.getStorageSync<number>("tanban_customer_token_issued_at") || 0);
-    if (this.globalData.customerToken && tokenStore === storeCode && Date.now() - issuedAt < 29 * 24 * 60 * 60 * 1000) {
+    if (this.globalData.customerToken && tokenStore === storeCode && tokenChannel === env.channelKey && Date.now() - issuedAt < 29 * 24 * 60 * 60 * 1000) {
       return;
     }
-    if (this.globalData.customerToken && tokenStore !== storeCode) {
+    if (this.globalData.customerToken && (tokenStore !== storeCode || tokenChannel !== env.channelKey)) {
       this.globalData.customerToken = "";
       wx.removeStorageSync("tanban_customer_token");
       wx.removeStorageSync("tanban_customer_token_issued_at");
@@ -71,6 +72,7 @@ App<TanbanAppOption>({
       this.globalData.customerToken = token;
       wx.setStorageSync("tanban_customer_token", token);
       wx.setStorageSync("tanban_customer_token_store", storeCode);
+      wx.setStorageSync("tanban_customer_token_channel", env.channelKey);
       wx.setStorageSync("tanban_customer_token_issued_at", Date.now());
     } catch (error) {
       console.warn("customer session unavailable", error);

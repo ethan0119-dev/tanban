@@ -32,7 +32,9 @@ func TestExchangeWechatLoginCode(t *testing.T) {
 		}},
 		HTTPClient: upstream.Client(),
 	}
-	result, err := server.exchangeWechatLoginCode(context.Background(), "temporary-code")
+	result, err := server.exchangeWechatLoginCode(context.Background(), miniAppCredentials{
+		AppID: "mini-app", AppSecret: "mini-secret",
+	}, "temporary-code")
 	if err != nil {
 		t.Fatal(err)
 	}

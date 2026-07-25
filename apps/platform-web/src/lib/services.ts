@@ -15,6 +15,7 @@ import type {
   PrinterProviderTestResult,
   Tenant,
   TenantPaymentSettings,
+  TenantMiniAppSettings,
   TrendPoint,
 } from '../types';
 
@@ -278,6 +279,10 @@ export const tenantService = {
     (await http.get<TenantPaymentSettings>(`/platform/tenants/${id}/payment-settings`)).data,
   updatePaymentSettings: async (id: string, values: TenantPaymentSettings) =>
     (await http.put<TenantPaymentSettings>(`/platform/tenants/${id}/payment-settings`, values)).data,
+  getMiniAppSettings: async (id: string) =>
+    (await http.get<TenantMiniAppSettings>(`/platform/tenants/${id}/miniapp-settings`)).data,
+  updateMiniAppSettings: async (id: string, values: TenantMiniAppSettings) =>
+    (await http.put<TenantMiniAppSettings>(`/platform/tenants/${id}/miniapp-settings`, values)).data,
   createOwner: async (id: string, values: { username: string; password?: string; displayName?: string; accountMode?: 'CREATE' | 'EXISTING' }) => {
     await http.post(`/platform/tenants/${id}/owner`, {
       username: values.username,

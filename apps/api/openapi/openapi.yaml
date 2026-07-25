@@ -111,6 +111,37 @@ paths:
       responses:
         '200': {description: Renewed tenant}
         '409': {description: Merchant already has an owner account}
+  /platform/tenants/{tenantID}/miniapp-settings:
+    parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 查询租户的公版与独立小程序渠道
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Mini-program channel settings; AppSecret is never returned}
+    put:
+      summary: 配置租户主要小程序渠道及独立 AppID
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primaryMode, publicEnabled, dedicatedEnabled]
+              properties:
+                primaryMode: {type: string, enum: [PUBLIC, DEDICATED]}
+                publicEnabled: {type: boolean}
+                dedicatedEnabled: {type: boolean}
+                dedicatedDisplayName: {type: string, maxLength: 120}
+                dedicatedAppId: {type: string}
+                dedicatedAppSecret: {type: string, format: password, writeOnly: true}
+      responses:
+        '200': {description: Updated mini-program settings}
+        '409': {description: AppID is already bound to another tenant}
   /merchant/dashboard:
     get:
       summary: 商户经营概览
@@ -1056,6 +1087,7 @@ paths:
                 code: {type: string, maxLength: 256}
                 guestKey: {type: string, minLength: 12, maxLength: 128}
                 storeCode: {type: string}
+                channelKey: {type: string, maxLength: 64, description: 构建时注入的公开小程序渠道标识；公版缺省为 tanban-public}
       responses:
         '200': {description: Customer bearer token}
         '429': {description: Too many login attempts}

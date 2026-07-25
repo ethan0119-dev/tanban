@@ -1,4 +1,4 @@
-import { BankOutlined, CalendarOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, BankOutlined, CalendarOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
   Alert,
@@ -32,7 +32,7 @@ import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
 import { generateInitialPassword, generatedOwnerUsername, type OwnerUsernameMode } from '../features/tenants/credentials';
 import { tenantService } from '../lib/services';
-import type { PageMeta, Tenant, TenantPaymentSettings } from '../types';
+import type { PageMeta, Tenant, TenantMiniAppSettings, TenantPaymentSettings } from '../types';
 import { formatBeijingDate, formatBeijingDateTime } from '../utils/datetime';
 
 interface TenantFormValues {
@@ -100,10 +100,13 @@ export function TenantsPage() {
   const [expirationOpen, setExpirationOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [miniAppOpen, setMiniAppOpen] = useState(false);
+  const [miniAppLoading, setMiniAppLoading] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
   const [ownerForm] = Form.useForm<OwnerFormValues>();
   const [expirationForm] = Form.useForm<{ expiresAt?: Dayjs }>();
   const [paymentForm] = Form.useForm<TenantPaymentSettings>();
+  const [miniAppForm] = Form.useForm<TenantMiniAppSettings>();
   const [messageApi, contextHolder] = message.useMessage();
 
   const load = useCallback(async (page = meta.page, pageSize = meta.pageSize) => {
@@ -276,6 +279,36 @@ export function TenantsPage() {
     }
   };
 
+  const openMiniAppSettings = async (record: Tenant) => {
+    setSelected(record);
+    setMiniAppOpen(true);
+    setMiniAppLoading(true);
+    try {
+      miniAppForm.setFieldsValue({ ...(await tenantService.getMiniAppSettings(record.id)), dedicatedAppSecret: '' });
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '小程序配置加载失败');
+      setMiniAppOpen(false);
+    } finally {
+      setMiniAppLoading(false);
+    }
+  };
+
+  const saveMiniAppSettings = async () => {
+    if (!selected) return;
+    const values = await miniAppForm.validateFields();
+    setSaving(true);
+    try {
+      const updated = await tenantService.updateMiniAppSettings(selected.id, values);
+      miniAppForm.setFieldsValue({ ...updated, dedicatedAppSecret: '' });
+      messageApi.success('小程序渠道配置已保存');
+      setMiniAppOpen(false);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '小程序配置保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const uploadDocument = async (type: 'business-license' | 'food-business-license', file: File) => {
     if (!selected) return;
     if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
@@ -419,6 +452,7 @@ export function TenantsPage() {
           <Space style={{ marginTop: 16, marginBottom: 8 }}>
             <Button icon={<CalendarOutlined />} onClick={() => openExpiration(selected)}>设置有效期</Button>
             <Button icon={<BankOutlined />} onClick={() => void openPaymentSettings(selected)}>支付配置</Button>
+            <Button icon={<AppstoreOutlined />} onClick={() => void openMiniAppSettings(selected)}>小程序配置</Button>
             <Popconfirm title="确认续期 1 年？" onConfirm={() => void renewOneYear(selected)}><Button type="primary">续期 1 年</Button></Popconfirm>
           </Space>
           <Typography.Title level={5} className="tenant-document-title"><FileImageOutlined /> 商户经营证照</Typography.Title>
@@ -476,6 +510,44 @@ export function TenantsPage() {
               <Form.Item label="支付商户号" name="merchantNo"><Input /></Form.Item>
               <Form.Item label="子 AppID" name="subAppId"><Input /></Form.Item>
             </>}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title={`小程序配置 · ${selected?.name || ''}`} open={miniAppOpen} width={720} okText="保存小程序配置" onCancel={() => setMiniAppOpen(false)} onOk={() => void saveMiniAppSettings()} confirmLoading={saving} okButtonProps={{ disabled: miniAppLoading }}>
+        <Form form={miniAppForm} layout="vertical" requiredMark={false}>
+          <Alert
+            type="info"
+            showIcon
+            message="公版与独立小程序可以同时保留"
+            description="主要渠道决定新桌码和默认入口；已有公版桌码、顾客会话和订单不会因启用独立小程序而立即失效。AppSecret 仅加密保存在服务端，保存后不再回显。"
+            style={{ marginBottom: 16 }}
+          />
+          <Form.Item label="主要小程序渠道" name="primaryMode" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={[{ value: 'PUBLIC', label: '摊伴公版' }, { value: 'DEDICATED', label: '商户独立小程序' }]} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}><Form.Item label="保留摊伴公版入口" name="publicEnabled" valuePropName="checked"><Switch checkedChildren="允许访问" unCheckedChildren="停止新访问" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item label="启用商户独立小程序" name="dedicatedEnabled" valuePropName="checked"><Switch checkedChildren="已启用" unCheckedChildren="未启用" /></Form.Item></Col>
+          </Row>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.dedicatedEnabled !== current.dedicatedEnabled || previous.primaryMode !== current.primaryMode}>
+            {({ getFieldValue }) => getFieldValue('dedicatedEnabled') || getFieldValue('primaryMode') === 'DEDICATED' ? <>
+              <Row gutter={12}>
+                <Col xs={24} md={12}><Form.Item label="独立小程序名称" name="dedicatedDisplayName" rules={[{ max: 120 }]}><Input placeholder="例如：川味小馆点单" /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item label="独立小程序 AppID" name="dedicatedAppId" rules={[{ required: true, message: '请输入 AppID' }, { pattern: /^wx[a-zA-Z0-9]{16}$/, message: 'AppID 格式不正确' }]}><Input placeholder="wx..." /></Form.Item></Col>
+              </Row>
+              <Form.Item noStyle shouldUpdate>
+                {({ getFieldValue: readValue }) => <Form.Item
+                  label="独立小程序 AppSecret"
+                  name="dedicatedAppSecret"
+                  extra={readValue('appSecretConfigured') ? '密钥已安全保存；留空表示不修改。' : '首次启用时必须填写，系统不会再次显示明文。'}
+                  rules={readValue('appSecretConfigured') ? [] : [{ required: true, message: '首次启用必须填写 AppSecret' }]}
+                ><Input.Password prefix={<LockOutlined />} autoComplete="new-password" placeholder={readValue('appSecretConfigured') ? '已设置，留空不修改' : '请输入 AppSecret'} /></Form.Item>}
+              </Form.Item>
+              <Form.Item label="构建渠道标识" name="dedicatedChannelKey" extra="首次保存后自动生成。独立小程序构建时使用此公开标识，不包含任何密钥。"><Input readOnly placeholder="保存后自动生成" /></Form.Item>
+              <Form.Item name="appSecretConfigured" hidden><Input /></Form.Item>
+              <Alert type="warning" showIcon message="支付 AppID 必须同步匹配" description="如果商户启用微信支付服务商模式，请在支付配置中将 sub_appid 设置为同一个独立小程序 AppID，否则系统会阻止错配支付。" />
+            </> : null}
           </Form.Item>
         </Form>
       </Modal>

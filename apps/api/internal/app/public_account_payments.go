@@ -239,6 +239,17 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 		handleSQLError(w, err)
 		return
 	}
+	if paymentProvider == "wechat_partner" {
+		if session.MiniAppChannelKey == publicMiniAppChannelKey {
+			subAppID = ""
+		} else if session.MiniAppID != "" {
+			if subAppID != "" && subAppID != session.MiniAppID {
+				writeError(w, http.StatusConflict, "PAYMENT_APPID_MISMATCH", "当前小程序与商户支付 AppID 不一致")
+				return
+			}
+			subAppID = session.MiniAppID
+		}
+	}
 	if amountCents > 0 {
 		enabled, enabledErr := s.paymentAcceptanceEnabled(r.Context())
 		if enabledErr != nil {

@@ -132,6 +132,8 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.With(requireRoles(RolePlatformAdmin)).Put("/service-expiration", s.updateTenantServiceExpiration)
 		t.Get("/payment-settings", s.getTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/payment-settings", s.updateTenantPaymentSettings)
+		t.Get("/miniapp-settings", s.getTenantMiniAppSettings)
+		t.With(requireRoles(RolePlatformAdmin)).Put("/miniapp-settings", s.updateTenantMiniAppSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/renew-one-year", s.renewTenantOneYear)
 		t.With(requireRoles(RolePlatformAdmin)).Delete("/", s.deleteTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/owner", s.createTenantOwner)

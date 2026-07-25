@@ -28,7 +28,7 @@ export async function createCustomerSession(storeCode: string): Promise<string> 
       method: "POST",
       timeout: env.requestTimeoutMs,
       header: { "content-type": "application/json" },
-      data: { code, guestKey: customerGuestKey(), storeCode },
+      data: { code, guestKey: customerGuestKey(), storeCode, channelKey: env.channelKey },
       success(response) {
         const token = response.data?.data?.accessToken;
         if (response.statusCode >= 200 && response.statusCode < 300 && token) {

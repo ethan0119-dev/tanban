@@ -31,3 +31,21 @@ npm run build
 - 堂食桌码使用 `pages/home/index?scene=tc%3D<publicScene>`。`publicScene` 为后端生成的 20–32 位不可猜公开标识。
 - 小程序通过 `GET /public/table-codes/{publicScene}` 解析门店和桌台；创建堂食订单时额外发送 `order_scene=DINE_IN` 与 `table_public_id`。
 - 冷启动没有二维码参数时会清除旧桌台，避免顾客离店后从“最近使用”误下单；堂食提交前还会再次解析桌码。
+## 多小程序渠道构建
+
+公版构建沿用 `project.config.json` 中的 AppID，并默认使用 `tanban-public` 渠道：
+
+```bash
+npm run build
+```
+
+商户独立小程序使用同一代码库，通过公开构建参数生成独立上传目录：
+
+```bash
+TB_MINIAPP_APP_ID=wx0000000000000000 \
+TB_MINIAPP_CHANNEL_KEY=wx202607250001 \
+TB_MINIAPP_DEFAULT_STORE_CODE=merchant-store-code \
+npm run build
+```
+
+构建结果位于 `dist/`，微信开发者工具或 CLI 应以 `dist/project.config.json` 为项目配置上传。`AppSecret` 只保存在服务端加密配置中，不能写入这些构建参数或小程序代码。

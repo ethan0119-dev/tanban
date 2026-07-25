@@ -151,6 +151,19 @@ export interface TenantPaymentSettings {
   };
 }
 
+export interface TenantMiniAppSettings {
+  primaryMode: 'PUBLIC' | 'DEDICATED';
+  publicEnabled: boolean;
+  publicAppId: string;
+  publicConfigured: boolean;
+  dedicatedEnabled: boolean;
+  dedicatedDisplayName: string;
+  dedicatedChannelKey: string;
+  dedicatedAppId: string;
+  dedicatedAppSecret?: string;
+  appSecretConfigured: boolean;
+}
+
 export interface SystemSettings {
   platformName?: string;
   supportPhone?: string;

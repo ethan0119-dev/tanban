@@ -705,16 +705,16 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	var orderNo, orderStatus, orderPaymentStatus, settlementMode, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus string
+	var orderNo, orderStatus, orderPaymentStatus, settlementMode, merchantNo, subAppID, storedOpenID, tenantPaymentProvider, onboardingStatus, productAuthorizationStatus, sourceMiniAppChannel, sourceMiniAppID string
 	var storeID, amount int64
 	err = conn.QueryRowContext(r.Context(), `SELECT o.order_no,o.store_id,GREATEST(o.total_cents-o.paid_cents,0),o.status,o.payment_status,o.settlement_mode_snapshot,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,o.customer_openid,
-		t.payment_onboarding_status,t.payment_product_authorization_status
+		t.payment_onboarding_status,t.payment_product_authorization_status,o.source_miniapp_channel_key,o.source_miniapp_appid
 		FROM orders o
 		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
 			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.tenant_id=o.tenant_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		WHERE o.id=? AND o.tenant_id=?`, orderID, tenantID).
-		Scan(&orderNo, &storeID, &amount, &orderStatus, &orderPaymentStatus, &settlementMode, &tenantPaymentProvider, &merchantNo, &subAppID, &storedOpenID, &onboardingStatus, &productAuthorizationStatus)
+		Scan(&orderNo, &storeID, &amount, &orderStatus, &orderPaymentStatus, &settlementMode, &tenantPaymentProvider, &merchantNo, &subAppID, &storedOpenID, &onboardingStatus, &productAuthorizationStatus, &sourceMiniAppChannel, &sourceMiniAppID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -727,6 +727,17 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	if !payableStatus || orderPaymentStatus != "UNPAID" {
 		writeError(w, http.StatusConflict, "ORDER_NOT_PAYABLE", "order is not pending payment")
 		return
+	}
+	if tenantPaymentProvider == "wechat_partner" {
+		if sourceMiniAppChannel == publicMiniAppChannelKey {
+			subAppID = ""
+		} else if sourceMiniAppID != "" {
+			if subAppID != "" && subAppID != sourceMiniAppID {
+				writeError(w, http.StatusConflict, "PAYMENT_APPID_MISMATCH", "订单来源小程序与商户支付 AppID 不一致")
+				return
+			}
+			subAppID = sourceMiniAppID
+		}
 	}
 	newReservation := false
 	if !postPay {

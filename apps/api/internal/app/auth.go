@@ -36,11 +36,13 @@ type identity struct {
 }
 
 type claims struct {
-	MembershipID int64  `json:"membership_id,omitempty"`
-	TenantID     int64  `json:"tenant_id"`
-	Role         string `json:"role"`
-	Username     string `json:"username"`
-	TokenKind    string `json:"token_kind,omitempty"`
+	MembershipID      int64  `json:"membership_id,omitempty"`
+	TenantID          int64  `json:"tenant_id"`
+	Role              string `json:"role"`
+	Username          string `json:"username"`
+	TokenKind         string `json:"token_kind,omitempty"`
+	MiniAppChannelKey string `json:"miniapp_channel_key,omitempty"`
+	MiniAppID         string `json:"miniapp_appid,omitempty"`
 	jwt.RegisteredClaims
 }
 
