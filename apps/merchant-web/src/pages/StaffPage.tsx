@@ -1,6 +1,7 @@
 import {
   CrownOutlined,
   EditOutlined,
+  InfoCircleOutlined,
   LockOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
@@ -15,6 +16,7 @@ import {
   Form,
   Input,
   Modal,
+  Popover,
   Row,
   Select,
   Space,
@@ -203,17 +205,37 @@ export function StaffPage() {
       <Row gutter={[16, 16]} className="role-grid">
         {roles.map((role) => (
           <Col xs={24} md={12} xl={8} key={role.key}>
-            <Card bordered={false} className="role-card">
+            <Card variant="borderless" className="role-card">
               <span className="role-icon" style={{ backgroundColor: `${role.color}18`, color: role.color }}>{role.icon}</span>
-              <div className="role-title"><strong>{role.name}</strong><Tag>{roleCounts[role.key] ?? 0} 人</Tag></div>
-              <Space wrap size={[4, 6]} className="role-permissions">
-                {role.permissions.map((permission) => <Tag key={permission}>{permission}</Tag>)}
-              </Space>
+              <div className="role-title">
+                <div className="role-title-main">
+                  <strong>{role.name}</strong>
+                  <Popover
+                    placement="bottomLeft"
+                    trigger={['hover', 'focus']}
+                    title={`${role.name}权限`}
+                    content={(
+                      <div className="role-permission-popover-content">
+                        {role.permissions.map((permission) => <Tag key={permission}>{permission}</Tag>)}
+                      </div>
+                    )}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      className="role-permission-trigger"
+                      icon={<InfoCircleOutlined />}
+                      aria-label={`查看${role.name}权限`}
+                    />
+                  </Popover>
+                </div>
+                <Tag>{roleCounts[role.key] ?? 0} 人</Tag>
+              </div>
             </Card>
           </Col>
         ))}
       </Row>
-      <Card bordered={false} className="content-card table-card">
+      <Card variant="borderless" className="content-card table-card">
         <Table<Staff>
           rowKey="id"
           loading={loading}
