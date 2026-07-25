@@ -14,6 +14,7 @@
 # testing
 /coverage
 /.qa/
+apps/merchant-web/design-qa-artifacts/
 
 # next.js
 /.next/

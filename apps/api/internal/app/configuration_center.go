@@ -319,6 +319,7 @@ func (s *Server) getMerchantPaymentSettings(w http.ResponseWriter, r *http.Reque
 
 type tableBoardTable struct {
 	ID             int64  `json:"id"`
+	PublicID       string `json:"publicId"`
 	AreaID         int64  `json:"areaId"`
 	AreaName       string `json:"areaName"`
 	Name           string `json:"name"`
@@ -344,7 +345,7 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.area_id,a.name,t.name,t.table_code,t.capacity,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.public_id,t.area_id,a.name,t.name,t.table_code,t.capacity,
 		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.payment_status,''),
 		COALESCE(o.settlement_mode_snapshot,''),COALESCE(o.addition_count,0),COALESCE(o.diner_count,0),
 		COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
@@ -365,7 +366,7 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 	areaIndex := map[int64]int{}
 	for rows.Next() {
 		var item tableBoardTable
-		if err = rows.Scan(&item.ID, &item.AreaID, &item.AreaName, &item.Name, &item.TableCode, &item.Capacity,
+		if err = rows.Scan(&item.ID, &item.PublicID, &item.AreaID, &item.AreaName, &item.Name, &item.TableCode, &item.Capacity,
 			&item.OrderID, &item.OrderNo, &item.OrderStatus, &item.PaymentStatus, &item.SettlementMode,
 			&item.AdditionCount, &item.DinerCount, &item.CustomerName, &item.TotalCents, &item.OpenedAt); err != nil {
 			handleSQLError(w, err)

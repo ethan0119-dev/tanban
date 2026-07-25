@@ -484,22 +484,29 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	cashierActor, cashierOrder := s.optionalCashierIdentity(r.Context(), r, store.TenantID)
+	cashierPrintActorID := int64(0)
+	if cashierOrder {
+		cashierPrintActorID = cashierActor.UserID
+	}
 	// V1 runs a single API process, so the shared in-memory cache is sufficient
 	// for a lightweight abuse guard. The cache interface can move this counter
 	// to Redis when the API is scaled horizontally.
-	s.publicRateMu.Lock()
-	rateKey := "public-order:" + store.Code + ":" + publicClientHost(r)
-	attempts := 0
-	if raw, cacheErr := s.Cache.Get(r.Context(), rateKey); cacheErr == nil {
-		attempts, _ = strconv.Atoi(string(raw))
-	}
-	if attempts >= 30 {
+	if !cashierOrder {
+		s.publicRateMu.Lock()
+		rateKey := "public-order:" + store.Code + ":" + publicClientHost(r)
+		attempts := 0
+		if raw, cacheErr := s.Cache.Get(r.Context(), rateKey); cacheErr == nil {
+			attempts, _ = strconv.Atoi(string(raw))
+		}
+		if attempts >= 30 {
+			s.publicRateMu.Unlock()
+			writeError(w, http.StatusTooManyRequests, "ORDER_RATE_LIMITED", "too many order attempts; retry in one minute")
+			return
+		}
+		_ = s.Cache.Set(r.Context(), rateKey, []byte(strconv.Itoa(attempts+1)), time.Minute)
 		s.publicRateMu.Unlock()
-		writeError(w, http.StatusTooManyRequests, "ORDER_RATE_LIMITED", "too many order attempts; retry in one minute")
-		return
 	}
-	_ = s.Cache.Set(r.Context(), rateKey, []byte(strconv.Itoa(attempts+1)), time.Minute)
-	s.publicRateMu.Unlock()
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if idempotencyKey == "" || len(idempotencyKey) > 128 {
 		writeError(w, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required and must not exceed 128 characters")
@@ -951,7 +958,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		extra := fmt.Sprintf("【加单 #%d】", additionSequence)
 		dedupeKey := fmt.Sprintf("ORDER:%d:ADDITION:%d", additionOrderID, requestID)
-		if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, additionOrderID, "ORDER_CREATED", dedupeKey, 0, extra); err != nil {
+		if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, additionOrderID, "ORDER_CREATED", dedupeKey, cashierPrintActorID, extra); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -986,8 +993,14 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if sourceChannelKey == "" {
 		sourceChannelKey = publicMiniAppChannelKey
 	}
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,source_miniapp_channel_key,source_miniapp_appid,customer_openid,customer_id,member_id_snapshot,member_level_id_snapshot,member_level_name_snapshot,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,member_discount_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, sourceChannelKey, customerSession.MiniAppID, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
+	orderSource := "MINIPROGRAM"
+	if cashierOrder {
+		orderSource = "CASHIER"
+		sourceChannelKey = "cashier-terminal"
+		customerSession.MiniAppID = ""
+	}
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,source,source_miniapp_channel_key,source_miniapp_appid,customer_openid,customer_id,member_id_snapshot,member_level_id_snapshot,member_level_name_snapshot,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,member_discount_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, orderSource, sourceChannelKey, customerSession.MiniAppID, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, policy.SettlementMode, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
 			_ = tx.Rollback()
@@ -1028,7 +1041,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, orderID, "ORDER_CREATED", orderCreatedPrintDedupeKey(orderID), 0, ""); err != nil {
+	if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, orderID, "ORDER_CREATED", orderCreatedPrintDedupeKey(orderID), cashierPrintActorID, ""); err != nil {
 		handleSQLError(w, err)
 		return
 	}

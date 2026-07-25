@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, AUTH_UNAUTHORIZED_EVENT, SERVICE_EXPIRED_EVENT, TOKEN_KEY } from '../api/client';
+import { api, AUTH_UNAUTHORIZED_EVENT, CASHIER_TOKEN_KEY, SERVICE_EXPIRED_EVENT, TOKEN_KEY } from '../api/client';
 import type { Id, MerchantUser, MerchantWorkspace } from '../types';
 
 const SELECTION_TOKEN_KEY = 'tanban_merchant_selection_token';
@@ -102,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(CASHIER_TOKEN_KEY);
     clearSelection();
     setUser(null);
     setWorkspaces([]);
@@ -121,7 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     const bootstrap = async () => {
-      if (!localStorage.getItem(TOKEN_KEY)) {
+      const hasCashierSession = window.location.pathname === '/cashier' && localStorage.getItem(CASHIER_TOKEN_KEY);
+      if (!localStorage.getItem(TOKEN_KEY) && !hasCashierSession) {
         setLoading(false);
         return;
       }
@@ -151,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (account: string, password: string) => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(CASHIER_TOKEN_KEY);
     clearSelection();
     const result = await api.post<LoginResponse>('/auth/login', {
       username: account,
@@ -178,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const acceptAccessResponse = useCallback(async (result: LoginResponse) => {
     const token = result.token ?? result.accessToken ?? result.access_token;
     if (!token) throw new Error('登录成功响应中缺少访问令牌');
+    localStorage.removeItem(CASHIER_TOKEN_KEY);
     localStorage.setItem(TOKEN_KEY, token);
     clearSelection();
     if (result.user) setUser(normalizeUser(result.user));

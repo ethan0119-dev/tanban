@@ -6,6 +6,7 @@ import {
   CarOutlined,
   CheckOutlined,
   DashboardOutlined,
+  DollarOutlined,
   LogoutOutlined,
   GiftOutlined,
   MenuFoldOutlined,
@@ -31,6 +32,7 @@ import { notificationApi, NOTIFICATIONS_CHANGED_EVENT } from '../features/notifi
 const { Header, Sider, Content } = Layout;
 
 const managementNavigationItems: MenuProps['items'] = [
+  { key: '/cashier', label: '收银台', icon: <DollarOutlined /> },
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
   {
     key: 'dine-in-domain', label: '店内', icon: <ShopOutlined />,
@@ -103,6 +105,7 @@ function navigationRouteKeys(items: MenuProps['items']): string[] {
 }
 
 const staffNavigationItems: MenuProps['items'] = [
+  { key: '/cashier', label: '收银台', icon: <DollarOutlined /> },
   { key: '/dashboard', label: '经营总览', icon: <DashboardOutlined /> },
   { key: '/dine-in/orders', label: '店内订单', icon: <ShoppingCartOutlined /> },
   { key: '/print-jobs', label: '打印任务', icon: <PrinterOutlined /> },

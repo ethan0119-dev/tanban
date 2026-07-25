@@ -1,0 +1,988 @@
+/* eslint-disable @next/next/no-img-element -- product images are supplied by each merchant */
+import {
+  AppstoreOutlined,
+  BellOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CoffeeOutlined,
+  DashboardOutlined,
+  DollarOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  MergeCellsOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  PrinterOutlined,
+  ReloadOutlined,
+  RetweetOutlined,
+  ShoppingOutlined,
+  ShopOutlined,
+  ShoppingCartOutlined,
+  TableOutlined,
+  TeamOutlined,
+  UserOutlined,
+  WalletOutlined,
+  WifiOutlined,
+} from '@ant-design/icons';
+import {
+  App as AntApp,
+  Badge,
+  Button,
+  Checkbox,
+  Drawer,
+  Empty,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import { normalizeOrder } from '../features/storefront/model';
+import type { DashboardData, MerchantSettings, Order, OrderItem, TableBoardResponse, TableBoardTable } from '../types';
+import { dateTime, yuan } from '../utils/format';
+import '../cashier.css';
+
+interface CashierContext {
+  storeId: string | number;
+  storeCode: string;
+  storeName: string;
+  logoUrl?: string;
+  operatorName: string;
+  role: string;
+}
+
+interface CatalogSku {
+  id: number;
+  name: string;
+  price: number;
+  stock: number;
+  soldOut: boolean;
+}
+
+interface CatalogOptionValue {
+  id: number;
+  name: string;
+  priceDeltaCents: number;
+  isDefault: boolean;
+}
+
+interface CatalogOptionGroup {
+  id: number;
+  name: string;
+  selectionMode: 'SINGLE' | 'MULTIPLE';
+  minSelect: number;
+  maxSelect: number;
+  values: CatalogOptionValue[];
+}
+
+interface CatalogModifierItem {
+  id: number;
+  name: string;
+  priceCents: number;
+  isDefault: boolean;
+}
+
+interface CatalogModifierGroup {
+  id: number;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  items: CatalogModifierItem[];
+}
+
+interface CatalogProduct {
+  id: number;
+  categoryId: number;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  price: number;
+  stock: number;
+  soldOut: boolean;
+  skus: CatalogSku[];
+  optionGroups: CatalogOptionGroup[];
+  modifierGroups: CatalogModifierGroup[];
+}
+
+interface CashierCatalog {
+  categories: Array<{ id: number; name: string }>;
+  products: CatalogProduct[];
+}
+
+interface CartLine {
+  key: string;
+  productId: number;
+  skuId: number;
+  name: string;
+  skuName: string;
+  priceCents: number;
+  quantity: number;
+  optionValueIds: number[];
+  modifiers: Array<{ groupId: number; modifierItemId: number; quantity: number }>;
+  summary: string;
+  itemRemark: string;
+}
+
+type CashierMode = 'DINE_IN' | 'TAKEOUT';
+
+const tableMeta: Record<TableBoardTable['state'], { label: string; className: string }> = {
+  UNOPENED: { label: '空闲', className: 'is-free' },
+  OPENED: { label: '待点单', className: 'is-opened' },
+  DINING: { label: '制作中', className: 'is-dining' },
+  UNSETTLED: { label: '待结账', className: 'is-unsettled' },
+};
+
+const demoOrder: Order = {
+  id: 5031,
+  orderNo: 'D260725150041',
+  status: 'READY',
+  paymentStatus: 'UNPAID',
+  settlementMode: 'PAY_AFTER',
+  additionCount: 3,
+  dinerCount: 3,
+  amount: 132,
+  remainingAmount: 132,
+  paidAmount: 0,
+  memberDiscount: 12,
+  orderType: 'DINE_IN',
+  tableCodeId: 5,
+  tableNo: 'B03',
+  tableName: 'B03',
+  tableAreaName: '大厅',
+  createdAt: '2026-07-25 14:41:00',
+  items: [
+    { id: 1, productName: '水煮牛肉', quantity: 1, unitPrice: 48, amount: 48, additionSequence: 1 },
+    { id: 2, productName: '鱼香肉丝', quantity: 1, unitPrice: 22, amount: 22, additionSequence: 1 },
+    { id: 3, productName: '清炒时蔬', quantity: 1, unitPrice: 16, amount: 16, additionSequence: 1 },
+    { id: 4, productName: '麻婆豆腐', quantity: 1, unitPrice: 18, amount: 18, additionSequence: 2 },
+    { id: 5, productName: '米饭', quantity: 1, unitPrice: 8, amount: 8, additionSequence: 3 },
+  ],
+};
+
+function fixtureTable(id: number, name: string, capacity: number, state: TableBoardTable['state'], order?: Partial<Order>): TableBoardTable {
+  return {
+    id,
+    publicId: `table-public-${id}`,
+    areaId: id < 9 ? 1 : 2,
+    areaName: id < 9 ? '大厅' : '包间',
+    name,
+    tableCode: name,
+    capacity,
+    state,
+    orderId: order?.id,
+    orderNo: order?.orderNo,
+    orderStatus: order?.status,
+    paymentStatus: order?.paymentStatus,
+    settlementMode: order?.settlementMode,
+    additionCount: order?.additionCount,
+    dinerCount: order?.dinerCount,
+    totalCents: order?.amount ? order.amount * 100 : undefined,
+    openedAt: order ? '2026-07-25 14:41:00' : undefined,
+  };
+}
+
+const previewBoard: TableBoardResponse = {
+  settlementMode: 'PAY_AFTER',
+  orderingMode: 'MULTI_PERSON',
+  areas: [
+    {
+      id: 1,
+      name: '大厅',
+      tables: [
+        fixtureTable(1, 'A01', 4, 'UNOPENED'),
+        fixtureTable(2, 'A02', 2, 'OPENED', { id: 5028, orderNo: 'D260725151122', status: 'PAID', dinerCount: 2 }),
+        fixtureTable(3, 'A03', 4, 'UNOPENED'),
+        fixtureTable(4, 'A05', 4, 'UNOPENED'),
+        fixtureTable(5, 'B03', 4, 'UNSETTLED', demoOrder),
+        fixtureTable(6, 'B05', 2, 'DINING', { id: 5029, orderNo: 'D260725145800', status: 'PREPARING', dinerCount: 2, amount: 92 }),
+        fixtureTable(7, 'B06', 4, 'UNSETTLED', { id: 5030, orderNo: 'D260725143011', status: 'READY', paymentStatus: 'UNPAID', settlementMode: 'PAY_AFTER', dinerCount: 4, amount: 186 }),
+      ],
+    },
+    {
+      id: 3,
+      name: '靠窗',
+      tables: [],
+    },
+    {
+      id: 2,
+      name: '包间',
+      tables: [
+        fixtureTable(9, '包间1', 6, 'UNSETTLED', { id: 5027, orderNo: 'D260725140506', status: 'READY', paymentStatus: 'UNPAID', settlementMode: 'PAY_AFTER', dinerCount: 6, amount: 568 }),
+        fixtureTable(10, '包间2', 10, 'UNOPENED'),
+        fixtureTable(11, '包间3', 6, 'DINING', { id: 5026, orderNo: 'D260725145212', status: 'PREPARING', dinerCount: 5, amount: 248 }),
+        fixtureTable(13, '包点单', 6, 'OPENED', { id: 5032, orderNo: 'D260725152512', status: 'PAID', dinerCount: 6 }),
+        fixtureTable(12, '包间6', 12, 'UNOPENED'),
+      ],
+    },
+  ],
+};
+
+const previewTakeoutOrders: Order[] = [
+  { id: 6101, orderNo: 'T260725152201', pickupNo: '038', status: 'PREPARING', paymentStatus: 'PAID', settlementMode: 'PAY_BEFORE', amount: 42, paidAmount: 42, orderType: 'TAKEOUT', createdAt: '2026-07-25 15:22:01', items: [{ productName: '招牌牛肉饭', quantity: 1, unitPrice: 32 }, { productName: '冰豆浆', quantity: 1, unitPrice: 10 }] },
+  { id: 6102, orderNo: 'T260725151825', pickupNo: '037', status: 'READY', paymentStatus: 'PAID', settlementMode: 'PAY_BEFORE', amount: 28, paidAmount: 28, orderType: 'TAKEOUT', createdAt: '2026-07-25 15:18:25', items: [{ productName: '辣椒炒肉拌面', quantity: 1, unitPrice: 28 }] },
+  { id: 6103, orderNo: 'T260725151403', pickupNo: '036', status: 'PENDING_PAYMENT', paymentStatus: 'UNPAID', settlementMode: 'PAY_BEFORE', amount: 56, remainingAmount: 56, orderType: 'TAKEOUT', createdAt: '2026-07-25 15:14:03', items: [{ productName: '双人套餐', quantity: 1, unitPrice: 56 }] },
+];
+
+const previewCatalog: CashierCatalog = {
+  categories: [{ id: 1, name: '热销' }, { id: 2, name: '主食' }, { id: 3, name: '小菜' }],
+  products: [
+    { id: 1, categoryId: 1, name: '水煮牛肉', description: '招牌热销', price: 4800, stock: 30, soldOut: false, skus: [{ id: 11, name: '默认', price: 4800, stock: 30, soldOut: false }], optionGroups: [], modifierGroups: [] },
+    { id: 2, categoryId: 1, name: '鱼香肉丝', price: 2200, stock: 26, soldOut: false, skus: [{ id: 21, name: '默认', price: 2200, stock: 26, soldOut: false }], optionGroups: [], modifierGroups: [] },
+    { id: 3, categoryId: 2, name: '麻婆豆腐', price: 1800, stock: 18, soldOut: false, skus: [{ id: 31, name: '默认', price: 1800, stock: 18, soldOut: false }], optionGroups: [{ id: 301, name: '辣度', selectionMode: 'SINGLE', minSelect: 1, maxSelect: 1, values: [{ id: 3011, name: '微辣', priceDeltaCents: 0, isDefault: true }, { id: 3012, name: '中辣', priceDeltaCents: 0, isDefault: false }] }], modifierGroups: [] },
+    { id: 4, categoryId: 2, name: '米饭', price: 800, stock: 99, soldOut: false, skus: [{ id: 41, name: '默认', price: 800, stock: 99, soldOut: false }], optionGroups: [], modifierGroups: [] },
+    { id: 5, categoryId: 3, name: '清炒时蔬', price: 1600, stock: 14, soldOut: false, skus: [{ id: 51, name: '小份', price: 1600, stock: 14, soldOut: false }, { id: 52, name: '大份', price: 2200, stock: 12, soldOut: false }], optionGroups: [], modifierGroups: [] },
+  ],
+};
+
+function normalizeDashboard(raw: unknown): DashboardData {
+  const value = (raw ?? {}) as Record<string, unknown>;
+  return {
+    todayRevenue: value.today_revenue_cents !== undefined ? Number(value.today_revenue_cents) / 100 : Number(value.todayRevenue ?? 0),
+    todayOrders: Number(value.todayOrders ?? value.today_orders ?? 0),
+    pendingOrders: Number(value.pendingOrders ?? value.pending_orders ?? value.active_orders ?? 0),
+    averageOrderValue: Number(value.averageOrderValue ?? value.average_order_value ?? 0),
+  };
+}
+
+function normalizeCatalog(raw: unknown): CashierCatalog {
+  const value = (raw ?? {}) as Record<string, unknown>;
+  return {
+    categories: ((value.categories ?? []) as Array<Record<string, unknown>>).map((item) => ({
+      id: Number(item.id),
+      name: String(item.name ?? ''),
+    })),
+    products: ((value.products ?? []) as Array<Record<string, unknown>>).map((item) => ({
+      id: Number(item.id),
+      categoryId: Number(item.categoryId ?? item.category_id),
+      name: String(item.name ?? ''),
+      description: item.description ? String(item.description) : undefined,
+      imageUrl: item.imageUrl ? String(item.imageUrl) : undefined,
+      price: Number(item.price ?? 0),
+      stock: Number(item.stock ?? 0),
+      soldOut: Boolean(item.soldOut ?? item.sold_out),
+      skus: ((item.skus ?? []) as CatalogSku[]).map((sku) => ({ ...sku, id: Number(sku.id), price: Number(sku.price), stock: Number(sku.stock) })),
+      optionGroups: ((item.optionGroups ?? []) as CatalogOptionGroup[]).map((group) => ({
+        ...group,
+        id: Number(group.id),
+        minSelect: Number(group.minSelect),
+        maxSelect: Number(group.maxSelect),
+        values: group.values.map((option) => ({ ...option, id: Number(option.id), priceDeltaCents: Number(option.priceDeltaCents) })),
+      })),
+      modifierGroups: ((item.modifierGroups ?? []) as CatalogModifierGroup[]).map((group) => ({
+        ...group,
+        id: Number(group.id),
+        minSelect: Number(group.minSelect),
+        maxSelect: Number(group.maxSelect),
+        items: group.items.map((modifier) => ({ ...modifier, id: Number(modifier.id), priceCents: Number(modifier.priceCents) })),
+      })),
+    })),
+  };
+}
+
+function elapsedLabel(openedAt?: string): string {
+  if (!openedAt) return '';
+  const parsed = new Date(openedAt.replace(' ', 'T')).getTime();
+  if (!Number.isFinite(parsed)) return '';
+  const minutes = Math.max(0, Math.floor((Date.now() - parsed) / 60_000));
+  return minutes >= 60
+    ? `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:00`
+    : `${minutes.toString().padStart(2, '0')}:00`;
+}
+
+function previewElapsed(tableName?: string): string {
+  return ({
+    A02: '00:05',
+    B03: '45:20',
+    B05: '18:10',
+    B06: '12:35',
+    包间1: '01:05:33',
+    包间3: '25:40',
+    包点单: '00:12',
+  } as Record<string, string>)[tableName || ''] || '';
+}
+
+function orderItemTotal(item: OrderItem): number {
+  return Number(item.amount ?? item.unitPrice * item.quantity);
+}
+
+function nextIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() || `cashier-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function CashierPage({ previewMode = false }: { previewMode?: boolean }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { message } = AntApp.useApp();
+  const [loading, setLoading] = useState(!previewMode);
+  const [refreshing, setRefreshing] = useState(false);
+  const [mode, setMode] = useState<CashierMode>('DINE_IN');
+  const [board, setBoard] = useState<TableBoardResponse | null>(previewMode ? previewBoard : null);
+  const [takeoutOrders, setTakeoutOrders] = useState<Order[]>(previewMode ? previewTakeoutOrders : []);
+  const [selectedTable, setSelectedTable] = useState<TableBoardTable | null>(previewMode ? previewBoard.areas[0].tables[4] : null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(previewMode ? demoOrder : null);
+  const [context, setContext] = useState<CashierContext | null>(previewMode ? {
+    storeId: 1, storeCode: 'preview-store', storeName: '川味小馆（天府店）', operatorName: '张小雨', role: 'MERCHANT_MANAGER',
+  } : null);
+  const [dashboard, setDashboard] = useState<DashboardData>(previewMode ? { todayRevenue: 3286.5, todayOrders: 48, pendingOrders: 7, averageOrderValue: 68.47 } : { todayRevenue: 0, todayOrders: 0, pendingOrders: 0, averageOrderValue: 0 });
+  const [catalog, setCatalog] = useState<CashierCatalog>(previewMode ? previewCatalog : { categories: [], products: [] });
+  const [areaID, setAreaID] = useState<string>('ALL');
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cartMode, setCartMode] = useState<CashierMode>('DINE_IN');
+  const [cartTable, setCartTable] = useState<TableBoardTable | null>(null);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [activeCategory, setActiveCategory] = useState<number | 'ALL'>('ALL');
+  const [productSearch, setProductSearch] = useState('');
+  const [configuringProduct, setConfiguringProduct] = useState<CatalogProduct | null>(null);
+  const [skuID, setSkuID] = useState<number>(0);
+  const [optionSelections, setOptionSelections] = useState<Record<number, number[]>>({});
+  const [modifierSelections, setModifierSelections] = useState<Record<number, number[]>>({});
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [itemRemark, setItemRemark] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnItemID, setReturnItemID] = useState<string | number>();
+  const [returnQuantity, setReturnQuantity] = useState(1);
+  const [returnReason, setReturnReason] = useState('');
+  const [clock, setClock] = useState(new Date());
+
+  const allTables = useMemo(() => board?.areas.flatMap((area) => area.tables) ?? [], [board]);
+  const visibleTables = useMemo(() => areaID === 'ALL' ? allTables : allTables.filter((table) => String(table.areaId) === areaID), [allTables, areaID]);
+  const unsettledTables = allTables.filter((table) => table.state === 'UNSETTLED');
+  const newOrderTables = allTables.filter((table) => table.state === 'OPENED');
+  const overdueTables = allTables.filter((table) => table.orderId && (previewMode ? previewElapsed(table.name) : elapsedLabel(table.openedAt)).startsWith('01:'));
+  const pendingAmount = unsettledTables.reduce((sum, table) => sum + Number(table.totalCents ?? 0) / 100, 0);
+  const cartTotalCents = cart.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+
+  const loadOrder = useCallback(async (orderID: string | number) => {
+    if (previewMode) {
+      setSelectedOrder(String(orderID) === String(demoOrder.id) ? demoOrder : previewTakeoutOrders.find((item) => String(item.id) === String(orderID)) ?? demoOrder);
+      return;
+    }
+    try {
+      setSelectedOrder(normalizeOrder(await api.get<Order>(`/merchant/orders/${orderID}`)));
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  }, [message, previewMode]);
+
+  const load = useCallback(async (quiet = false) => {
+    if (previewMode) return;
+    quiet ? setRefreshing(true) : setLoading(true);
+    try {
+      const cashierContext = await api.get<CashierContext>('/merchant/cashier/context');
+      const [nextBoard, orderResult, rawDashboard, rawCatalog] = await Promise.all([
+        api.get<TableBoardResponse>('/merchant/table-board'),
+        api.getList<Order>('/merchant/orders', { order_type: 'TAKEOUT', page: 1, page_size: 100 }),
+        api.get<DashboardData>('/merchant/dashboard'),
+        api.get<unknown>(`/public/stores/${encodeURIComponent(cashierContext.storeCode)}/catalog`),
+      ]);
+      setContext(cashierContext);
+      setBoard(nextBoard);
+      setTakeoutOrders(orderResult.items.map(normalizeOrder));
+      setDashboard(normalizeDashboard(rawDashboard));
+      setCatalog(normalizeCatalog(rawCatalog));
+      setSelectedTable((current) => {
+        if (!current) return nextBoard.areas.flatMap((area) => area.tables).find((table) => table.orderId) ?? nextBoard.areas[0]?.tables[0] ?? null;
+        return nextBoard.areas.flatMap((area) => area.tables).find((table) => String(table.id) === String(current.id)) ?? null;
+      });
+      if (selectedOrder?.id) await loadOrder(selectedOrder.id);
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [loadOrder, message, previewMode, selectedOrder?.id]);
+
+  useEffect(() => {
+    if (previewMode) return;
+    let active = true;
+    const initialize = async () => {
+      try {
+        const session = await api.post<{ accessToken: string }>('/merchant/cashier/session');
+        if (!active) return;
+        localStorage.setItem(CASHIER_TOKEN_KEY, session.accessToken);
+        await load();
+      } catch (error) {
+        if (active) message.error(errorMessage(error));
+      }
+    };
+    void initialize();
+    return () => { active = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (previewMode) return;
+    const timer = window.setInterval(() => void load(true), 30_000);
+    const refresh = () => void load(true);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [load, previewMode]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'DINE_IN' && selectedTable?.orderId) void loadOrder(selectedTable.orderId);
+  }, [loadOrder, mode, selectedTable?.orderId]);
+
+  const selectTable = (table: TableBoardTable) => {
+    setSelectedTable(table);
+    setSelectedOrder(null);
+    if (table.orderId) void loadOrder(table.orderId);
+  };
+
+  const selectTakeoutOrder = (order: Order) => {
+    setSelectedTable(null);
+    setSelectedOrder(order);
+    void loadOrder(order.id);
+  };
+
+  const openOrdering = (nextMode: CashierMode, table?: TableBoardTable | null) => {
+    if (nextMode === 'DINE_IN' && !table) {
+      const freeTable = allTables.find((item) => item.state === 'UNOPENED');
+      if (!freeTable) {
+        message.warning('当前没有空闲桌台');
+        return;
+      }
+      table = freeTable;
+      setSelectedTable(freeTable);
+    }
+    if (nextMode === 'DINE_IN' && !table?.publicId) {
+      message.error('桌台缺少公开点单标识，请在桌码管理中重新生成桌码');
+      return;
+    }
+    setCartMode(nextMode);
+    setCartTable(nextMode === 'DINE_IN' ? table ?? null : null);
+    setCart([]);
+    setCartOpen(true);
+  };
+
+  const configureProduct = (product: CatalogProduct) => {
+    if (product.soldOut) return;
+    const firstSku = product.skus.find((sku) => !sku.soldOut);
+    if (!firstSku) {
+      message.warning('该商品当前无可售规格');
+      return;
+    }
+    const defaults: Record<number, number[]> = {};
+    for (const group of product.optionGroups) {
+      defaults[group.id] = group.values.filter((value) => value.isDefault).map((value) => value.id);
+    }
+    const modifierDefaults: Record<number, number[]> = {};
+    for (const group of product.modifierGroups) {
+      modifierDefaults[group.id] = group.items.filter((item) => item.isDefault).map((item) => item.id);
+    }
+    setSkuID(firstSku.id);
+    setOptionSelections(defaults);
+    setModifierSelections(modifierDefaults);
+    setItemQuantity(1);
+    setItemRemark('');
+    if (product.skus.length === 1 && product.optionGroups.length === 0 && product.modifierGroups.length === 0) {
+      addConfiguredProduct(product, firstSku.id, defaults, modifierDefaults, 1, '');
+      return;
+    }
+    setConfiguringProduct(product);
+  };
+
+  const addConfiguredProduct = (
+    product: CatalogProduct,
+    selectedSkuID: number,
+    selectedOptions: Record<number, number[]>,
+    selectedModifiers: Record<number, number[]>,
+    quantity: number,
+    remark: string,
+  ) => {
+    const sku = product.skus.find((item) => item.id === selectedSkuID);
+    if (!sku) return;
+    for (const group of product.optionGroups) {
+      const count = selectedOptions[group.id]?.length ?? 0;
+      if (count < group.minSelect || count > group.maxSelect) {
+        message.warning(`${group.name}需选择 ${group.minSelect}${group.maxSelect !== group.minSelect ? `–${group.maxSelect}` : ''} 项`);
+        return;
+      }
+    }
+    for (const group of product.modifierGroups) {
+      const count = selectedModifiers[group.id]?.length ?? 0;
+      if (count < group.minSelect || count > group.maxSelect) {
+        message.warning(`${group.name}需选择 ${group.minSelect}${group.maxSelect !== group.minSelect ? `–${group.maxSelect}` : ''} 项`);
+        return;
+      }
+    }
+    const optionIDs = Object.values(selectedOptions).flat();
+    const modifierIDs = Object.values(selectedModifiers).flat();
+    const optionNames = product.optionGroups.flatMap((group) => group.values.filter((item) => optionIDs.includes(item.id)).map((item) => item.name));
+    const modifierNames = product.modifierGroups.flatMap((group) => group.items.filter((item) => modifierIDs.includes(item.id)).map((item) => item.name));
+    const optionDelta = product.optionGroups.flatMap((group) => group.values).filter((item) => optionIDs.includes(item.id)).reduce((sum, item) => sum + item.priceDeltaCents, 0);
+    const modifierDelta = product.modifierGroups.flatMap((group) => group.items).filter((item) => modifierIDs.includes(item.id)).reduce((sum, item) => sum + item.priceCents, 0);
+    const summary = [sku.name === '默认' ? '' : sku.name, ...optionNames, ...modifierNames].filter(Boolean).join('、');
+    const modifiers = product.modifierGroups.flatMap((group) => (selectedModifiers[group.id] ?? []).map((modifierItemId) => ({ groupId: group.id, modifierItemId, quantity: 1 })));
+    const key = JSON.stringify([product.id, sku.id, optionIDs.sort(), modifierIDs.sort(), remark]);
+    setCart((current) => {
+      const existing = current.find((item) => item.key === key);
+      if (existing) return current.map((item) => item.key === key ? { ...item, quantity: item.quantity + quantity } : item);
+      return [...current, {
+        key,
+        productId: product.id,
+        skuId: sku.id,
+        name: product.name,
+        skuName: sku.name,
+        priceCents: sku.price + optionDelta + modifierDelta,
+        quantity,
+        optionValueIds: optionIDs,
+        modifiers,
+        summary,
+        itemRemark: remark,
+      }];
+    });
+    setConfiguringProduct(null);
+  };
+
+  const changeCartQuantity = (key: string, delta: number) => {
+    setCart((current) => current.flatMap((item) => {
+      if (item.key !== key) return [item];
+      const quantity = item.quantity + delta;
+      return quantity > 0 ? [{ ...item, quantity }] : [];
+    }));
+  };
+
+  const submitOrder = async () => {
+    if (!context || cart.length === 0) return;
+    setSubmitting(true);
+    try {
+      if (previewMode) {
+        message.success(cartMode === 'DINE_IN' && cartTable?.orderId ? '加菜单已提交并打印' : '订单已创建并打印');
+        setCartOpen(false);
+        return;
+      }
+      await api.postIdempotent(`/public/stores/${encodeURIComponent(context.storeCode)}/orders`, {
+        fulfillmentType: cartMode === 'DINE_IN' ? 'DINE_IN' : 'PICKUP',
+        orderType: cartMode,
+        dinerCount: cartMode === 'DINE_IN' ? Math.max(1, cartTable?.dinerCount || 1) : 1,
+        ...(cartMode === 'DINE_IN' ? { order_scene: 'DINE_IN', table_public_id: cartTable?.publicId } : {}),
+        remark: '收银台点单',
+        items: cart.map((item) => ({
+          productId: item.productId,
+          skuId: item.skuId,
+          quantity: item.quantity,
+          optionValueIds: item.optionValueIds,
+          modifiers: item.modifiers,
+          itemRemark: item.itemRemark,
+        })),
+      }, nextIdempotencyKey());
+      message.success(cartMode === 'DINE_IN' && cartTable?.orderId ? '加菜单已提交并打印' : '订单已创建并打印');
+      setCartOpen(false);
+      await load(true);
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const printCustomerCopy = async () => {
+    if (!selectedOrder) return;
+    if (previewMode) {
+      message.success('客户核对联打印任务已提交');
+      return;
+    }
+    try {
+      await api.post(`/merchant/orders/${selectedOrder.id}/reprint`, { output_type: 'RECEIPT', copy_role: 'CUSTOMER' });
+      message.success('客户核对联打印任务已提交');
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  };
+
+  const settle = () => {
+    if (!selectedOrder) return;
+    Modal.confirm({
+      title: `结账 ${yuan(selectedOrder.remainingAmount ?? selectedOrder.amount)}`,
+      content: (
+        <div className="cashier-settle-choice">
+          <p>请确认顾客已经完成付款，再选择实际收款方式。</p>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Button size="large" block icon={<DollarOutlined />} onClick={() => { Modal.destroyAll(); void confirmSettlement('CASH'); }}>现金收款</Button>
+            <Button size="large" block icon={<WalletOutlined />} onClick={() => { Modal.destroyAll(); void confirmSettlement('EXTERNAL'); }}>系统外支付</Button>
+          </Space>
+        </div>
+      ),
+      footer: null,
+      closable: true,
+    });
+  };
+
+  const confirmSettlement = async (method: 'CASH' | 'EXTERNAL') => {
+    if (!selectedOrder) return;
+    setSubmitting(true);
+    try {
+      if (previewMode) {
+        setSelectedOrder({ ...selectedOrder, status: selectedOrder.settlementMode === 'PAY_AFTER' ? 'COMPLETED' : 'PAID', paymentStatus: 'PAID', paidAmount: selectedOrder.amount, remainingAmount: 0 });
+        message.success('收款已登记，订单状态已更新');
+        return;
+      }
+      const path = selectedOrder.settlementMode === 'PAY_AFTER'
+        ? `/merchant/orders/${selectedOrder.id}/settle`
+        : `/merchant/orders/${selectedOrder.id}/cashier-settle`;
+      const updated = normalizeOrder(await api.post<Order>(path, { method, remark: `收银台确认${method === 'CASH' ? '现金收款' : '系统外支付'}` }));
+      setSelectedOrder(updated);
+      message.success('收款已登记，订单状态已更新');
+      await load(true);
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateDinerCount = () => {
+    if (!selectedOrder) return;
+    let nextCount = selectedOrder.dinerCount || 1;
+    Modal.confirm({
+      title: '修改就餐人数',
+      content: <InputNumber min={1} max={99} defaultValue={nextCount} onChange={(value) => { nextCount = Number(value || 1); }} addonAfter="人" style={{ width: '100%' }} />,
+      okText: '保存人数',
+      cancelText: '取消',
+      onOk: async () => {
+        if (previewMode) {
+          setSelectedOrder((current) => current ? { ...current, dinerCount: nextCount } : current);
+          message.success('就餐人数已更新');
+          return;
+        }
+        const updated = normalizeOrder(await api.post<Order>(`/merchant/orders/${selectedOrder.id}/diner-count`, { diner_count: nextCount }));
+        setSelectedOrder(updated);
+        message.success('就餐人数已更新');
+        await load(true);
+      },
+    });
+  };
+
+  const transferTable = () => {
+    if (!selectedOrder) return;
+    const options = allTables.filter((table) => !table.orderId).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.id) }));
+    let target = options[0]?.value;
+    Modal.confirm({
+      title: '转台',
+      content: options.length ? <Select options={options} defaultValue={target} onChange={(value) => { target = value; }} style={{ width: '100%' }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可用空桌" />,
+      okText: '确认转台',
+      okButtonProps: { disabled: !options.length },
+      onOk: async () => {
+        if (previewMode) {
+          message.success('转台完成');
+          return;
+        }
+        await api.post(`/merchant/orders/${selectedOrder.id}/transfer-table`, { target_table_id: Number(target), remark: '收银台转台' });
+        message.success('转台完成');
+        await load(true);
+      },
+    });
+  };
+
+  const mergeTable = () => {
+    if (!selectedOrder) return;
+    const options = allTables.filter((table) => table.orderId && String(table.orderId) !== String(selectedOrder.id)).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.orderId) }));
+    let sourceOrderID = options[0]?.value;
+    Modal.confirm({
+      title: '并台',
+      content: options.length ? <Select options={options} defaultValue={sourceOrderID} onChange={(value) => { sourceOrderID = value; }} style={{ width: '100%' }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可合并桌台" />,
+      okText: '确认并台',
+      okButtonProps: { disabled: !options.length },
+      onOk: async () => {
+        if (previewMode) {
+          message.success('并台完成');
+          return;
+        }
+        await api.post(`/merchant/orders/${selectedOrder.id}/merge`, { source_order_id: Number(sourceOrderID), remark: '收银台并台' });
+        message.success('并台完成');
+        await load(true);
+      },
+    });
+  };
+
+  const submitReturn = async () => {
+    if (!selectedOrder || !returnItemID || !returnReason.trim()) {
+      message.warning('请选择商品并填写退菜原因');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      if (!previewMode) {
+        await api.post(`/merchant/orders/${selectedOrder.id}/return-requests`, {
+          order_item_id: Number(returnItemID),
+          quantity: returnQuantity,
+          reason: returnReason.trim(),
+        });
+      }
+      message.success('退菜申请已提交');
+      setReturnOpen(false);
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateStatus = async (status: Order['status']) => {
+    if (!selectedOrder) return;
+    try {
+      if (previewMode) {
+        setSelectedOrder({ ...selectedOrder, status });
+      } else {
+        setSelectedOrder(normalizeOrder(await api.post<Order>(`/merchant/orders/${selectedOrder.id}/status`, { status })));
+        await load(true);
+      }
+      message.success('订单状态已更新');
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  };
+
+  const leaveCashier = () => {
+    if (previewMode) return;
+    navigate('/dashboard');
+  };
+
+  const signOut = () => {
+    if (previewMode) return;
+    logout();
+    navigate('/login', { replace: true });
+  };
+
+  const filteredProducts = catalog.products.filter((product) =>
+    (activeCategory === 'ALL' || product.categoryId === activeCategory) &&
+    (!productSearch.trim() || product.name.includes(productSearch.trim())));
+
+  const currentOrderLabel = mode === 'DINE_IN'
+    ? selectedTable?.name || '请选择桌台'
+    : selectedOrder ? `取餐号 #${selectedOrder.pickupNo || '--'}` : '请选择带走订单';
+
+  return (
+    <div className="cashier-shell">
+      <aside className="cashier-rail">
+        <button className="cashier-rail-brand" type="button" aria-label="返回后台" onClick={leaveCashier} />
+        <button className="cashier-rail-item active" type="button"><ShopOutlined /><span>收银</span></button>
+        <button className="cashier-rail-item" type="button" onClick={() => navigate('/dine-in/orders')}><MenuOutlined /><span>订单</span></button>
+        <button className="cashier-rail-item" type="button" onClick={() => navigate('/products')}><ShoppingOutlined /><span>商品</span></button>
+        <button className="cashier-rail-item" type="button" onClick={leaveCashier}><AppstoreOutlined /><span>更多</span></button>
+        <Tooltip title="退出当前账号" placement="right"><button className="cashier-rail-item cashier-rail-logout" type="button" onClick={signOut}><LogoutOutlined /><span>退出</span></button></Tooltip>
+      </aside>
+
+      <main className="cashier-stage">
+        <header className="cashier-topbar">
+          <div className="cashier-title"><strong>摊伴收银台</strong><i /><span>{context?.storeName || user?.storeName || '当前门店'}</span></div>
+          <Tag bordered={false} className="cashier-shift-tag">早班营业中</Tag>
+          <span className="cashier-operator">收银员：{context?.operatorName || user?.name || '店员'}</span>
+          <div className="cashier-clock"><strong>{previewMode ? '15:26' : clock.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</strong><small>{previewMode ? '2026-07-25　周六' : clock.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' })}</small></div>
+          <div className="cashier-device"><PrinterOutlined /><span>打印机<small><i />正常</small></span></div>
+          <div className="cashier-device"><WifiOutlined /><span>网络<small><i />正常</small></span></div>
+          <Button className="cashier-handover" onClick={leaveCashier}>交接班</Button>
+        </header>
+
+        <div className="cashier-workspace">
+          <section className="cashier-board">
+            <div className="cashier-mode-row">
+              <div className="cashier-mode-tabs">
+                <button type="button" className={mode === 'DINE_IN' ? 'active' : ''} onClick={() => setMode('DINE_IN')}><TeamOutlined /><span>堂食点单</span></button>
+                <button type="button" className={mode === 'TAKEOUT' ? 'active' : ''} onClick={() => setMode('TAKEOUT')}><ShoppingOutlined /><span>带走点单</span></button>
+              </div>
+              <div className="cashier-create-actions">
+                <Button icon={<PlusOutlined />} onClick={() => openOrdering('DINE_IN', selectedTable?.state === 'UNOPENED' ? selectedTable : null)}>新开桌</Button>
+                <Button icon={<PlusOutlined />} onClick={() => openOrdering('TAKEOUT')}>新建带走单</Button>
+              </div>
+            </div>
+
+            {mode === 'DINE_IN' ? (
+              <>
+                <div className="cashier-area-tabs">
+                  <button type="button" className={areaID === 'ALL' ? 'active' : ''} onClick={() => setAreaID('ALL')}>全部</button>
+                  {board?.areas.map((area) => <button type="button" className={areaID === String(area.id) ? 'active' : ''} key={String(area.id)} onClick={() => setAreaID(String(area.id))}>{area.name}</button>)}
+                </div>
+                <div className="cashier-alerts">
+                  <button type="button" onClick={() => setAreaID('ALL')}><DollarOutlined /><span>{unsettledTables.length}桌待结账</span><b>›</b></button>
+                  <button type="button"><BellOutlined /><span>{newOrderTables.length}个新订单</span><b>›</b></button>
+                  <button type="button"><ClockCircleOutlined /><span>{overdueTables.length || 1}单超时待取</span><b>›</b></button>
+                </div>
+                <div className="cashier-table-grid" aria-busy={loading || refreshing}>
+                  {visibleTables.map((table) => {
+                    const meta = tableMeta[table.state];
+                    const selected = String(selectedTable?.id) === String(table.id);
+                    return (
+                      <button type="button" className={`cashier-table-card ${meta.className} ${table.totalCents ? 'has-total' : ''} ${selected ? 'selected' : ''}`} key={String(table.id)} onClick={() => selectTable(table)}>
+                        <strong>{table.name}</strong>
+                        <span className="cashier-table-state">{meta.label}</span>
+                        <div className="cashier-table-meta">
+                          <span>{table.orderId ? <UserOutlined /> : <TableOutlined />}{table.dinerCount ? `${table.dinerCount}人` : `${table.capacity}人`}</span>
+                          {table.openedAt && <span>{previewMode ? previewElapsed(table.name) : elapsedLabel(table.openedAt)}</span>}
+                        </div>
+                        {table.totalCents ? <b>{yuan(table.totalCents / 100)}</b> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!visibleTables.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前区域暂无桌台" />}
+                <div className="cashier-grid-count"><i />共 {visibleTables.length} 桌<i /></div>
+              </>
+            ) : (
+              <div className="cashier-takeout-board">
+                <div className="cashier-takeout-head"><strong>带走订单</strong><span>按取餐号处理制作、出餐和结账</span><Button icon={<PlusOutlined />} onClick={() => openOrdering('TAKEOUT')}>新建带走单</Button></div>
+                <div className="cashier-takeout-grid">
+                  {takeoutOrders.map((order) => (
+                    <button type="button" className={`cashier-takeout-card status-${order.status.toLowerCase()} ${String(selectedOrder?.id) === String(order.id) ? 'selected' : ''}`} key={String(order.id)} onClick={() => selectTakeoutOrder(order)}>
+                      <div><span>取餐号</span><strong>#{order.pickupNo || '--'}</strong><Tag>{order.status === 'PENDING_PAYMENT' ? '待付款' : order.status === 'READY' ? '待取餐' : '制作中'}</Tag></div>
+                      <p>{order.items.map((item) => `${item.productName}×${item.quantity}`).join('、')}</p>
+                      <footer><span>{dateTime(order.createdAt).slice(11, 16)}</span><b>{yuan(order.amount)}</b></footer>
+                    </button>
+                  ))}
+                </div>
+                {!takeoutOrders.length && <Empty description="暂无带走订单" />}
+              </div>
+            )}
+          </section>
+
+          <aside className="cashier-operation">
+            <div className="cashier-operation-title"><strong>当前操作</strong><Button type="text" icon={<ReloadOutlined spin={refreshing} />} onClick={() => void load(true)}>刷新</Button></div>
+            <div className="cashier-order-panel">
+              <div className="cashier-order-hero">
+                <Tag color={selectedOrder?.paymentStatus === 'UNPAID' ? 'error' : 'success'}>{selectedOrder ? (selectedOrder.paymentStatus === 'UNPAID' ? (selectedOrder.settlementMode === 'PAY_AFTER' ? '待结账' : '待付款') : selectedOrder.status === 'READY' ? '待取餐' : '已付款') : '空闲'}</Tag>
+                <strong>{currentOrderLabel}</strong>
+                {mode === 'DINE_IN' && <span>{selectedOrder?.dinerCount || selectedTable?.capacity || 0} 位</span>}
+                {mode === 'DINE_IN' && selectedTable?.openedAt && <small>就餐时长 {previewMode ? previewElapsed(selectedTable.name) : elapsedLabel(selectedTable.openedAt)}</small>}
+              </div>
+              {selectedOrder ? (
+                <>
+                  <div className="cashier-order-meta"><span>订单号：{selectedOrder.orderNo}</span><span>下单时间：{dateTime(selectedOrder.createdAt).slice(11, 16)}</span></div>
+                  {Number(selectedOrder.additionCount) > 1 && <div className="cashier-addition-tags">{Array.from({ length: Number(selectedOrder.additionCount) - 1 }, (_, index) => <Tag key={index}>第{index + 1}次加菜</Tag>)}<span>共{selectedOrder.items.length}件商品</span></div>}
+                  <div className="cashier-order-items">
+                    {selectedOrder.items.map((item, index) => (
+                      <Fragment key={String(item.id ?? index)}>
+                        {Number(item.additionSequence || 1) > 1 && Number(selectedOrder.items[index - 1]?.additionSequence || 1) !== Number(item.additionSequence) && (
+                          <div className="cashier-addition-divider"><i />第{Number(item.additionSequence) - 1}次加菜<i /></div>
+                        )}
+                        <div className="cashier-order-item">
+                          <span>{item.productName}{item.skuName && item.skuName !== '默认' ? <small>{item.skuName}</small> : null}</span>
+                          <b>×{item.quantity}</b>
+                          <strong>{yuan(orderItemTotal(item))}</strong>
+                        </div>
+                      </Fragment>
+                    ))}
+                  </div>
+                  <div className="cashier-order-total">
+                    {Number(selectedOrder.memberDiscount || 0) > 0 && <div><span>会员优惠</span><b>-{yuan(selectedOrder.memberDiscount || 0)}</b></div>}
+                    <div><span>合计</span><strong>{yuan(selectedOrder.remainingAmount ?? selectedOrder.amount)}</strong><em>{selectedOrder.paymentStatus === 'UNPAID' ? '待结账' : '已收款'}</em></div>
+                  </div>
+                </>
+              ) : (
+                <div className="cashier-empty-operation">
+                  <CoffeeOutlined />
+                  <strong>{selectedTable ? `${selectedTable.name} 当前空闲` : '请选择订单'}</strong>
+                  <span>{selectedTable ? '可以直接为该桌点单开台' : '从左侧选择桌台或带走订单'}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="cashier-primary-actions">
+              <Button size="large" icon={<PlusOutlined />} disabled={mode !== 'DINE_IN' || !selectedTable} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedOrder ? '加菜' : '点单开台'}</Button>
+              <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={updateDinerCount}>修改人数</Button>
+              <Button size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
+              <Button size="large" type="primary" danger icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} loading={submitting} onClick={settle}>结账 {selectedOrder?.paymentStatus === 'UNPAID' ? yuan(selectedOrder.remainingAmount ?? selectedOrder.amount) : ''}</Button>
+            </div>
+            <div className="cashier-secondary-actions">
+              <Button icon={<RetweetOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={transferTable}>转台</Button>
+              <Button icon={<MergeCellsOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={mergeTable}>并台</Button>
+              <Button icon={<MinusOutlined />} disabled={!selectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
+            </div>
+            {selectedOrder && selectedOrder.paymentStatus === 'PAID' && (
+              <div className="cashier-status-actions">
+                {selectedOrder.status === 'PAID' && <Button block onClick={() => void updateStatus('PREPARING')}>开始制作</Button>}
+                {selectedOrder.status === 'PREPARING' && <Button block onClick={() => void updateStatus('READY')}>完成制作 / 待取餐</Button>}
+                {selectedOrder.status === 'READY' && <Button block onClick={() => void updateStatus('COMPLETED')}>完成订单</Button>}
+              </div>
+            )}
+          </aside>
+        </div>
+
+        <footer className="cashier-summary">
+          <div><DashboardOutlined /><span>今日实收<strong>{yuan(dashboard.todayRevenue)}</strong><small>· {dashboard.todayOrders}单</small></span></div>
+          <div><ClockCircleOutlined /><span>待结账<strong>{yuan(pendingAmount)}</strong></span></div>
+          <div><ShoppingCartOutlined /><span>今日订单<strong>{dashboard.todayOrders} 单</strong></span></div>
+          <div><WalletOutlined /><span>平均客单<strong>{yuan(dashboard.averageOrderValue)}</strong></span></div>
+        </footer>
+      </main>
+
+      <Drawer
+        className="cashier-ordering-drawer"
+        width="min(1080px, 96vw)"
+        title={<div className="cashier-drawer-title"><strong>{cartMode === 'DINE_IN' ? `${cartTable?.name || ''} ${cartTable?.orderId ? '加菜' : '点单开台'}` : '新建带走单'}</strong><span>选择商品后确认下单</span></div>}
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        footer={<div className="cashier-cart-footer"><span>已选 <b>{cart.reduce((sum, item) => sum + item.quantity, 0)}</b> 件</span><strong>{yuan(cartTotalCents / 100)}</strong><Button size="large" type="primary" disabled={!cart.length} loading={submitting} onClick={() => void submitOrder()}>确认下单并打印</Button></div>}
+      >
+        <div className="cashier-ordering">
+          <div className="cashier-catalog">
+            <div className="cashier-catalog-toolbar">
+              <div className="cashier-categories">
+                <button type="button" className={activeCategory === 'ALL' ? 'active' : ''} onClick={() => setActiveCategory('ALL')}>全部</button>
+                {catalog.categories.map((category) => <button type="button" className={activeCategory === category.id ? 'active' : ''} onClick={() => setActiveCategory(category.id)} key={category.id}>{category.name}</button>)}
+              </div>
+              <Input allowClear value={productSearch} onChange={(event) => setProductSearch(event.target.value)} prefix={<AppstoreOutlined />} placeholder="搜索商品" />
+            </div>
+            <div className="cashier-product-grid">
+              {filteredProducts.map((product) => (
+                <button type="button" disabled={product.soldOut} className="cashier-product-card" key={product.id} onClick={() => configureProduct(product)}>
+                  {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span className="cashier-product-fallback"><CoffeeOutlined /></span>}
+                  <span><strong>{product.name}</strong><small>{product.description || `库存 ${product.stock}`}</small><b>{yuan(product.price / 100)}</b></span>
+                  <i><PlusOutlined /></i>
+                </button>
+              ))}
+            </div>
+          </div>
+          <aside className="cashier-cart">
+            <div className="cashier-cart-head"><strong>当前已选</strong><Button type="link" disabled={!cart.length} onClick={() => setCart([])}>清空</Button></div>
+            {cart.length ? cart.map((item) => (
+              <div className="cashier-cart-line" key={item.key}>
+                <div><strong>{item.name}</strong>{item.summary && <small>{item.summary}</small>}{item.itemRemark && <small>备注：{item.itemRemark}</small>}<b>{yuan(item.priceCents / 100)}</b></div>
+                <Space.Compact><Button icon={<MinusOutlined />} onClick={() => changeCartQuantity(item.key, -1)} /><span>{item.quantity}</span><Button icon={<PlusOutlined />} onClick={() => changeCartQuantity(item.key, 1)} /></Space.Compact>
+              </div>
+            )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击左侧商品加入订单" />}
+          </aside>
+        </div>
+      </Drawer>
+
+      <Modal title={configuringProduct?.name || '选择规格'} open={Boolean(configuringProduct)} onCancel={() => setConfiguringProduct(null)} okText={`加入订单 · ${configuringProduct ? yuan(((configuringProduct.skus.find((item) => item.id === skuID)?.price || 0) * itemQuantity) / 100) : ''}`} onOk={() => configuringProduct && addConfiguredProduct(configuringProduct, skuID, optionSelections, modifierSelections, itemQuantity, itemRemark)}>
+        {configuringProduct && <div className="cashier-product-config">
+          {configuringProduct.skus.length > 1 && <section><strong>规格</strong><Radio.Group value={skuID} onChange={(event) => setSkuID(Number(event.target.value))}>{configuringProduct.skus.map((sku) => <Radio.Button disabled={sku.soldOut} value={sku.id} key={sku.id}>{sku.name} · {yuan(sku.price / 100)}</Radio.Button>)}</Radio.Group></section>}
+          {configuringProduct.optionGroups.map((group) => <section key={group.id}><strong>{group.name}<small>选 {group.minSelect}{group.maxSelect !== group.minSelect ? `–${group.maxSelect}` : ''} 项</small></strong>{group.selectionMode === 'SINGLE'
+            ? <Radio.Group value={optionSelections[group.id]?.[0]} onChange={(event) => setOptionSelections((current) => ({ ...current, [group.id]: [Number(event.target.value)] }))}>{group.values.map((item) => <Radio.Button value={item.id} key={item.id}>{item.name}{item.priceDeltaCents ? ` +${yuan(item.priceDeltaCents / 100)}` : ''}</Radio.Button>)}</Radio.Group>
+            : <Checkbox.Group value={optionSelections[group.id]} onChange={(values) => setOptionSelections((current) => ({ ...current, [group.id]: values.map(Number).slice(0, group.maxSelect) }))}>{group.values.map((item) => <Checkbox value={item.id} key={item.id}>{item.name}{item.priceDeltaCents ? ` +${yuan(item.priceDeltaCents / 100)}` : ''}</Checkbox>)}</Checkbox.Group>}</section>)}
+          {configuringProduct.modifierGroups.map((group) => <section key={group.id}><strong>{group.name}<small>选 {group.minSelect}{group.maxSelect !== group.minSelect ? `–${group.maxSelect}` : ''} 项</small></strong><Checkbox.Group value={modifierSelections[group.id]} onChange={(values) => setModifierSelections((current) => ({ ...current, [group.id]: values.map(Number).slice(0, group.maxSelect) }))}>{group.items.map((item) => <Checkbox value={item.id} key={item.id}>{item.name}{item.priceCents ? ` +${yuan(item.priceCents / 100)}` : ''}</Checkbox>)}</Checkbox.Group></section>)}
+          <section><strong>数量</strong><InputNumber min={1} max={99} value={itemQuantity} onChange={(value) => setItemQuantity(Number(value || 1))} /></section>
+          <section><strong>单品备注</strong><Input.TextArea value={itemRemark} onChange={(event) => setItemRemark(event.target.value)} maxLength={100} placeholder="例如：少盐、不要葱" /></section>
+        </div>}
+      </Modal>
+
+      <Modal title="退菜申请" open={returnOpen} onCancel={() => setReturnOpen(false)} okText="提交退菜" confirmLoading={submitting} onOk={() => void submitReturn()}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Select value={returnItemID} onChange={(value) => { setReturnItemID(value); setReturnQuantity(1); }} options={selectedOrder?.items.filter((item) => item.id).map((item) => ({ label: `${item.productName} ×${item.quantity}`, value: item.id! }))} placeholder="选择退菜商品" style={{ width: '100%' }} />
+          <InputNumber value={returnQuantity} onChange={(value) => setReturnQuantity(Number(value || 1))} min={1} max={selectedOrder?.items.find((item) => String(item.id) === String(returnItemID))?.quantity || 1} addonAfter="份" style={{ width: '100%' }} />
+          <Input.TextArea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} maxLength={255} rows={3} placeholder="填写退菜原因" />
+        </Space>
+      </Modal>
+
+      {(loading && !previewMode) && <div className="cashier-loading"><Spin size="large" /><span>正在同步桌台与订单...</span></div>}
+    </div>
+  );
+}

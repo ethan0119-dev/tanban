@@ -30,6 +30,7 @@ import { PopupAdsPage } from './pages/PopupAdsPage';
 import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { OperationSettingsPage } from './pages/OperationSettingsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { CashierPage } from './pages/CashierPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -37,6 +38,14 @@ function ProtectedLayout() {
   if (loading) return <div className="app-loading"><Spin size="large" /><span>正在进入摊伴工作台...</span></div>;
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   return <AppLayout />;
+}
+
+function ProtectedCashier() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <div className="app-loading"><Spin size="large" /><span>正在进入摊伴收银台...</span></div>;
+  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  return <CashierPage />;
 }
 
 function ManagementOnly({ children }: { children: ReactElement }) {
@@ -50,11 +59,15 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/select-store" element={<StoreSelectionPage />} />
       {import.meta.env.DEV && (
-        <Route
-          path="/__preview/print-template"
-          element={<BusinessPrintTemplatePage businessType="DINE_IN" previewMode />}
-        />
+        <>
+          <Route
+            path="/__preview/print-template"
+            element={<BusinessPrintTemplatePage businessType="DINE_IN" previewMode />}
+          />
+          <Route path="/__preview/cashier" element={<CashierPage previewMode />} />
+        </>
       )}
+      <Route path="/cashier" element={<ProtectedCashier />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

@@ -500,6 +500,7 @@ export interface WechatPayOnboardingApplication {
 
 export interface TableBoardTable {
   id: Id;
+  publicId?: string;
   areaId: Id;
   areaName: string;
   name: string;

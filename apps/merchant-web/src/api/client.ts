@@ -2,6 +2,7 @@ import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import type { ListResult, PageMeta } from '../types';
 
 export const TOKEN_KEY = 'tanban_merchant_token';
+export const CASHIER_TOKEN_KEY = 'tanban_cashier_terminal_token';
 export const AUTH_UNAUTHORIZED_EVENT = 'tanban:merchant:unauthorized';
 export const SERVICE_EXPIRED_EVENT = 'tanban:merchant:service-expired';
 
@@ -69,7 +70,13 @@ const http = axios.create({
 });
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const cashierRoute = window.location.pathname === '/cashier';
+  const accessToken = localStorage.getItem(TOKEN_KEY);
+  const cashierToken = localStorage.getItem(CASHIER_TOKEN_KEY);
+  const issuingCashierSession = String(config.url || '').endsWith('/merchant/cashier/session');
+  const token = cashierRoute
+    ? (issuingCashierSession ? accessToken || cashierToken : cashierToken || accessToken)
+    : localStorage.getItem(TOKEN_KEY);
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -90,6 +97,7 @@ http.interceptors.response.use(
   },
   (error: AxiosError<ApiEnvelope<unknown>>) => {
     if (error.response?.status === 401) {
+      if (window.location.pathname === '/cashier') localStorage.removeItem(CASHIER_TOKEN_KEY);
       localStorage.removeItem(TOKEN_KEY);
       window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
     }

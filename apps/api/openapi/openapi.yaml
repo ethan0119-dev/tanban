@@ -147,6 +147,90 @@ paths:
       summary: 商户经营概览
       security: [{bearerAuth: []}]
       responses: {'200': {description: Merchant metrics}}
+  /merchant/cashier/session:
+    post:
+      summary: 签发或轮换收银终端会话
+      description: 由当前商户账号签发一年期、仅可访问收银业务接口的终端令牌；收银台每次打开时自动轮换。
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Cashier terminal access token and expiration}
+  /merchant/cashier/context:
+    get:
+      summary: 收银终端门店与操作员上下文
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current store and cashier operator}
+  /merchant/table-board:
+    get:
+      summary: 收银台桌台状态看板
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Areas, tables and their active orders}
+  /merchant/orders/{orderID}/cashier-settle:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 收银台确认先付订单的现金或系统外收款
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: {type: string, enum: [CASH, EXTERNAL]}
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Settled order}
+        '409': {description: Order is not settleable or another payment is in progress}
+  /merchant/orders/{orderID}/settle:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 收银台确认后付订单的现金或系统外收款
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: {type: string, enum: [CASH, EXTERNAL]}
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Settled order}
+        '409': {description: Order is not settleable}
+  /merchant/orders/{orderID}/diner-count:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 修改堂食订单就餐人数
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diner_count]
+              properties:
+                diner_count: {type: integer, minimum: 1, maximum: 99}
+      responses:
+        '200': {description: Updated order}
+        '409': {description: Order can no longer be edited}
   /merchant/account/password:
     put:
       summary: 当前商户账号修改自己的登录密码

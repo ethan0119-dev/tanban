@@ -18,11 +18,15 @@ func (s *Server) merchantRoutes(r chi.Router) {
 	// Store staff can operate the live order queue and recover printing, but
 	// financial, catalog, device and account administration are manager-only.
 	r.Get("/dashboard", s.merchantDashboard)
+	r.Post("/cashier/session", s.createCashierSession)
+	r.Get("/cashier/context", s.getCashierContext)
 	r.Get("/stores", s.listMerchantStores)
 	r.Get("/orders", s.listOrders)
 	r.Get("/orders/{orderID}", s.getOrder)
 	r.Post("/orders/{orderID}/status", s.transitionOrder)
 	r.Post("/orders/{orderID}/settle", s.settlePayAfterOrder)
+	r.Post("/orders/{orderID}/cashier-settle", s.cashierSettlePayBeforeOrder)
+	r.Post("/orders/{orderID}/diner-count", s.updateCashierOrderDinerCount)
 	r.Post("/orders/{orderID}/split-settle", s.splitSettleOrder)
 	r.Post("/orders/{orderID}/transfer-table", s.transferOrderTable)
 	r.Post("/orders/{orderID}/merge", s.mergeDineInOrders)

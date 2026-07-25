@@ -364,8 +364,12 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		token, err := jwt.ParseWithClaims(strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")), parsed, func(token *jwt.Token) (any, error) {
 			return []byte(s.Config.JWTSecret), nil
 		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer("tanban-api"))
-		if err != nil || !token.Valid || parsed.TokenKind == "tenant_selection" {
+		if err != nil || !token.Valid || !validStatus(parsed.TokenKind, "ACCESS", "CASHIER") {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired access token")
+			return
+		}
+		if parsed.TokenKind == "cashier" && !cashierTokenPathAllowed(r.URL.Path) {
+			writeError(w, http.StatusForbidden, "CASHIER_SCOPE_FORBIDDEN", "收银终端会话不能访问该后台功能")
 			return
 		}
 		userID, err := parseInt64(parsed.Subject)
