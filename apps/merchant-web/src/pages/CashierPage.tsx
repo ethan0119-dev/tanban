@@ -178,6 +178,7 @@ interface CartLine {
 type CashierMode = 'DINE_IN' | 'TAKEOUT';
 type CashierLayoutMode = 'COMPACT' | 'STANDARD';
 type CashierTableFilter = 'ALL' | 'UNSETTLED' | 'SETTLED' | 'OVERDUE';
+type OfflineSettlementMethod = 'CASH' | 'EXTERNAL';
 
 const CASHIER_LAYOUT_MODE_KEY = 'tanban_cashier_layout_mode';
 const returnReasonOptions = [
@@ -188,6 +189,28 @@ const returnReasonOptions = [
   '缺货无法制作',
   '菜品质量问题',
 ];
+const offlineSettlementMeta: Record<OfflineSettlementMethod, {
+  label: string;
+  title: string;
+  warning: string;
+  description: string;
+  okText: string;
+}> = {
+  CASH: {
+    label: '现金收款',
+    title: '确认现金已收妥并结账？',
+    warning: '请先清点并收妥现金',
+    description: '系统无法自动核验现金是否实际收到。确认后订单会登记为已支付，并保留本次人工结账记录。',
+    okText: '确认现金已收妥',
+  },
+  EXTERNAL: {
+    label: '系统外支付',
+    title: '确认系统外款项已到账并结账？',
+    warning: '请先在对应收款渠道确认到账',
+    description: '系统不会查询外部收款码或其他渠道的支付结果。请以商户端到账记录为准，不要仅凭付款截图或顾客口头确认结账。',
+    okText: '确认外部款项已到账',
+  },
+};
 
 const tableMeta: Record<TableBoardTable['state'], { label: string; className: string }> = {
   UNOPENED: { label: '空闲', className: 'is-free' },
@@ -226,14 +249,21 @@ const demoOrder: Order = {
   ],
 };
 
-function fixtureTable(id: number, name: string, capacity: number, state: TableBoardTable['state'], order?: Partial<Order>): TableBoardTable {
+function fixtureTable(
+  id: number,
+  name: string,
+  capacity: number,
+  state: TableBoardTable['state'],
+  order?: Partial<Order>,
+  tableCode = name,
+): TableBoardTable {
   return {
     id,
     publicId: `table-public-${id}`,
     areaId: id < 9 ? 1 : 2,
     areaName: id < 9 ? '大厅' : '包间',
     name,
-    tableCode: name,
+    tableCode,
     capacity,
     state,
     orderId: order?.id,
@@ -260,7 +290,7 @@ const previewBoard: TableBoardResponse = {
         fixtureTable(2, 'A02', 2, 'READY', { id: 5028, orderNo: 'D260725151122', status: 'READY', paymentStatus: 'PAID', settlementMode: 'PAY_BEFORE', dinerCount: 2 }),
         fixtureTable(3, 'A03', 4, 'UNOPENED'),
         fixtureTable(4, 'A05', 4, 'UNOPENED'),
-        fixtureTable(5, 'B03', 4, 'UNSETTLED', demoOrder),
+        fixtureTable(5, '双人桌', 4, 'UNSETTLED', demoOrder, 'B03'),
         fixtureTable(6, 'B05', 2, 'DINING', { id: 5029, orderNo: 'D260725145800', status: 'PREPARING', dinerCount: 2, amount: 92 }),
         fixtureTable(7, 'B06', 4, 'UNSETTLED', { id: 5030, orderNo: 'D260725143011', status: 'READY', paymentStatus: 'UNPAID', settlementMode: 'PAY_AFTER', dinerCount: 4, amount: 186 }),
       ],
@@ -432,6 +462,18 @@ function cashierPaymentMethodLabel(payment: PaymentRecord): string {
   return payment.method || payment.provider || '其他支付';
 }
 
+function cashierTableLabel(
+  table?: Pick<TableBoardTable, 'name' | 'tableCode'> | null,
+  fallback = '请选择桌台',
+): string {
+  const name = table?.name?.trim() || '';
+  const tableCode = table?.tableCode?.trim() || '';
+  if (!name && !tableCode) return fallback;
+  if (!name || name === tableCode) return tableCode || name;
+  if (!tableCode) return name;
+  return `${name}（桌号 ${tableCode}）`;
+}
+
 function nextIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() || `cashier-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -506,7 +548,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const settledTables = allTables.filter((table) => table.state === 'SETTLED');
   const overdueTables = allTables.filter((table) => table.orderId && (
     previewMode
-      ? elapsedLabelMinutes(previewElapsed(table.name)) >= 60
+      ? elapsedLabelMinutes(previewElapsed(table.tableCode || table.name)) >= 60
       : elapsedMinutes(table.openedAt) >= 60
   ));
   const visibleTables = useMemo(() => {
@@ -869,7 +911,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     setCheckoutOpen(true);
   };
 
-  const confirmSettlement = async (method: 'CASH' | 'EXTERNAL') => {
+  const executeOfflineSettlement = async (method: OfflineSettlementMethod) => {
     if (!selectedOrder) return;
     setSubmitting(true);
     try {
@@ -899,9 +941,40 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       await load(true);
     } catch (error) {
       message.error(errorMessage(error));
+      throw error;
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const confirmSettlement = (method: OfflineSettlementMethod) => {
+    if (!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID' || submitting) return;
+    const meta = offlineSettlementMeta[method];
+    const amount = Number(selectedOrder.remainingAmount ?? selectedOrder.amount);
+    const orderLabel = mode === 'DINE_IN'
+      ? cashierTableLabel(selectedTable, '当前堂食订单')
+      : `取餐号 #${selectedOrder.pickupNo || '--'}`;
+    modal.confirm({
+      title: meta.title,
+      width: 500,
+      centered: true,
+      maskClosable: false,
+      keyboard: false,
+      content: (
+        <div className="cashier-offline-confirm">
+          <div className="cashier-offline-confirm-summary" data-testid="offline-settlement-summary">
+            <span>{orderLabel}</span>
+            <strong>{yuan(amount)}</strong>
+            <small>订单 {selectedOrder.orderNo} · {meta.label}</small>
+          </div>
+          <Alert type="warning" showIcon message={meta.warning} description={meta.description} />
+        </div>
+      ),
+      okText: meta.okText,
+      cancelText: '返回核对',
+      okButtonProps: { danger: true },
+      onOk: () => executeOfflineSettlement(method),
+    });
   };
 
   const finishWechatPayment = useCallback(async (result: WechatCodePaymentResult) => {
@@ -1097,7 +1170,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const transferTable = () => {
     if (!selectedOrder) return;
-    const options = transferableTables.map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.id) }));
+    const options = transferableTables.map((table) => ({ label: `${table.areaName} · ${cashierTableLabel(table)}`, value: String(table.id) }));
     let target = options[0]?.value;
     modal.confirm({
       title: '转台',
@@ -1123,7 +1196,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const mergeTable = () => {
     if (!selectedOrder) return;
-    const options = mergeableTables.map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.orderId) }));
+    const options = mergeableTables.map((table) => ({ label: `${table.areaName} · ${cashierTableLabel(table)}`, value: String(table.orderId) }));
     let sourceOrderID = options[0]?.value;
     modal.confirm({
       title: '并台',
@@ -1262,7 +1335,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     (!productSearch.trim() || product.name.includes(productSearch.trim())));
 
   const currentOrderLabel = mode === 'DINE_IN'
-    ? selectedTable?.name || '请选择桌台'
+    ? cashierTableLabel(selectedTable)
     : selectedOrder ? `取餐号 #${selectedOrder.pickupNo || '--'}` : '请选择带走订单';
   const wechatPaymentPending = wechatPayment?.status === 'CREATING' || wechatPayment?.status === 'PENDING';
 
@@ -1330,10 +1403,13 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                     return (
                       <button type="button" className={`cashier-table-card ${meta.className} ${table.totalCents ? 'has-total' : ''} ${selected ? 'selected' : ''}`} key={String(table.id)} onClick={() => selectTable(table)}>
                         <strong>{table.name}</strong>
+                        {table.tableCode?.trim() && table.tableCode.trim() !== table.name.trim() && (
+                          <span className="cashier-table-code">桌号 {table.tableCode}</span>
+                        )}
                         <span className="cashier-table-state">{meta.label}</span>
                         <div className="cashier-table-meta">
                           <span>{table.orderId ? <UserOutlined /> : <TableOutlined />}{table.dinerCount ? `${table.dinerCount}人` : `${table.capacity}人`}</span>
-                          {table.openedAt && <span>{previewMode ? previewElapsed(table.name) : elapsedLabel(table.openedAt)}</span>}
+                          {table.openedAt && <span>{previewMode ? previewElapsed(table.tableCode || table.name) : elapsedLabel(table.openedAt)}</span>}
                         </div>
                         {table.totalCents ? <b>{yuan(table.totalCents / 100)}</b> : null}
                       </button>
@@ -1402,7 +1478,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                 ) : (
                   <div className="cashier-empty-operation">
                     <CoffeeOutlined />
-                    <strong>{selectedTable ? `${selectedTable.name} 当前空闲` : '请选择订单'}</strong>
+                    <strong>{selectedTable ? `${cashierTableLabel(selectedTable)} 当前空闲` : '请选择订单'}</strong>
                     <span>{selectedTable ? '可以直接为该桌点单开台' : '从左侧选择桌台或带走订单'}</span>
                   </div>
                 )}
@@ -1514,7 +1590,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                   ) : (
                     <div className="cashier-standard-empty">
                       <CoffeeOutlined />
-                      <strong>{selectedTable?.name || '当前桌台'}为空闲桌台</strong>
+                      <strong>{cashierTableLabel(selectedTable, '当前桌台')}为空闲桌台</strong>
                       <span>点击下方“点单开台”开始录单</span>
                     </div>
                   )}

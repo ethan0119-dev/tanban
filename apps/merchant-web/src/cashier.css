@@ -491,6 +491,15 @@
   line-height: 1;
 }
 
+.cashier-table-code {
+  display: block;
+  margin-top: 7px;
+  color: #887d76;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
 .cashier-table-state {
   display: block;
   margin-top: 10px;
@@ -1400,6 +1409,42 @@
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.cashier-offline-confirm {
+  display: grid;
+  gap: 16px;
+  padding-top: 6px;
+}
+
+.cashier-offline-confirm-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 18px;
+  padding: 15px 17px;
+  border: 1px solid #eadfd7;
+  border-radius: 10px;
+  background: #fffaf6;
+}
+
+.cashier-offline-confirm-summary > span {
+  overflow: hidden;
+  color: #302823;
+  font-size: 17px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cashier-offline-confirm-summary > strong {
+  grid-row: span 2;
+  color: #d6493f;
+  font-size: 25px;
+}
+
+.cashier-offline-confirm-summary > small {
+  color: #8a817a;
 }
 
 .cashier-standard-detail {

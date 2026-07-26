@@ -66,6 +66,32 @@ describe('cashier operations', () => {
     expect(screen.getByText('本次应收')).toBeTruthy();
   });
 
+  it.each([
+    {
+      method: /现金收款/,
+      title: '确认现金已收妥并结账？',
+      warning: '请先清点并收妥现金',
+      confirm: '确认现金已收妥',
+    },
+    {
+      method: /系统外支付/,
+      title: '确认系统外款项已到账并结账？',
+      warning: '请先在对应收款渠道确认到账',
+      confirm: '确认外部款项已到账',
+    },
+  ])('requires a second confirmation for $title', async ({ method, title, warning, confirm }) => {
+    renderCashier();
+    fireEvent.click(screen.getByRole('button', { name: /结账 ¥132/ }));
+    fireEvent.click(await screen.findByRole('button', { name: method }));
+
+    expect((await screen.findAllByText(title)).length).toBeGreaterThan(0);
+    expect(screen.getByText(warning)).toBeTruthy();
+    expect(screen.getByTestId('offline-settlement-summary').textContent).toContain('双人桌（桌号 B03）');
+    expect(screen.getByTestId('offline-settlement-summary').textContent).toContain('¥132.00');
+    expect(screen.getByRole('button', { name: confirm })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '返回核对' })).toBeTruthy();
+  });
+
   it('accepts a WeChat payment code without keeping it in the checkout UI', async () => {
     renderCashier();
     fireEvent.click(screen.getByRole('button', { name: /结账 ¥132/ }));
@@ -132,6 +158,8 @@ describe('cashier operations', () => {
 
   it('filters the table board from operational alerts and never invents overdue counts', () => {
     renderCashier();
+    expect(screen.getByRole('button', { name: /双人桌.*桌号 B03.*待结账/ })).toBeTruthy();
+    expect(screen.getByText('桌号 B03')).toBeTruthy();
     expect(screen.getByRole('button', { name: /1单超时待取/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /A02.*待清台/ })).toBeTruthy();
 
