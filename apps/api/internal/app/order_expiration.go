@@ -153,9 +153,12 @@ func (s *Server) expireOrderReservationLocked(ctx context.Context, conn *sql.Con
 			WHERE id=? AND tenant_id=? AND status='PENDING_PAYMENT' AND payment_status='UNPAID' AND inventory_reserved=1`, orderID, tenantID)
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE orders SET status='CLOSED',inventory_reserved=0,stock_reserved_at=NULL,closed_at=NOW(3)
-			WHERE id=? AND tenant_id=? AND status='PENDING_PAYMENT' AND payment_status='UNPAID' AND inventory_reserved=1`, orderID, tenantID)
+				WHERE id=? AND tenant_id=? AND status='PENDING_PAYMENT' AND payment_status='UNPAID' AND inventory_reserved=1`, orderID, tenantID)
 		if err == nil {
 			err = releaseOrderCoupon(ctx, tx, tenantID, orderID)
+		}
+		if err == nil {
+			err = reverseOrderBalancePaymentTx(ctx, tx, tenantID, orderID, "订单支付超时，退回余额抵扣")
 		}
 	}
 	if err != nil {

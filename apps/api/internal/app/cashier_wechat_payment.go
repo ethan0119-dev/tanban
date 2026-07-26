@@ -89,7 +89,7 @@ func (s *Server) createWechatCodePayment(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	balancePayment, err := s.applyOrderBalancePaymentLocked(r.Context(), conn, actor.TenantID, orderID, order.CustomerID)
+	balancePayment, err := s.applyOrderBalancePaymentLocked(r.Context(), conn, actor.TenantID, orderID, order.CustomerID, true)
 	if err != nil {
 		handleSQLError(w, err)
 		return

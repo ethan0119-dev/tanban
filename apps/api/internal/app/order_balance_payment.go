@@ -14,7 +14,7 @@ type orderBalancePaymentResult struct {
 	FullyPaid                       bool
 }
 
-func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.Conn, tenantID, orderID, sessionCustomerID int64) (orderBalancePaymentResult, error) {
+func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.Conn, tenantID, orderID, sessionCustomerID int64, allowPartial bool) (orderBalancePaymentResult, error) {
 	if sessionCustomerID <= 0 {
 		return orderBalancePaymentResult{}, nil
 	}
@@ -90,10 +90,13 @@ func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.C
 		return orderBalancePaymentResult{}, err
 	}
 	available := principal + bonus
-	if available < remaining {
+	if available <= 0 {
 		return orderBalancePaymentResult{}, nil
 	}
-	useAmount := remaining
+	if available < remaining && !allowPartial {
+		return orderBalancePaymentResult{}, nil
+	}
+	useAmount := minInt64(available, remaining)
 	principalUse, bonusUse := allocateOrderBalance(principal, bonus, useAmount, deductionOrder)
 	reference := "ORDERBAL:" + int64String(orderID)
 	if bonusUse > 0 {
@@ -116,6 +119,24 @@ func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.C
 	}
 	balancePaymentID, _ := result.LastInsertId()
 	remaining -= useAmount
+	if remaining > 0 {
+		update, updateErr := tx.ExecContext(ctx, `UPDATE orders SET paid_cents=paid_cents+?,updated_at=NOW(3)
+			WHERE id=? AND tenant_id=? AND payment_status='UNPAID' AND paid_cents=?`,
+			useAmount, orderID, tenantID, paidCents)
+		if updateErr != nil {
+			return orderBalancePaymentResult{}, updateErr
+		}
+		if changed, _ := update.RowsAffected(); changed != 1 {
+			return orderBalancePaymentResult{}, errors.New("order balance changed while applying stored value")
+		}
+		if err = tx.Commit(); err != nil {
+			return orderBalancePaymentResult{}, err
+		}
+		return orderBalancePaymentResult{
+			ID: balancePaymentID, AmountCents: useAmount, RemainingCents: remaining,
+			Reference: fmt.Sprintf("BALANCE-%d", balancePaymentID), FullyPaid: false,
+		}, nil
+	}
 	targetStatus := "PAID"
 	if settlementMode == "PAY_AFTER" {
 		targetStatus = "COMPLETED"
@@ -161,4 +182,47 @@ func allocateOrderBalance(principal, bonus, amount int64, deductionOrder string)
 	bonusUse = minInt64(bonus, amount)
 	principalUse = minInt64(principal, amount-bonusUse)
 	return principalUse, bonusUse
+}
+
+// reverseOrderBalancePaymentTx returns a partially captured wallet amount when
+// an unpaid order is permanently closed. The balance ledger remains append-only
+// and the payment row records the reversal, preventing both lost wallet funds
+// and duplicate refunds from expiration/manual-close retries.
+func reverseOrderBalancePaymentTx(ctx context.Context, tx *sql.Tx, tenantID, orderID int64, remark string) error {
+	var paymentID, customerID, principalCents, bonusCents, amountCents int64
+	var orderNo, status string
+	err := tx.QueryRowContext(ctx, `SELECT obp.id,obp.customer_id,obp.principal_cents,obp.bonus_cents,obp.amount_cents,obp.status,o.order_no
+		FROM order_balance_payments obp JOIN orders o ON o.id=obp.order_id AND o.tenant_id=obp.tenant_id
+		WHERE obp.tenant_id=? AND obp.order_id=? FOR UPDATE`, tenantID, orderID).
+		Scan(&paymentID, &customerID, &principalCents, &bonusCents, &amountCents, &status, &orderNo)
+	if errors.Is(err, sql.ErrNoRows) || status == "REVERSED" {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	reference := fmt.Sprintf("ORDERBALREV:%d", paymentID)
+	if bonusCents > 0 {
+		if _, _, err = applyBalanceDeltaTx(ctx, tx, tenantID, customerID, "BONUS", bonusCents, "REFUND", "ORDER", orderNo,
+			reference+":bonus", 0, remark); err != nil {
+			return err
+		}
+	}
+	if principalCents > 0 {
+		if _, _, err = applyBalanceDeltaTx(ctx, tx, tenantID, customerID, "PRINCIPAL", principalCents, "REFUND", "ORDER", orderNo,
+			reference+":principal", 0, remark); err != nil {
+			return err
+		}
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE order_balance_payments SET status='REVERSED'
+		WHERE id=? AND tenant_id=? AND status='APPLIED'`, paymentID, tenantID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return errors.New("order balance payment changed while reversing stored value")
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE orders SET paid_cents=GREATEST(paid_cents-?,0),updated_at=NOW(3)
+		WHERE id=? AND tenant_id=? AND payment_status='UNPAID'`, amountCents, orderID, tenantID)
+	return err
 }

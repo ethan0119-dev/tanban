@@ -35,6 +35,69 @@ func TestAllocateOrderBalanceHonorsConfiguredBucketOrder(t *testing.T) {
 	}
 }
 
+func TestReverseOrderBalancePaymentReturnsBothWalletBuckets(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery("SELECT obp.id,obp.customer_id").
+		WithArgs(int64(9), int64(41)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "customer_id", "principal_cents", "bonus_cents", "amount_cents", "status", "order_no"}).
+			AddRow(31, 21, 400, 200, 600, "APPLIED", "TB001"))
+
+	mock.ExpectQuery("SELECT id,customer_id").WithArgs(int64(9), "ORDERBALREV:31:bonus").WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT id FROM customers").WithArgs(int64(21), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(21))
+	mock.ExpectExec("INSERT INTO balance_accounts").WithArgs(int64(9), int64(21), int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT principal_cents,bonus_cents").WithArgs(int64(9), int64(21)).
+		WillReturnRows(sqlmock.NewRows([]string{"principal_cents", "bonus_cents"}).AddRow(100, 0))
+	mock.ExpectQuery("SELECT max_balance_cents").WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"max_balance_cents"}).AddRow(1000000))
+	mock.ExpectExec("INSERT INTO balance_ledger").
+		WithArgs(int64(9), int64(21), "BONUS", int64(200), int64(0), int64(200), "REFUND", "ORDER", "TB001", "ORDERBALREV:31:bonus", int64(0), "订单关闭，退回余额抵扣").
+		WillReturnResult(sqlmock.NewResult(51, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE balance_accounts SET bonus_cents=?,version=version+1 WHERE tenant_id=? AND customer_id=?")).
+		WithArgs(int64(200), int64(9), int64(21)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectQuery("SELECT id,customer_id").WithArgs(int64(9), "ORDERBALREV:31:principal").WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT id FROM customers").WithArgs(int64(21), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(21))
+	mock.ExpectExec("INSERT INTO balance_accounts").WithArgs(int64(9), int64(21), int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT principal_cents,bonus_cents").WithArgs(int64(9), int64(21)).
+		WillReturnRows(sqlmock.NewRows([]string{"principal_cents", "bonus_cents"}).AddRow(100, 200))
+	mock.ExpectQuery("SELECT max_balance_cents").WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"max_balance_cents"}).AddRow(1000000))
+	mock.ExpectExec("INSERT INTO balance_ledger").
+		WithArgs(int64(9), int64(21), "PRINCIPAL", int64(400), int64(100), int64(500), "REFUND", "ORDER", "TB001", "ORDERBALREV:31:principal", int64(0), "订单关闭，退回余额抵扣").
+		WillReturnResult(sqlmock.NewResult(52, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE balance_accounts SET principal_cents=?,version=version+1 WHERE tenant_id=? AND customer_id=?")).
+		WithArgs(int64(500), int64(9), int64(21)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectExec("UPDATE order_balance_payments SET status='REVERSED'").
+		WithArgs(int64(31), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE orders SET paid_cents=GREATEST").
+		WithArgs(int64(600), int64(41), int64(9)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err = reverseOrderBalancePaymentTx(context.Background(), tx, 9, 41, "订单关闭，退回余额抵扣"); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestApplyPaidBalanceCreditTxCreditsCapturedMoney(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

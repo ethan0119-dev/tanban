@@ -1181,9 +1181,10 @@ func (s *Server) publicGetOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type publicPaymentInput struct {
-	Provider string `json:"provider"`
-	OpenID   string `json:"openid"`
-	SubAppID string `json:"subAppId"`
+	Provider   string `json:"provider"`
+	OpenID     string `json:"openid"`
+	SubAppID   string `json:"subAppId"`
+	UseBalance *bool  `json:"useBalance"`
 }
 
 func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
@@ -1217,8 +1218,12 @@ func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 	if current, ok := s.optionalPublicCustomerSession(r.Context(), r, tenantID); ok {
 		session = current
 	}
+	customerID := session.CustomerID
+	if requested.UseBalance != nil && !*requested.UseBalance {
+		customerID = 0
+	}
 	s.createPaymentForOrder(w, r, tenantID, id, paymentInput{
-		OpenID: session.OpenID, SubAppID: requested.SubAppID, CustomerID: session.CustomerID,
+		OpenID: session.OpenID, SubAppID: requested.SubAppID, CustomerID: customerID,
 	})
 }
 

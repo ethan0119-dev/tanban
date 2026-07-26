@@ -4,6 +4,9 @@ import { request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
+import { customerOrderActions } from "../../utils/order-actions";
+import { tableContextForStore } from "../../utils/table-context";
+import { clearCart } from "../../utils/cart";
 
 interface PaymentResult {
   id: number;
@@ -34,30 +37,43 @@ function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): v
 function decorateOrder(order: Order, payAfterOnlinePaymentEnabled: boolean): OrderView {
   const paymentStatus = String(order.paymentStatus || "").toUpperCase();
   const orderStatus = String(order.status || "").toUpperCase();
-  const paymentSucceeded = paymentStatus === "SUCCEEDED" || paymentStatus === "PAID";
-  const payAfterMeal = order.settlementMode === "PAY_AFTER";
-  const paidAmount = Math.max(Number(order.paidAmount || 0), 0);
-  const remainingAmount = Math.max(Number(order.remainingAmount ?? (order.amount - paidAmount)), 0);
-  const canPay = payAfterMeal && payAfterOnlinePaymentEnabled && !paymentSucceeded && !["CLOSED", "CANCELED", "CANCELLED", "REFUNDED"].includes(orderStatus);
-  const paymentPending = !payAfterMeal && !paymentSucceeded
-    && ["", "UNPAID", "PENDING", "CREATED", "PROCESSING"].includes(paymentStatus)
-    && order.status === "PENDING_PAYMENT";
+  const actions = customerOrderActions(order, payAfterOnlinePaymentEnabled);
+  const { canAddItems, canPay, isDineIn, paidAmount, payAfterMeal, paymentPending, paymentSucceeded, remainingAmount } = actions;
   return {
     ...order,
+    canAddItems,
     paidAmount,
     remainingAmount,
     createdAt: formatBeijingDateTime(order.createdAt),
-    isDineIn: order.orderScene === "DINE_IN" || order.order_scene === "DINE_IN" || Boolean(order.tablePublicId || order.table?.publicId),
+    isDineIn,
     payAfterMeal,
     canPay,
     paymentSucceeded,
     paymentPending,
-    statusTitle: paymentSucceeded ? "支付成功" : canPay ? "用餐中 · 待结账" : payAfterMeal ? "用餐中 · 请到收银台结账" : paymentPending ? "正在确认支付结果" : order.status === "CLOSED" ? "订单已关闭" : "支付尚未成功",
+    statusTitle: paymentSucceeded
+      ? "支付成功"
+      : payAfterMeal && canPay
+        ? "用餐中 · 待结账"
+        : !payAfterMeal && canPay
+          ? "订单待付款"
+          : payAfterMeal
+            ? "用餐中 · 请到收银台结账"
+            : paymentPending
+              ? "正在确认支付结果"
+              : order.status === "CLOSED"
+                ? "订单已关闭"
+                : "支付尚未成功",
     statusMessage: paymentSucceeded
       ? "商家已收到订单，请留意制作进度"
-      : canPay ? (paidAmount > 0 ? "订单已部分结账，请支付剩余金额；部分结账后不能继续加菜" : "订单已提交，可继续加菜；用餐结束后在此完成支付")
-        : order.canAddItems && !payAfterMeal ? "付款前仍可返回菜单调整商品；确认无误后请完成支付"
-          : payAfterMeal ? "门店已关闭线上支付，请用餐结束后到收银台结账" : paymentPending ? "请勿重复付款，页面会自动刷新支付结果" : "商家尚未确认收款，请返回订单后重试或联系商家",
+      : payAfterMeal && canPay
+        ? (paidAmount > 0 ? "订单已部分结账，请支付剩余金额；部分结账后不能继续加菜" : "订单已提交，可继续加菜；用餐结束后在此完成支付")
+        : !payAfterMeal && canPay
+          ? (canAddItems ? "订单尚未付款，可继续加菜或完成支付" : "订单尚未付款，请继续完成支付")
+          : payAfterMeal
+            ? (canAddItems ? "当前仍可继续加菜；用餐结束后请到收银台结账" : "门店已关闭线上支付，请用餐结束后到收银台结账")
+            : paymentPending
+              ? "请勿重复付款，页面会自动刷新支付结果"
+              : "商家尚未确认收款，请返回订单后重试或联系商家",
     orderStatusText: payAfterMeal && !paymentSucceeded && orderStatus === "PAID" ? "已下单" : ({ PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "请取餐", COMPLETED: "已完成", CLOSED: "已关闭", CANCELED: "已取消", CANCELLED: "已取消", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[orderStatus] || "状态更新中",
     paymentStatusText: ({ UNPAID: "待付款", PENDING: "确认中", CREATED: "待付款", PROCESSING: "确认中", SUCCEEDED: "支付成功", PAID: "支付成功", FAILED: "支付未完成", CLOSED: "已关闭", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[paymentStatus] || "状态更新中",
     displayTableName: order.tableName || order.table?.name || order.tableCode || order.table?.tableCode || "当前桌台",
@@ -126,5 +142,23 @@ Page({
       this.setData({ paying: false });
     }
   },
-  backToMenu() { wx.switchTab({ url: "/pages/menu/index" }); },
+  backToMenu() {
+    const order = this.data.order;
+    if (!order?.canAddItems) return;
+    const tableContext = tableContextForStore(this.data.storeCode);
+    const expectedTable = String(order.tablePublicId || order.table?.publicId || "");
+    if (!tableContext || tableContext.tablePublicId !== expectedTable) {
+      wx.showModal({
+        title: "请重新扫描当前桌码",
+        content: "加菜必须绑定原桌台。请返回后重新扫描当前桌牌二维码，再进入点单页面。",
+        showCancel: false,
+      });
+      return;
+    }
+    // The existing bill already contains the original checkout cart. Add-item
+    // mode must start empty or a canceled pay-before attempt would duplicate
+    // every original dish when the customer submits the addition.
+    clearCart(this.data.storeCode);
+    wx.switchTab({ url: "/pages/menu/index" });
+  },
 });

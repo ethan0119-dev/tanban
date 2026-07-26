@@ -12,12 +12,18 @@ import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { bestEligibleCoupon, eligibleCoupons, forgetClaimedCoupon } from "../../utils/coupon-wallet";
+import { balancePaymentBreakdown } from "../../utils/payment-breakdown";
 
 interface PaymentResult {
   id: number;
   provider: "balance" | "mock" | "tianque" | "wechat_partner";
   status: string;
+  balancePaidAmount?: number;
+  remainingAmount?: number;
   wxPayParams?: WechatMiniprogram.RequestPaymentOption;
+}
+interface StoredValueSummary {
+  balance?: { balanceCents?: number };
 }
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 interface CouponChoiceEvent { currentTarget: { dataset: { id?: number | string } } }
@@ -36,7 +42,39 @@ function customerLocation(): Promise<{ customerLatitude: number; customerLongitu
 }
 
 Page({
-  data: { storeCode: "", store: null as Store | null, cart: [] as CartItem[], subtotalAmount: 0, discountAmount: 0, promotionDiscountAmount: 0, couponDiscountAmount: 0, amount: 0, selectedCoupon: null as MarketingCoupon | null, eligibleCoupons: [] as MarketingCoupon[], couponSheetOpen: false, storePromotion: null as StoreFullReduction | null, promotionEnabled: true, remark: "", customerPhone: "", fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN", tableContext: null as TableOrderingContext | null, fastFoodContext: null as FastFoodOrderingContext | null, dinerCount: 2, dinerOptions: Array.from({ length: 20 }, (_, index) => index + 1), detailsLocked: false, submitting: false, checkoutKey: "", orderNo: "", appearanceStyle: "" },
+  data: {
+    storeCode: "",
+    store: null as Store | null,
+    cart: [] as CartItem[],
+    subtotalAmount: 0,
+    discountAmount: 0,
+    promotionDiscountAmount: 0,
+    couponDiscountAmount: 0,
+    amount: 0,
+    selectedCoupon: null as MarketingCoupon | null,
+    eligibleCoupons: [] as MarketingCoupon[],
+    couponSheetOpen: false,
+    storePromotion: null as StoreFullReduction | null,
+    promotionEnabled: true,
+    remark: "",
+    customerPhone: "",
+    fulfillmentType: "PICKUP" as "PICKUP" | "DINE_IN",
+    tableContext: null as TableOrderingContext | null,
+    fastFoodContext: null as FastFoodOrderingContext | null,
+    dinerCount: 2,
+    dinerOptions: Array.from({ length: 20 }, (_, index) => index + 1),
+    balanceCents: 0,
+    useBalance: true,
+    appliedBalanceAmount: 0,
+    balanceDeductionAmount: 0,
+    remainingPaymentAmount: 0,
+    isPayAfterMeal: false,
+    detailsLocked: false,
+    submitting: false,
+    checkoutKey: "",
+    orderNo: "",
+    appearanceStyle: "",
+  },
   async onLoad() {
     const app = getApp<TanbanAppOption>();
     await app.globalData.routeReady;
@@ -71,6 +109,7 @@ Page({
     const coupons = eligibleCoupons(storeCode, subtotalAmount, orderType);
     const selectedCoupon = bestEligibleCoupon(storeCode, subtotalAmount, orderType);
     let storePromotion: StoreFullReduction | null = null;
+    let balanceCents = 0;
     try {
       const response = await request<{ items?: StoreFullReduction[] }>({ url: `/public/stores/${encodeURIComponent(storeCode)}/marketing/full-reductions?channel_scope=${orderType}`, method: "GET" });
       storePromotion = (response.items || []).filter((item) => subtotalAmount >= item.threshold_cents)
@@ -78,9 +117,23 @@ Page({
     } catch {
       // 下单时服务端仍会重新检查当前有效的店铺满减。
     }
+    try {
+      const storedValue = await request<StoredValueSummary>({
+        url: `/public/stores/${encodeURIComponent(storeCode)}/stored-value`,
+        method: "GET",
+      });
+      balanceCents = Math.max(0, Number(storedValue.balance?.balanceCents || 0));
+    } catch {
+      // 余额只作为支付预览，服务端会在真正付款时再次校验可用余额。
+    }
     const promotionDiscountAmount = Math.min(subtotalAmount, storePromotion?.discount_cents || 0);
     const couponDiscountAmount = Math.min(subtotalAmount - promotionDiscountAmount, selectedCoupon?.discount_cents || 0);
     const discountAmount = promotionDiscountAmount + couponDiscountAmount;
+    const amount = subtotalAmount - discountAmount;
+    const isPayAfterMeal = Boolean(tableContext && store?.orderingSettings?.settlementMode === "PAY_AFTER");
+    const paymentBreakdown = isPayAfterMeal
+      ? { balanceDeductionAmount: 0, remainingPaymentAmount: amount }
+      : balancePaymentBreakdown(amount, balanceCents, true);
     this.setData({
       storeCode,
       store,
@@ -91,12 +144,16 @@ Page({
       discountAmount,
       promotionDiscountAmount,
       couponDiscountAmount,
-      amount: subtotalAmount - discountAmount,
+      amount,
       selectedCoupon,
       eligibleCoupons: coupons,
       storePromotion,
       fulfillmentType: flow.fulfillmentType,
       dinerCount: tableContext ? 2 : 1,
+      balanceCents,
+      useBalance: true,
+      isPayAfterMeal,
+      ...paymentBreakdown,
       remark: flow.remark,
       detailsLocked: flow.submitted,
       submitting: Boolean(flow.orderNo),
@@ -109,7 +166,11 @@ Page({
     const promotionDiscountAmount = this.data.promotionEnabled ? Math.min(this.data.subtotalAmount, this.data.storePromotion?.discount_cents || 0) : 0;
     const couponDiscountAmount = Math.min(this.data.subtotalAmount - promotionDiscountAmount, this.data.selectedCoupon?.discount_cents || 0);
     const discountAmount = promotionDiscountAmount + couponDiscountAmount;
-    this.setData({ promotionDiscountAmount, couponDiscountAmount, discountAmount, amount: this.data.subtotalAmount - discountAmount });
+    const amount = this.data.subtotalAmount - discountAmount;
+    const paymentBreakdown = this.data.isPayAfterMeal
+      ? { balanceDeductionAmount: 0, remainingPaymentAmount: amount }
+      : balancePaymentBreakdown(amount, this.data.balanceCents, this.data.useBalance, this.data.appliedBalanceAmount);
+    this.setData({ promotionDiscountAmount, couponDiscountAmount, discountAmount, amount, ...paymentBreakdown });
   },
   toggleStorePromotion() {
     if (this.data.detailsLocked || !this.data.storePromotion) return;
@@ -130,6 +191,17 @@ Page({
     this.setData({ selectedCoupon, couponSheetOpen: false });
     this.recalculateDiscount();
   },
+  toggleBalance() {
+    if (this.data.detailsLocked || this.data.appliedBalanceAmount > 0) {
+      wx.showToast({ title: "订单已生成，余额抵扣不能修改", icon: "none" });
+      return;
+    }
+    const useBalance = !this.data.useBalance;
+    this.setData({
+      useBalance,
+      ...balancePaymentBreakdown(this.data.amount, this.data.balanceCents, useBalance),
+    });
+  },
   async restoreExistingOrder(flowKey: string, orderNo: string) {
     try {
       const order = await request<Order>({ url: `/public/orders/${encodeURIComponent(orderNo)}`, method: "GET" });
@@ -139,11 +211,23 @@ Page({
         this.setData({ checkoutKey: fresh.idempotencyKey, orderNo: "", fulfillmentType: fresh.fulfillmentType, remark: fresh.remark, detailsLocked: false });
         return;
       }
+      const appliedBalanceAmount = Math.max(
+        0,
+        Number(order.paidAmount || 0),
+        Number(order.amount) - Number(order.remainingAmount ?? order.amount),
+      );
+      const isPayAfterMeal = Boolean(this.data.tableContext && order.settlementMode === "PAY_AFTER");
+      const paymentBreakdown = isPayAfterMeal
+        ? { balanceDeductionAmount: 0, remainingPaymentAmount: order.amount }
+        : balancePaymentBreakdown(order.amount, this.data.balanceCents, this.data.useBalance, appliedBalanceAmount);
       this.setData({
         amount: order.amount,
         discountAmount: Math.max(0, this.data.subtotalAmount - order.amount),
         fulfillmentType: this.data.tableContext || order.fulfillmentType === "DINE_IN" ? "DINE_IN" : "PICKUP",
         remark: order.remark || "",
+        appliedBalanceAmount,
+        isPayAfterMeal,
+        ...paymentBreakdown,
         detailsLocked: true,
       });
     } catch (error) {
@@ -200,7 +284,14 @@ Page({
         throw new Error("快餐码牌已切换，请返回菜单并重新确认");
       }
       const latestStore = await request<Store>({ url: `/public/stores/${encodeURIComponent(storeCode)}`, method: "GET" });
-      this.setData({ store: latestStore });
+      const isPayAfterMeal = Boolean(this.data.tableContext && latestStore.orderingSettings?.settlementMode === "PAY_AFTER");
+      this.setData({
+        store: latestStore,
+        isPayAfterMeal,
+        ...(isPayAfterMeal
+          ? { balanceDeductionAmount: 0, remainingPaymentAmount: this.data.amount }
+          : balancePaymentBreakdown(this.data.amount, this.data.balanceCents, this.data.useBalance, this.data.appliedBalanceAmount)),
+      });
       if (checkoutBlockedByStoreStatus(latestStore.businessStatus, this.data.orderNo) || (latestStore.acceptingOrders === false && !this.data.orderNo)) {
         throw new Error(latestStore.businessStatusMessage || "门店休息中，暂时不能下单");
       }
@@ -283,7 +374,11 @@ Page({
       }
       if (Number(order.amount) !== Number(this.data.amount)) {
         const previousAmount = this.data.amount;
-        this.setData({ amount: order.amount, discountAmount: Math.max(0, this.data.subtotalAmount - order.amount) });
+        this.setData({
+          amount: order.amount,
+          discountAmount: Math.max(0, this.data.subtotalAmount - order.amount),
+          ...balancePaymentBreakdown(order.amount, this.data.balanceCents, this.data.useBalance, this.data.appliedBalanceAmount),
+        });
         const confirmed = await new Promise<boolean>((resolve) => wx.showModal({
           title: "订单金额已更新",
           content: `商品价格或优惠已重新核算，最新金额为 ¥${(order.amount / 100).toFixed(2)}（原预计 ¥${(previousAmount / 100).toFixed(2)}），请确认后继续支付。`,
@@ -306,8 +401,17 @@ Page({
       const payment = await request<PaymentResult>({
         url: `/public/orders/${order.orderNo}/payments`,
         method: "POST",
-        data: {},
+        data: { useBalance: this.data.useBalance },
       });
+      if (Number(payment.balancePaidAmount || 0) > 0) {
+        const appliedBalanceAmount = Number(payment.balancePaidAmount);
+        this.setData({
+          appliedBalanceAmount,
+          balanceCents: Math.max(0, this.data.balanceCents - appliedBalanceAmount),
+          balanceDeductionAmount: appliedBalanceAmount,
+          remainingPaymentAmount: Math.max(0, Number(payment.remainingAmount ?? order.amount - appliedBalanceAmount)),
+        });
+      }
       if (payment.provider === "balance") {
         wx.showToast({ title: "余额支付成功", icon: "success" });
       } else if (payment.provider === "mock") {

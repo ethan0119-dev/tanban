@@ -555,6 +555,10 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, couponErr)
 			return
 		}
+		if balanceErr := reverseOrderBalancePaymentTx(r.Context(), tx, identity.TenantID, id, "订单关闭，退回余额抵扣"); balanceErr != nil {
+			handleSQLError(w, balanceErr)
+			return
+		}
 	}
 	reservationUpdate := ""
 	if input.Status == "CLOSED" {
@@ -793,17 +797,17 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			return
 		}
 	}
-	balancePayment, err := s.applyOrderBalancePaymentLocked(r.Context(), conn, tenantID, orderID, input.CustomerID)
+	// First try balance as an all-or-nothing payment. A partial deduction is
+	// delayed until the external channel has passed its readiness checks, so a
+	// disabled provider can never strand only part of the customer's money.
+	balancePayment, err := s.applyOrderBalancePaymentLocked(r.Context(), conn, tenantID, orderID, input.CustomerID, false)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	if balancePayment.FullyPaid {
-		writePaymentResponse(w, http.StatusCreated, balancePayment.ID, "balance", balancePayment.Reference, string(provider.PaymentSuccess), map[string]string{"mode": "balance"})
+		writePaymentResponse(w, http.StatusCreated, balancePayment.ID, "balance", balancePayment.Reference, string(provider.PaymentSuccess), map[string]string{"mode": "balance"}, balancePayment)
 		return
-	}
-	if balancePayment.AmountCents > 0 {
-		amount = balancePayment.RemainingCents
 	}
 	enabled, err := s.paymentAcceptanceEnabled(r.Context())
 	if err != nil {
@@ -822,6 +826,18 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		writeError(w, http.StatusConflict, "WECHAT_PAY_MERCHANT_NOT_READY", "WeChat Pay sub-merchant onboarding or product authorization is incomplete")
 		return
 	}
+	balancePayment, err = s.applyOrderBalancePaymentLocked(r.Context(), conn, tenantID, orderID, input.CustomerID, true)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if balancePayment.FullyPaid {
+		writePaymentResponse(w, http.StatusCreated, balancePayment.ID, "balance", balancePayment.Reference, string(provider.PaymentSuccess), map[string]string{"mode": "balance"}, balancePayment)
+		return
+	}
+	if balancePayment.AmountCents > 0 {
+		amount = balancePayment.RemainingCents
+	}
 	var existingID int64
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
@@ -837,12 +853,12 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			}
 			var payParams map[string]string
 			_ = json.Unmarshal([]byte(raw), &payParams)
-			writePaymentResponse(w, http.StatusOK, existingID, existingProvider, existingNo, existingStatus, payParams)
+			writePaymentResponse(w, http.StatusOK, existingID, existingProvider, existingNo, existingStatus, payParams, balancePayment)
 			return
 		case string(provider.PaymentPending), string(provider.PaymentRefunded):
 			var payParams map[string]string
 			_ = json.Unmarshal([]byte(raw), &payParams)
-			writePaymentResponse(w, http.StatusOK, existingID, existingProvider, existingNo, existingStatus, payParams)
+			writePaymentResponse(w, http.StatusOK, existingID, existingProvider, existingNo, existingStatus, payParams, balancePayment)
 			return
 		case paymentStatusCreating:
 			// Resume exactly the durable routing snapshot. Tenant bindings and the
@@ -900,18 +916,23 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			return
 		}
 		s.Logger.Warn("payment creation outcome is pending reconciliation", "payment_id", existingID, "order_id", orderID, "error", submitErr)
-		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"})
+		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"}, balancePayment)
 		return
 	}
 	statusCode := http.StatusOK
 	if createAttempt {
 		statusCode = http.StatusCreated
 	}
-	writePaymentResponse(w, statusCode, existingID, s.Payment.Name(), result.ProviderOrderNo, string(result.Status), result.PayParams)
+	writePaymentResponse(w, statusCode, existingID, s.Payment.Name(), result.ProviderOrderNo, string(result.Status), result.PayParams, balancePayment)
 }
 
-func writePaymentResponse(w http.ResponseWriter, statusCode int, id int64, providerName, providerNo, status string, payParams map[string]string) {
-	writeData(w, statusCode, map[string]any{"id": id, "paymentId": id, "provider": providerName, "provider_order_no": providerNo, "providerOrderNo": providerNo, "status": status, "pay_params": payParams, "wxPayParams": payParams})
+func writePaymentResponse(w http.ResponseWriter, statusCode int, id int64, providerName, providerNo, status string, payParams map[string]string, balancePayments ...orderBalancePaymentResult) {
+	data := map[string]any{"id": id, "paymentId": id, "provider": providerName, "provider_order_no": providerNo, "providerOrderNo": providerNo, "status": status, "pay_params": payParams, "wxPayParams": payParams}
+	if len(balancePayments) > 0 && balancePayments[0].AmountCents > 0 {
+		data["balancePaidAmount"] = balancePayments[0].AmountCents
+		data["remainingAmount"] = balancePayments[0].RemainingCents
+	}
+	writeData(w, statusCode, data)
 }
 
 func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, tenantID, orderID int64) error {

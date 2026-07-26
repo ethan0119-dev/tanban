@@ -37,6 +37,20 @@
 .subtotal-line { color: var(--muted); font-size: 22rpx; }
 .total { display: flex; align-items: center; justify-content: space-between; padding-top: 28rpx; font-weight: var(--font-weight-semibold); }
 .total .price { font-size: 36rpx; }
+.payment-method-card .section-title { margin-bottom: 18rpx; }
+.balance-payment-row { display: flex; align-items: center; gap: 18rpx; padding: 18rpx 0; cursor: pointer; }
+.balance-payment-row.locked { cursor: default; opacity: .82; }
+.balance-payment-icon { display: flex; width: 62rpx; height: 62rpx; flex: none; align-items: center; justify-content: center; border-radius: 18rpx; background: var(--soft-primary); }
+.balance-payment-icon image { width: 34rpx; height: 34rpx; }
+.balance-payment-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.balance-payment-copy text:first-child { color: var(--ink); font-size: 27rpx; font-weight: var(--font-weight-semibold); }
+.balance-payment-copy text:last-child { color: var(--muted); font-size: 21rpx; }
+.balance-payment-amount { flex: none; color: var(--green); font-size: 24rpx; font-weight: var(--font-weight-semibold); }
+.balance-payment-check { display: flex; width: 38rpx; height: 38rpx; flex: none; align-items: center; justify-content: center; border: 2rpx solid var(--line); border-radius: 50%; color: var(--on-primary); box-sizing: border-box; font-size: 24rpx; }
+.balance-payment-check.selected { border-color: var(--green); background: var(--green); }
+.payment-split-tip { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 10rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: var(--soft-primary); }
+.payment-split-tip text:first-child { flex: none; color: var(--green); font-size: 22rpx; font-weight: var(--font-weight-semibold); }
+.payment-split-tip text:last-child { color: var(--muted); font-size: 21rpx; text-align: right; }
 .order-remark { display: flex; flex-direction: column; gap: 16rpx; }
 .order-remark-heading { display: flex; align-items: center; justify-content: space-between; font-weight: var(--font-weight-semibold); }
 .order-remark-heading text:last-child { color: var(--muted); font-size: 20rpx; font-weight: 400; }
