@@ -89,6 +89,14 @@ type orderItemDTO struct {
 	SubtotalCents  int64          `json:"subtotal_cents"`
 }
 
+func cashierActiveOrdersRequested(r *http.Request) bool {
+	raw := strings.TrimSpace(r.URL.Query().Get("cashier_active"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("cashierActive"))
+	}
+	return strings.EqualFold(raw, "true") || raw == "1"
+}
+
 func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
 	page, size, offset := pagination(r)
@@ -112,6 +120,12 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	if orderType != "" {
 		where += " AND order_type=?"
 		args = append(args, orderType)
+	}
+	if cashierActiveOrdersRequested(r) {
+		where += ` AND (
+			status IN ('PENDING_PAYMENT','PAID','ACCEPTED','PREPARING')
+			OR (status='READY' AND updated_at>=DATE_SUB(NOW(3),INTERVAL 1 DAY))
+		)`
 	}
 	keyword := strings.TrimSpace(r.URL.Query().Get("keyword"))
 	if len([]rune(keyword)) > 100 {

@@ -6,7 +6,7 @@ export const orderStatusMap: Record<OrderStatus, { text: string; color: string }
   PAID: { text: '已付款', color: 'processing' },
   ACCEPTED: { text: '已接单', color: 'blue' },
   PREPARING: { text: '制作中', color: 'warning' },
-  READY: { text: '待取餐', color: 'cyan' },
+  READY: { text: '请取餐', color: 'cyan' },
   COMPLETED: { text: '已完成', color: 'success' },
   CLOSED: { text: '已关闭', color: 'error' },
   REFUNDED: { text: '已退款', color: 'purple' },

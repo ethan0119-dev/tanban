@@ -12,6 +12,24 @@ import (
 	"github.com/ethan0119-dev/tanban/apps/api/internal/config"
 )
 
+func TestCompleteStaleReadyTakeoutOrders(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := New(db, config.Config{JWTSecret: "12345678901234567890123456789012"}, slog.Default())
+
+	mock.ExpectExec(`(?s)UPDATE orders.*order_type='TAKEOUT'.*status='READY'.*payment_status='PAID'.*INTERVAL 1 DAY`).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	server.completeStaleReadyTakeoutOrders(context.Background())
+
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestExpireOrderReservationReleasesInventoryAndKeepsLatePayableOrder(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

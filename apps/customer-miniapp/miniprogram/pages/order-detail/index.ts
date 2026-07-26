@@ -56,7 +56,7 @@ function decorateOrder(order: Order, payAfterOnlinePaymentEnabled: boolean): Ord
     statusMessage: paymentSucceeded
       ? "商家已收到订单，请留意制作进度"
       : canPay ? (paidAmount > 0 ? "订单已部分结账，请支付剩余金额；部分结账后不能继续加菜" : "订单已提交，可继续加菜；用餐结束后在此完成支付") : payAfterMeal ? "门店已关闭线上支付，请用餐结束后到收银台结账" : paymentPending ? "请勿重复付款，页面会自动刷新支付结果" : "商家尚未确认收款，请返回订单后重试或联系商家",
-    orderStatusText: payAfterMeal && !paymentSucceeded && orderStatus === "PAID" ? "已下单" : ({ PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "待取餐", COMPLETED: "已完成", CLOSED: "已关闭", CANCELED: "已取消", CANCELLED: "已取消", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[orderStatus] || "状态更新中",
+    orderStatusText: payAfterMeal && !paymentSucceeded && orderStatus === "PAID" ? "已下单" : ({ PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "请取餐", COMPLETED: "已完成", CLOSED: "已关闭", CANCELED: "已取消", CANCELLED: "已取消", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[orderStatus] || "状态更新中",
     paymentStatusText: ({ UNPAID: "待付款", PENDING: "确认中", CREATED: "待付款", PROCESSING: "确认中", SUCCEEDED: "支付成功", PAID: "支付成功", FAILED: "支付未完成", CLOSED: "已关闭", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款" } as Record<string, string>)[paymentStatus] || "状态更新中",
     displayTableName: order.tableName || order.table?.name || order.tableCode || order.table?.tableCode || "当前桌台",
     displayTableCode: order.tableCode || order.table?.tableCode || "",

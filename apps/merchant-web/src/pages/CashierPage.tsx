@@ -49,6 +49,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { orderStatusMap } from '../components/OrderStatusTag';
+import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowActionText } from '../features/orders/workflow';
 import { normalizeOrder } from '../features/storefront/model';
 import type { DashboardData, MerchantSettings, Order, OrderItem, TableBoardResponse, TableBoardTable } from '../types';
 import { dateTime, yuan } from '../utils/format';
@@ -338,6 +340,13 @@ function nextIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() || `cashier-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+export function cashierOrderStatusText(order: Pick<Order, 'status' | 'paymentStatus' | 'settlementMode'>): string {
+  if (order.paymentStatus === 'UNPAID') {
+    return order.settlementMode === 'PAY_AFTER' ? '待结账' : '待付款';
+  }
+  return orderStatusMap[order.status]?.text || order.status;
+}
+
 export function CashierPage({ previewMode = false }: { previewMode?: boolean }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -397,6 +406,26 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   }, [allTables, areaID, overdueTables, tableFilter]);
   const pendingAmount = unsettledTables.reduce((sum, table) => sum + Number(table.totalCents ?? 0) / 100, 0);
   const cartTotalCents = cart.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+  const canOperateUnpaidDineIn = Boolean(
+    selectedOrder
+    && mode === 'DINE_IN'
+    && selectedOrder.orderType === 'DINE_IN'
+    && selectedOrder.settlementMode === 'PAY_AFTER'
+    && selectedOrder.paymentStatus === 'UNPAID'
+    && Number(selectedOrder.paidAmount || 0) === 0,
+  );
+  const workflowAction = selectedOrder ? nextOrderWorkflowAction[selectedOrder.status] : undefined;
+  const workflowActionLabel = selectedOrder ? orderWorkflowActionText(selectedOrder.status, selectedOrder.orderType) : '';
+  const workflowActionEnabled = Boolean(
+    selectedOrder
+    && workflowAction
+    && canRunOrderWorkflowAction(selectedOrder.status, selectedOrder.settlementMode, selectedOrder.paymentStatus),
+  );
+  const canOpenSelectedTableOrder = Boolean(
+    mode === 'DINE_IN'
+    && selectedTable
+    && (!selectedTable.orderId || canOperateUnpaidDineIn),
+  );
 
   const loadOrder = useCallback(async (orderID: string | number) => {
     if (previewMode) {
@@ -417,27 +446,34 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       const cashierContext = await api.get<CashierContext>('/merchant/cashier/context');
       const [nextBoard, orderResult, rawDashboard, rawCatalog] = await Promise.all([
         api.get<TableBoardResponse>('/merchant/table-board'),
-        api.getList<Order>('/merchant/orders', { order_type: 'TAKEOUT', page: 1, page_size: 100 }),
+        api.getList<Order>('/merchant/orders', { order_type: 'TAKEOUT', cashier_active: true, page: 1, page_size: 100 }),
         api.get<DashboardData>('/merchant/dashboard'),
         api.get<unknown>(`/public/stores/${encodeURIComponent(cashierContext.storeCode)}/catalog`),
       ]);
       setContext(cashierContext);
       setBoard(nextBoard);
-      setTakeoutOrders(orderResult.items.map(normalizeOrder));
+      const nextTakeoutOrders = orderResult.items.map(normalizeOrder);
+      setTakeoutOrders(nextTakeoutOrders);
       setDashboard(normalizeDashboard(rawDashboard));
       setCatalog(normalizeCatalog(rawCatalog));
       setSelectedTable((current) => {
         if (!current) return nextBoard.areas.flatMap((area) => area.tables).find((table) => table.orderId) ?? nextBoard.areas[0]?.tables[0] ?? null;
         return nextBoard.areas.flatMap((area) => area.tables).find((table) => String(table.id) === String(current.id)) ?? null;
       });
-      if (selectedOrder?.id) await loadOrder(selectedOrder.id);
+      if (selectedOrder?.id) {
+        if (mode === 'TAKEOUT' && !nextTakeoutOrders.some((order) => String(order.id) === String(selectedOrder.id))) {
+          setSelectedOrder(null);
+        } else {
+          await loadOrder(selectedOrder.id);
+        }
+      }
     } catch (error) {
       message.error(errorMessage(error));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadOrder, message, previewMode, selectedOrder?.id]);
+  }, [loadOrder, message, mode, previewMode, selectedOrder?.id]);
 
   useEffect(() => {
     if (previewMode) return;
@@ -488,6 +524,17 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     void loadOrder(order.id);
   };
 
+  const switchMode = (nextMode: CashierMode) => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    setSelectedOrder(null);
+    if (nextMode === 'TAKEOUT') {
+      setSelectedTable(null);
+      return;
+    }
+    setSelectedTable(allTables.find((table) => table.orderId) ?? allTables[0] ?? null);
+  };
+
   const openOrdering = (nextMode: CashierMode, table?: TableBoardTable | null) => {
     if (nextMode === 'DINE_IN' && !table) {
       const freeTable = allTables.find((item) => item.state === 'UNOPENED');
@@ -500,6 +547,10 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     }
     if (nextMode === 'DINE_IN' && !table?.publicId) {
       message.error('桌台缺少公开点单标识，请在桌码管理中重新生成桌码');
+      return;
+    }
+    if (nextMode === 'DINE_IN' && table?.orderId && !canOperateUnpaidDineIn) {
+      message.warning('仅未开始收款的“先用餐后结账”堂食订单可以加菜');
       return;
     }
     setCartMode(nextMode);
@@ -789,11 +840,18 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const updateStatus = async (status: Order['status']) => {
     if (!selectedOrder) return;
+    const currentOrderID = selectedOrder.id;
     try {
       if (previewMode) {
         setSelectedOrder({ ...selectedOrder, status });
       } else {
-        setSelectedOrder(normalizeOrder(await api.post<Order>(`/merchant/orders/${selectedOrder.id}/status`, { status })));
+        const updated = normalizeOrder(await api.post<Order>(`/merchant/orders/${currentOrderID}/status`, { status }));
+        if (mode === 'TAKEOUT' && status === 'COMPLETED') {
+          setTakeoutOrders((current) => current.filter((order) => String(order.id) !== String(currentOrderID)));
+          setSelectedOrder(null);
+        } else {
+          setSelectedOrder(updated);
+        }
         await load(true);
       }
       message.success('订单状态已更新');
@@ -874,8 +932,8 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           <section className="cashier-board">
             <div className="cashier-mode-row">
               <div className="cashier-mode-tabs">
-                <button type="button" className={mode === 'DINE_IN' ? 'active' : ''} onClick={() => setMode('DINE_IN')}><TeamOutlined /><span>堂食点单</span></button>
-                <button type="button" className={mode === 'TAKEOUT' ? 'active' : ''} onClick={() => setMode('TAKEOUT')}><ShoppingOutlined /><span>带走点单</span></button>
+                <button type="button" className={mode === 'DINE_IN' ? 'active' : ''} onClick={() => switchMode('DINE_IN')}><TeamOutlined /><span>堂食点单</span></button>
+                <button type="button" className={mode === 'TAKEOUT' ? 'active' : ''} onClick={() => switchMode('TAKEOUT')}><ShoppingOutlined /><span>带走点单</span></button>
               </div>
               <div className="cashier-create-actions">
                 <Button icon={<PlusOutlined />} onClick={() => openOrdering('DINE_IN', selectedTable?.state === 'UNOPENED' ? selectedTable : null)}>新开桌</Button>
@@ -916,11 +974,11 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
               </>
             ) : (
               <div className="cashier-takeout-board">
-                <div className="cashier-takeout-head"><strong>带走订单</strong><span>按取餐号处理制作、出餐和结账</span><Button icon={<PlusOutlined />} onClick={() => openOrdering('TAKEOUT')}>新建带走单</Button></div>
+                <div className="cashier-takeout-head"><strong>带走订单</strong><span>按取餐号处理制作、出餐和结账</span></div>
                 <div className="cashier-takeout-grid">
                   {takeoutOrders.map((order) => (
                     <button type="button" className={`cashier-takeout-card status-${order.status.toLowerCase()} ${String(selectedOrder?.id) === String(order.id) ? 'selected' : ''}`} key={String(order.id)} onClick={() => selectTakeoutOrder(order)}>
-                      <div><span>取餐号</span><strong>#{order.pickupNo || '--'}</strong><Tag>{order.status === 'PENDING_PAYMENT' ? '待付款' : order.status === 'READY' ? '待取餐' : '制作中'}</Tag></div>
+                      <div><span>取餐号</span><strong>#{order.pickupNo || '--'}</strong><Tag>{cashierOrderStatusText(order)}</Tag></div>
                       <p>{order.items.map((item) => `${item.productName}×${item.quantity}`).join('、')}</p>
                       <footer><span>{dateTime(order.createdAt).slice(11, 16)}</span><b>{yuan(order.amount)}</b></footer>
                     </button>
@@ -936,7 +994,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
             <div className="cashier-order-card">
               <div className="cashier-order-panel">
                 <div className="cashier-order-hero">
-                <Tag color={selectedOrder?.paymentStatus === 'UNPAID' ? 'error' : 'success'}>{selectedOrder ? (selectedOrder.paymentStatus === 'UNPAID' ? (selectedOrder.settlementMode === 'PAY_AFTER' ? '待结账' : '待付款') : selectedOrder.status === 'READY' ? '待取餐' : '已付款') : '空闲'}</Tag>
+                <Tag color={selectedOrder?.paymentStatus === 'UNPAID' ? 'error' : selectedOrder?.status === 'READY' ? 'cyan' : 'success'}>{selectedOrder ? cashierOrderStatusText(selectedOrder) : '空闲'}</Tag>
                 <strong>{currentOrderLabel}</strong>
                 {mode === 'DINE_IN' && <span>{selectedOrder?.dinerCount || selectedTable?.capacity || 0} 位</span>}
                 {mode === 'DINE_IN' && selectedTable?.openedAt && <small>就餐时长 {previewMode ? previewElapsed(selectedTable.name) : elapsedLabel(selectedTable.openedAt)}</small>}
@@ -978,33 +1036,33 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
             <div className="cashier-action-dock">
               <div className="cashier-primary-actions">
-                <Button size="large" icon={<PlusOutlined />} disabled={mode !== 'DINE_IN' || !selectedTable} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedOrder ? '加菜' : '点单开台'}</Button>
+                <Button size="large" icon={<PlusOutlined />} disabled={!canOpenSelectedTableOrder} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedTable?.orderId ? '加菜' : '点单开台'}</Button>
                 <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={updateDinerCount}>修改人数</Button>
                 <Button size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
                 <Button size="large" type="primary" danger icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} loading={submitting} onClick={settle}>结账 {selectedOrder?.paymentStatus === 'UNPAID' ? yuan(selectedOrder.remainingAmount ?? selectedOrder.amount) : ''}</Button>
               </div>
               <div className="cashier-secondary-actions">
-                <Button icon={<RetweetOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={transferTable}>转台</Button>
-                <Button icon={<MergeCellsOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={mergeTable}>并台</Button>
-                <Button icon={<MinusOutlined />} disabled={!selectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
+                <Button icon={<RetweetOutlined />} disabled={!canOperateUnpaidDineIn} onClick={transferTable}>转台</Button>
+                <Button icon={<MergeCellsOutlined />} disabled={!canOperateUnpaidDineIn} onClick={mergeTable}>并台</Button>
+                <Button icon={<MinusOutlined />} disabled={!canOperateUnpaidDineIn} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
               </div>
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
-                    { key: 'transfer', icon: <RetweetOutlined />, label: '转台', disabled: !selectedOrder || mode !== 'DINE_IN', onClick: transferTable },
-                    { key: 'merge', icon: <MergeCellsOutlined />, label: '并台', disabled: !selectedOrder || mode !== 'DINE_IN', onClick: mergeTable },
-                    { key: 'return', icon: <MinusOutlined />, label: '退菜', disabled: !selectedOrder, onClick: () => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); } },
+                    { key: 'transfer', icon: <RetweetOutlined />, label: '转台', disabled: !canOperateUnpaidDineIn, onClick: transferTable },
+                    { key: 'merge', icon: <MergeCellsOutlined />, label: '并台', disabled: !canOperateUnpaidDineIn, onClick: mergeTable },
+                    { key: 'return', icon: <MinusOutlined />, label: '退菜', disabled: !canOperateUnpaidDineIn, onClick: () => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); } },
                   ],
                 }}
               >
                 <Button className="cashier-more-actions" icon={<MoreOutlined />}>更多操作</Button>
               </Dropdown>
-              {selectedOrder && selectedOrder.paymentStatus === 'PAID' && (
+              {selectedOrder && workflowAction && (
                 <div className="cashier-status-actions">
-                  {selectedOrder.status === 'PAID' && <Button block onClick={() => void updateStatus('PREPARING')}>开始制作</Button>}
-                  {selectedOrder.status === 'PREPARING' && <Button block onClick={() => void updateStatus('READY')}>完成制作 / 待取餐</Button>}
-                  {selectedOrder.status === 'READY' && <Button block onClick={() => void updateStatus('COMPLETED')}>完成订单</Button>}
+                  <Button type="primary" block disabled={!workflowActionEnabled} onClick={() => void updateStatus(workflowAction.status)}>
+                    {workflowActionEnabled ? workflowActionLabel : '请先结账，再完成订单/清台'}
+                  </Button>
                 </div>
               )}
             </div>

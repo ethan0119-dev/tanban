@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CashierPage } from './CashierPage';
+import { CashierPage, cashierOrderStatusText } from './CashierPage';
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
@@ -84,5 +84,18 @@ describe('cashier operations', () => {
     expect(screen.getByRole('button', { name: /B03/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /B06/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /A01/ })).toBeNull();
+  });
+
+  it('shows one takeout creation entry and accurate terminal status copy', () => {
+    renderCashier();
+    fireEvent.click(screen.getByRole('button', { name: /带走点单/ }));
+
+    expect(screen.getAllByRole('button', { name: /新建带走单/ })).toHaveLength(1);
+    expect(screen.getByText('请取餐')).toBeTruthy();
+    expect(cashierOrderStatusText({
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      settlementMode: 'PAY_BEFORE',
+    })).toBe('已完成');
   });
 });

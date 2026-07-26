@@ -24,9 +24,29 @@ func (s *Server) StartOrderExpirationWorker(ctx context.Context) {
 				return
 			case <-ticker.C:
 				s.reconcileExpiredOrderReservations(ctx)
+				s.completeStaleReadyTakeoutOrders(ctx)
 			}
 		}
 	}()
+}
+
+// completeStaleReadyTakeoutOrders keeps the short-lived "请取餐" queue useful
+// without leaving already served pickup orders active forever. Staff can
+// complete an order immediately; otherwise the system closes the pickup
+// lifecycle after it has remained ready for 24 hours.
+func (s *Server) completeStaleReadyTakeoutOrders(ctx context.Context) {
+	result, err := s.DB.ExecContext(ctx, `UPDATE orders
+		SET status='COMPLETED',completed_at=COALESCE(completed_at,NOW(3))
+		WHERE order_type='TAKEOUT' AND status='READY' AND payment_status='PAID'
+		  AND updated_at<DATE_SUB(NOW(3),INTERVAL 1 DAY)
+		LIMIT 500`)
+	if err != nil {
+		s.Logger.Error("complete stale ready takeout orders", "error", err)
+		return
+	}
+	if count, countErr := result.RowsAffected(); countErr == nil && count > 0 {
+		s.Logger.Info("completed stale ready takeout orders", "count", count)
+	}
 }
 
 func (s *Server) reconcileExpiredOrderReservations(ctx context.Context) {

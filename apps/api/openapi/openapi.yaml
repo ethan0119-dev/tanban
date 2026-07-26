@@ -549,6 +549,10 @@ paths:
         - in: query
           name: endAt
           schema: {type: string, format: date-time}
+        - in: query
+          name: cashier_active
+          schema: {type: boolean}
+          description: 收银台带走订单视图；仅返回未结束订单，以及进入“请取餐”不足 24 小时的订单
       responses: {'200': {description: Order page}}
   /merchant/pickup-display:
     get:

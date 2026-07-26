@@ -48,6 +48,7 @@ import { canManageMerchant } from '../auth/permissions';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
 import { ordersForBusinessType } from '../features/orders/model';
+import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowActionText } from '../features/orders/workflow';
 import { merchantFeatureCopy } from '../features/availability/copy';
 import { normalizeOrder } from '../features/storefront/model';
 import type { ListResult, Order, OrderBusinessType, OrderItem, OrderReturnRequest, OrderStatus, OrderType, TableBoardResponse, TableBoardTable } from '../types';
@@ -58,18 +59,14 @@ const statusTabs: Array<{ key: 'ALL' | OrderStatus; label: string }> = [
   { key: 'ALL', label: '全部' },
   { key: 'PENDING_PAYMENT', label: '待付款' },
   { key: 'PAID', label: '已付款' },
+  { key: 'ACCEPTED', label: '已接单' },
   { key: 'PREPARING', label: '制作中' },
-  { key: 'READY', label: '待取餐' },
+  { key: 'READY', label: '请取餐' },
   { key: 'COMPLETED', label: '已完成' },
   { key: 'CLOSED', label: '已关闭' },
 ];
 
-const timelineStatuses: OrderStatus[] = ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'COMPLETED'];
-const nextStatus: Partial<Record<OrderStatus, { status: OrderStatus; text: string }>> = {
-  PAID: { status: 'PREPARING', text: '开始制作' },
-  PREPARING: { status: 'READY', text: '通知取餐' },
-  READY: { status: 'COMPLETED', text: '完成订单' },
-};
+const timelineStatuses: OrderStatus[] = ['PENDING_PAYMENT', 'PAID', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED'];
 
 function orderSceneLabel(order: Order): string {
   if (order.orderType === 'DINE_IN') return order.tableAreaName || '店内桌码';
@@ -570,9 +567,9 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
               <Button size="large" loading={actionLoading} onClick={() => settleOffline('EXTERNAL')}>确认系统外支付</Button>
               <Button type="primary" size="large" loading={actionLoading} onClick={() => settleOffline('CASH')}>现金结账完毕</Button>
             </>}
-            {nextStatus[selected.status] && !(nextStatus[selected.status]?.status === 'COMPLETED' && selected.settlementMode === 'PAY_AFTER' && selected.paymentStatus === 'UNPAID') && (
-              <Button type="primary" size="large" loading={actionLoading} icon={<SyncOutlined />} onClick={() => void updateStatus(nextStatus[selected.status]!.status)}>
-                {nextStatus[selected.status]!.text}
+            {canRunOrderWorkflowAction(selected.status, selected.settlementMode, selected.paymentStatus) && nextOrderWorkflowAction[selected.status] && (
+              <Button type="primary" size="large" loading={actionLoading} icon={<SyncOutlined />} onClick={() => void updateStatus(nextOrderWorkflowAction[selected.status]!.status)}>
+                {orderWorkflowActionText(selected.status, selected.orderType)}
               </Button>
             )}
           </div>

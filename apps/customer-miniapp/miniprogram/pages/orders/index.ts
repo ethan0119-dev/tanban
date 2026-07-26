@@ -20,7 +20,7 @@ interface OrderView extends Order {
 
 const currentStatuses = new Set(["PENDING_PAYMENT", "PAID", "ACCEPTED", "PREPARING", "READY"]);
 const statusText: Record<string, string> = {
-  PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "待取餐",
+  PENDING_PAYMENT: "待付款", PAID: "已付款", ACCEPTED: "商家已接单", PREPARING: "制作中", READY: "请取餐",
   COMPLETED: "已完成", CLOSED: "已关闭", CANCELED: "已取消", CANCELLED: "已取消", REFUNDED: "已退款", PARTIALLY_REFUNDED: "部分退款",
 };
 
