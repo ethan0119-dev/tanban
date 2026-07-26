@@ -8,6 +8,7 @@ import {
   DashboardOutlined,
   DollarOutlined,
   LogoutOutlined,
+  LockOutlined,
   MenuOutlined,
   MergeCellsOutlined,
   MinusOutlined,
@@ -50,6 +51,14 @@ import { useNavigate } from 'react-router-dom';
 import { api, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { orderStatusMap } from '../components/OrderStatusTag';
+import {
+  addItemsBlockedReason,
+  canAddItemsToOrder,
+  canOperateUnpaidPayAfterOrder,
+  canReturnItemsFromOrder,
+  dineInOperationBlockedReason,
+  isMergeableTableBill,
+} from '../features/orders/editability';
 import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowActionText } from '../features/orders/workflow';
 import { normalizeOrder } from '../features/storefront/model';
 import type { DashboardData, MerchantSettings, Order, OrderItem, TableBoardResponse, TableBoardTable } from '../types';
@@ -145,6 +154,7 @@ const tableMeta: Record<TableBoardTable['state'], { label: string; className: st
   PENDING_PAYMENT: { label: '待付款', className: 'is-pending-payment' },
   SETTLED: { label: '已结账', className: 'is-settled' },
   DINING: { label: '制作中', className: 'is-dining' },
+  READY: { label: '待清台', className: 'is-ready' },
   UNSETTLED: { label: '待结账', className: 'is-unsettled' },
 };
 
@@ -155,6 +165,7 @@ const demoOrder: Order = {
   paymentStatus: 'UNPAID',
   settlementMode: 'PAY_AFTER',
   additionCount: 3,
+  canAddItems: true,
   dinerCount: 3,
   amount: 132,
   remainingAmount: 132,
@@ -206,7 +217,7 @@ const previewBoard: TableBoardResponse = {
       name: '大厅',
       tables: [
         fixtureTable(1, 'A01', 4, 'UNOPENED'),
-        fixtureTable(2, 'A02', 2, 'SETTLED', { id: 5028, orderNo: 'D260725151122', status: 'PAID', dinerCount: 2 }),
+        fixtureTable(2, 'A02', 2, 'READY', { id: 5028, orderNo: 'D260725151122', status: 'READY', paymentStatus: 'PAID', settlementMode: 'PAY_BEFORE', dinerCount: 2 }),
         fixtureTable(3, 'A03', 4, 'UNOPENED'),
         fixtureTable(4, 'A05', 4, 'UNOPENED'),
         fixtureTable(5, 'B03', 4, 'UNSETTLED', demoOrder),
@@ -406,14 +417,19 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   }, [allTables, areaID, overdueTables, tableFilter]);
   const pendingAmount = unsettledTables.reduce((sum, table) => sum + Number(table.totalCents ?? 0) / 100, 0);
   const cartTotalCents = cart.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
-  const canOperateUnpaidDineIn = Boolean(
-    selectedOrder
-    && mode === 'DINE_IN'
-    && selectedOrder.orderType === 'DINE_IN'
-    && selectedOrder.settlementMode === 'PAY_AFTER'
-    && selectedOrder.paymentStatus === 'UNPAID'
-    && Number(selectedOrder.paidAmount || 0) === 0,
-  );
+  const canOperateUnpaidDineIn = mode === 'DINE_IN' && canOperateUnpaidPayAfterOrder(selectedOrder);
+  const canAddSelectedOrder = mode === 'DINE_IN' && canAddItemsToOrder(selectedOrder);
+  const canReturnSelectedOrder = mode === 'DINE_IN' && canReturnItemsFromOrder(selectedOrder);
+  const addBlockedReason = selectedTable?.orderId ? addItemsBlockedReason(selectedOrder) : '';
+  const transferableTables = allTables.filter((table) => !table.orderId);
+  const mergeableTables = allTables.filter((table) => isMergeableTableBill(table, selectedOrder?.id));
+  const transferBlockedReason = !canOperateUnpaidDineIn
+    ? dineInOperationBlockedReason('TRANSFER', selectedOrder)
+    : transferableTables.length === 0 ? '当前没有可转入的空闲桌台' : '';
+  const mergeBlockedReason = !canOperateUnpaidDineIn
+    ? dineInOperationBlockedReason('MERGE', selectedOrder)
+    : mergeableTables.length === 0 ? '当前没有其他可合并的未收款后付账桌台' : '';
+  const returnBlockedReason = !canReturnSelectedOrder ? dineInOperationBlockedReason('RETURN', selectedOrder) : '';
   const workflowAction = selectedOrder ? nextOrderWorkflowAction[selectedOrder.status] : undefined;
   const workflowActionLabel = selectedOrder ? orderWorkflowActionText(selectedOrder.status, selectedOrder.orderType) : '';
   const workflowActionEnabled = Boolean(
@@ -424,7 +440,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const canOpenSelectedTableOrder = Boolean(
     mode === 'DINE_IN'
     && selectedTable
-    && (!selectedTable.orderId || canOperateUnpaidDineIn),
+    && (!selectedTable.orderId || canAddSelectedOrder),
   );
 
   const loadOrder = useCallback(async (orderID: string | number) => {
@@ -549,8 +565,8 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       message.error('桌台缺少公开点单标识，请在桌码管理中重新生成桌码');
       return;
     }
-    if (nextMode === 'DINE_IN' && table?.orderId && !canOperateUnpaidDineIn) {
-      message.warning('仅未开始收款的“先用餐后结账”堂食订单可以加菜');
+    if (nextMode === 'DINE_IN' && table?.orderId && !canAddSelectedOrder) {
+      message.warning(addItemsBlockedReason(selectedOrder));
       return;
     }
     setCartMode(nextMode);
@@ -652,11 +668,20 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     setSubmitting(true);
     try {
       if (previewMode) {
-        message.success(cartMode === 'DINE_IN' && cartTable?.orderId ? '加菜单已提交并打印' : '订单已创建并打印');
+        if (cartMode === 'DINE_IN' && cartTable?.orderId && selectedOrder) {
+          setSelectedOrder({
+            ...selectedOrder,
+            additionCount: Number(selectedOrder.additionCount || 1) + 1,
+            amount: selectedOrder.amount + cartTotalCents / 100,
+            remainingAmount: Number(selectedOrder.remainingAmount ?? selectedOrder.amount) + cartTotalCents / 100,
+            status: selectedOrder.status === 'READY' ? 'PAID' : selectedOrder.status,
+          });
+        }
+        message.success(cartMode === 'DINE_IN' && cartTable?.orderId ? '加菜单已提交，账单已更新' : '订单已创建并打印');
         setCartOpen(false);
         return;
       }
-      await api.postIdempotent(`/public/stores/${encodeURIComponent(context.storeCode)}/orders`, {
+      const updated = normalizeOrder(await api.postIdempotent<Order>(`/public/stores/${encodeURIComponent(context.storeCode)}/orders`, {
         fulfillmentType: cartMode === 'DINE_IN' ? 'DINE_IN' : 'PICKUP',
         orderType: cartMode,
         dinerCount: cartMode === 'DINE_IN' ? Math.max(1, cartTable?.dinerCount || 1) : 1,
@@ -670,8 +695,11 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           modifiers: item.modifiers,
           itemRemark: item.itemRemark,
         })),
-      }, nextIdempotencyKey());
-      message.success(cartMode === 'DINE_IN' && cartTable?.orderId ? '加菜单已提交并打印' : '订单已创建并打印');
+      }, nextIdempotencyKey()));
+      setSelectedOrder(updated);
+      message.success(cartMode === 'DINE_IN' && cartTable?.orderId
+        ? `第 ${Math.max(Number(updated.additionCount || 1) - 1, 1)} 次加菜已提交，账单已更新`
+        : '订单已创建并打印');
       setCartOpen(false);
       await load(true);
     } catch (error) {
@@ -765,7 +793,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const transferTable = () => {
     if (!selectedOrder) return;
-    const options = allTables.filter((table) => !table.orderId).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.id) }));
+    const options = transferableTables.map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.id) }));
     let target = options[0]?.value;
     modal.confirm({
       title: '转台',
@@ -791,7 +819,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const mergeTable = () => {
     if (!selectedOrder) return;
-    const options = allTables.filter((table) => table.orderId && String(table.orderId) !== String(selectedOrder.id)).map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.orderId) }));
+    const options = mergeableTables.map((table) => ({ label: `${table.areaName} · ${table.name}`, value: String(table.orderId) }));
     let sourceOrderID = options[0]?.value;
     modal.confirm({
       title: '并台',
@@ -936,8 +964,9 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                 <button type="button" className={mode === 'TAKEOUT' ? 'active' : ''} onClick={() => switchMode('TAKEOUT')}><ShoppingOutlined /><span>带走点单</span></button>
               </div>
               <div className="cashier-create-actions">
-                <Button icon={<PlusOutlined />} onClick={() => openOrdering('DINE_IN', selectedTable?.state === 'UNOPENED' ? selectedTable : null)}>新开桌</Button>
-                <Button icon={<PlusOutlined />} onClick={() => openOrdering('TAKEOUT')}>新建带走单</Button>
+                {mode === 'DINE_IN'
+                  ? <Button className="is-dine-in" icon={<PlusOutlined />} onClick={() => openOrdering('DINE_IN', selectedTable?.state === 'UNOPENED' ? selectedTable : null)}>新开桌</Button>
+                  : <Button className="is-takeout" icon={<PlusOutlined />} onClick={() => openOrdering('TAKEOUT')}>新建带走单</Button>}
               </div>
             </div>
 
@@ -1035,29 +1064,44 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
             </div>
 
             <div className="cashier-action-dock">
-              <div className="cashier-primary-actions">
-                <Button size="large" icon={<PlusOutlined />} disabled={!canOpenSelectedTableOrder} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedTable?.orderId ? '加菜' : '点单开台'}</Button>
-                <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder || mode !== 'DINE_IN'} onClick={updateDinerCount}>修改人数</Button>
-                <Button size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
+              <div className={`cashier-primary-actions ${mode === 'TAKEOUT' ? 'is-takeout' : ''}`}>
+                {mode === 'DINE_IN' && (
+                  <Tooltip title={!canOpenSelectedTableOrder ? addBlockedReason : ''}>
+                    <span className="cashier-action-wrapper">
+                      <Button size="large" icon={<PlusOutlined />} disabled={!canOpenSelectedTableOrder} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedTable?.orderId ? '加菜' : '点单开台'}</Button>
+                    </span>
+                  </Tooltip>
+                )}
+                {mode === 'DINE_IN' && <Button size="large" icon={<TeamOutlined />} disabled={!selectedOrder} onClick={updateDinerCount}>修改人数</Button>}
+                <Button className="cashier-action-print" size="large" icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印客户联</Button>
                 <Button size="large" type="primary" danger icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} loading={submitting} onClick={settle}>结账 {selectedOrder?.paymentStatus === 'UNPAID' ? yuan(selectedOrder.remainingAmount ?? selectedOrder.amount) : ''}</Button>
               </div>
-              <div className="cashier-secondary-actions">
-                <Button icon={<RetweetOutlined />} disabled={!canOperateUnpaidDineIn} onClick={transferTable}>转台</Button>
-                <Button icon={<MergeCellsOutlined />} disabled={!canOperateUnpaidDineIn} onClick={mergeTable}>并台</Button>
-                <Button icon={<MinusOutlined />} disabled={!canOperateUnpaidDineIn} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>
-              </div>
-              <Dropdown
+              {mode === 'DINE_IN' && selectedTable?.orderId && !canAddSelectedOrder && (
+                <div className="cashier-order-lock-note"><LockOutlined />{addBlockedReason}</div>
+              )}
+              {mode === 'DINE_IN' && <div className="cashier-secondary-actions">
+                <Tooltip title={transferBlockedReason}>
+                  <span className="cashier-action-wrapper"><Button icon={<RetweetOutlined />} disabled={Boolean(transferBlockedReason)} onClick={transferTable}>转台</Button></span>
+                </Tooltip>
+                <Tooltip title={mergeBlockedReason}>
+                  <span className="cashier-action-wrapper"><Button icon={<MergeCellsOutlined />} disabled={Boolean(mergeBlockedReason)} onClick={mergeTable}>并台</Button></span>
+                </Tooltip>
+                <Tooltip title={returnBlockedReason}>
+                  <span className="cashier-action-wrapper"><Button icon={<MinusOutlined />} disabled={!canReturnSelectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button></span>
+                </Tooltip>
+              </div>}
+              {mode === 'DINE_IN' && <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
-                    { key: 'transfer', icon: <RetweetOutlined />, label: '转台', disabled: !canOperateUnpaidDineIn, onClick: transferTable },
-                    { key: 'merge', icon: <MergeCellsOutlined />, label: '并台', disabled: !canOperateUnpaidDineIn, onClick: mergeTable },
-                    { key: 'return', icon: <MinusOutlined />, label: '退菜', disabled: !canOperateUnpaidDineIn, onClick: () => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); } },
+                    { key: 'transfer', icon: <RetweetOutlined />, label: transferBlockedReason ? `转台（${transferBlockedReason}）` : '转台', disabled: Boolean(transferBlockedReason), onClick: transferTable },
+                    { key: 'merge', icon: <MergeCellsOutlined />, label: mergeBlockedReason ? `并台（${mergeBlockedReason}）` : '并台', disabled: Boolean(mergeBlockedReason), onClick: mergeTable },
+                    { key: 'return', icon: <MinusOutlined />, label: returnBlockedReason ? `退菜（${returnBlockedReason}）` : '退菜', disabled: !canReturnSelectedOrder, onClick: () => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); } },
                   ],
                 }}
               >
                 <Button className="cashier-more-actions" icon={<MoreOutlined />}>更多操作</Button>
-              </Dropdown>
+              </Dropdown>}
               {selectedOrder && workflowAction && (
                 <div className="cashier-status-actions">
                   <Button type="primary" block disabled={!workflowActionEnabled} onClick={() => void updateStatus(workflowAction.status)}>

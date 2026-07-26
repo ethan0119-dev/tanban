@@ -79,6 +79,7 @@ describe('cashier operations', () => {
   it('filters the table board from operational alerts and never invents overdue counts', () => {
     renderCashier();
     expect(screen.getByRole('button', { name: /1单超时待取/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /A02.*待清台/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /3桌待结账/ }));
     expect(screen.getByRole('button', { name: /B03/ })).toBeTruthy();
@@ -86,12 +87,21 @@ describe('cashier operations', () => {
     expect(screen.queryByRole('button', { name: /A01/ })).toBeNull();
   });
 
-  it('shows one takeout creation entry and accurate terminal status copy', () => {
+  it('shows only the creation entry for the active scene and never offers additions on takeout orders', () => {
     renderCashier();
+    expect(screen.getAllByRole('button', { name: /新开桌/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /新建带走单/ })).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: /带走点单/ }));
 
     expect(screen.getAllByRole('button', { name: /新建带走单/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /新开桌/ })).toBeNull();
     expect(screen.getByText('请取餐')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /038/ }));
+    expect(screen.queryByRole('button', { name: /点单开台/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /加菜/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /修改人数/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /打印客户联/ })).toBeTruthy();
     expect(cashierOrderStatusText({
       status: 'COMPLETED',
       paymentStatus: 'PAID',

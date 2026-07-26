@@ -78,6 +78,7 @@ export interface Order {
   paymentStatus?: 'UNPAID' | 'PENDING' | 'PAID' | 'SUCCEEDED' | 'FAILED' | 'CLOSED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
   settlementMode?: 'PAY_BEFORE' | 'PAY_AFTER';
   additionCount?: number;
+  canAddItems?: boolean;
   dinerCount?: number;
   memberLevelName?: string;
   memberDiscount?: number;
@@ -509,7 +510,7 @@ export interface TableBoardTable {
   name: string;
   tableCode: string;
   capacity: number;
-  state: 'UNOPENED' | 'PENDING_PAYMENT' | 'SETTLED' | 'DINING' | 'UNSETTLED';
+  state: 'UNOPENED' | 'PENDING_PAYMENT' | 'SETTLED' | 'DINING' | 'READY' | 'UNSETTLED';
   orderId?: Id;
   orderNo?: string;
   orderStatus?: string;
@@ -519,6 +520,8 @@ export interface TableBoardTable {
   dinerCount?: number;
   customerName?: string;
   totalCents?: number;
+  paidCents?: number;
+  paymentLocked?: boolean;
   openedAt?: string;
 }
 

@@ -50,6 +50,24 @@ func validDineInOperationOrder(orderType, settlementMode, paymentStatus, status 
 		paidCents == 0 && validStatus(status, "PAID", "ACCEPTED", "PREPARING", "READY")
 }
 
+func validDineInItemChangeOrder(orderType, settlementMode, paymentStatus, status string, paidCents int64) bool {
+	if orderType != orderTypeDineIn || paymentStatus != "UNPAID" || paidCents != 0 {
+		return false
+	}
+	if settlementMode == "PAY_BEFORE" {
+		return status == "PENDING_PAYMENT"
+	}
+	return settlementMode == "PAY_AFTER" && validStatus(status, "PAID", "ACCEPTED", "PREPARING", "READY")
+}
+
+func earlierDineInStatus(left, right string) string {
+	rank := map[string]int{"PAID": 0, "ACCEPTED": 1, "PREPARING": 2, "READY": 3}
+	if rank[right] < rank[left] {
+		return right
+	}
+	return left
+}
+
 func (s *Server) transferOrderTable(w http.ResponseWriter, r *http.Request) {
 	orderID, ok := pathID(w, r, "orderID")
 	if !ok {
@@ -89,6 +107,17 @@ func (s *Server) transferOrderTable(w http.ResponseWriter, r *http.Request) {
 	}
 	if !validDineInOperationOrder(orderType, settlementMode, paymentStatus, status, paidCents) {
 		writeError(w, http.StatusConflict, "ORDER_NOT_TRANSFERABLE", "仅未收款的后付账堂食订单可以转台")
+		return
+	}
+	var activePayment int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM payment_transactions
+		WHERE tenant_id=? AND order_id=? AND status IN ('CREATING','PENDING','SUCCESS')`,
+		actor.TenantID, orderID).Scan(&activePayment); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if activePayment > 0 {
+		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", "订单已开始支付，请确认支付结果后再转台")
 		return
 	}
 	if currentTableID == input.TargetTableID {
@@ -202,7 +231,7 @@ func (s *Server) mergeDineInOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	var pending int
 	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM payment_transactions WHERE tenant_id=? AND order_id IN (?,?)
-		AND status IN ('CREATING','PENDING')`, actor.TenantID, targetOrderID, input.SourceOrderID).Scan(&pending); err != nil {
+		AND status IN ('CREATING','PENDING','SUCCESS')`, actor.TenantID, targetOrderID, input.SourceOrderID).Scan(&pending); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -240,11 +269,13 @@ func (s *Server) mergeDineInOrders(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
+	mergedStatus := earlierDineInStatus(target.status, source.status)
 	if _, err = tx.ExecContext(r.Context(), `UPDATE orders SET total_cents=total_cents+?,merchandise_subtotal_cents=merchandise_subtotal_cents+?,
 		store_promotion_discount_cents=store_promotion_discount_cents+?,coupon_discount_cents=coupon_discount_cents+?,
-		member_discount_cents=member_discount_cents+?,addition_count=addition_count+?,diner_count=diner_count+?,updated_at=NOW(3)
+		member_discount_cents=member_discount_cents+?,addition_count=addition_count+?,diner_count=diner_count+?,
+		status=?,updated_at=NOW(3)
 		WHERE id=? AND tenant_id=?`, source.total, source.merchandise, source.storeDiscount, source.couponDiscount,
-		source.memberDiscount, source.additions, source.diners, targetOrderID, actor.TenantID); err != nil {
+		source.memberDiscount, source.additions, source.diners, mergedStatus, targetOrderID, actor.TenantID); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -435,7 +466,13 @@ func (s *Server) createOrderReturnRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 	actor := currentIdentity(r.Context())
-	tx, err := s.DB.BeginTx(r.Context(), nil)
+	conn, release, err := s.acquirePaymentOrderLock(r.Context(), actor.TenantID, orderID)
+	if err != nil {
+		writeError(w, http.StatusConflict, "ORDER_OPERATION_IN_PROGRESS", err.Error())
+		return
+	}
+	defer release()
+	tx, err := conn.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -449,8 +486,19 @@ func (s *Server) createOrderReturnRequest(w http.ResponseWriter, r *http.Request
 		handleSQLError(w, err)
 		return
 	}
-	if !validDineInOperationOrder(orderType, settlementMode, paymentStatus, status, paidCents) {
-		writeError(w, http.StatusConflict, "ORDER_NOT_RETURNABLE", "仅未开始收款的后付账堂食订单可以申请退菜")
+	if !validDineInItemChangeOrder(orderType, settlementMode, paymentStatus, status, paidCents) {
+		writeError(w, http.StatusConflict, "ORDER_NOT_RETURNABLE", "仅未开始收款的堂食订单可以申请退菜")
+		return
+	}
+	var activePayment int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM payment_transactions
+		WHERE tenant_id=? AND order_id=? AND status IN ('CREATING','PENDING','SUCCESS')`,
+		actor.TenantID, orderID).Scan(&activePayment); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if activePayment > 0 {
+		writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", "订单已开始支付，请确认支付结果后再退菜")
 		return
 	}
 	var skuID, unitPrice int64
@@ -575,8 +623,19 @@ func (s *Server) reviewOrderReturnRequest(w http.ResponseWriter, r *http.Request
 	}
 	targetStatus := "REJECTED"
 	if input.Action == "APPROVE" {
-		if !validDineInOperationOrder(orderType, settlementMode, paymentStatus, orderStatus, paidCents) {
+		if !validDineInItemChangeOrder(orderType, settlementMode, paymentStatus, orderStatus, paidCents) {
 			writeError(w, http.StatusConflict, "ORDER_NOT_RETURNABLE", "订单已开始收款或已关闭，不能再批准退菜")
+			return
+		}
+		var activePayment int
+		if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM payment_transactions
+			WHERE tenant_id=? AND order_id=? AND status IN ('CREATING','PENDING','SUCCESS')`,
+			actor.TenantID, orderID).Scan(&activePayment); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if activePayment > 0 {
+			writeError(w, http.StatusConflict, "PAYMENT_IN_PROGRESS", "订单已开始支付，不能再批准退菜")
 			return
 		}
 		var currentQuantity, orderQuantity int

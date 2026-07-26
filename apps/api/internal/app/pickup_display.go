@@ -60,10 +60,14 @@ func (s *Server) getPickupDisplay(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT id,pickup_code,status,
 		DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s'),DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM orders
-		WHERE tenant_id=? AND store_id=? AND order_type='TAKEOUT' AND business_date=?
-		  AND status IN ('PAID','ACCEPTED','PREPARING','READY') AND pickup_code<>''
+		WHERE tenant_id=? AND store_id=? AND order_type='TAKEOUT'
+		  AND (
+		    status IN ('PAID','ACCEPTED','PREPARING')
+		    OR (status='READY' AND updated_at>=DATE_SUB(NOW(3), INTERVAL 1 DAY))
+		  )
+		  AND pickup_code<>''
 		ORDER BY CASE WHEN status='READY' THEN 1 ELSE 0 END,updated_at,pickup_sequence,id`,
-		actor.TenantID, storeID, state.BusinessDate)
+		actor.TenantID, storeID)
 	if err != nil {
 		handleSQLError(w, err)
 		return

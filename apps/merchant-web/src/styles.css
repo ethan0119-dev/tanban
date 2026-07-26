@@ -302,6 +302,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .table-status-card:disabled { cursor: default; }
 .table-status-card.state-opened { border-top: 4px solid #52c7a5; }
 .table-status-card.state-dining { border-top: 4px solid #faad14; }
+.table-status-card.state-ready { border-top: 4px solid #7656a8; background: #fbf9ff; }
 .table-status-card.state-unsettled { border-top: 4px solid #ff4d4f; background: #fff8f7; }
 .table-status-card.state-unopened { border-top: 4px solid #b8b8b8; }
 .table-status-card-head { display: flex; justify-content: space-between; gap: 8px; }

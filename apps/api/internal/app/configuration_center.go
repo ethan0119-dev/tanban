@@ -351,6 +351,8 @@ type tableBoardTable struct {
 	DinerCount     int    `json:"dinerCount,omitempty"`
 	CustomerName   string `json:"customerName,omitempty"`
 	TotalCents     int64  `json:"totalCents,omitempty"`
+	PaidCents      int64  `json:"paidCents,omitempty"`
+	PaymentLocked  bool   `json:"paymentLocked,omitempty"`
 	OpenedAt       string `json:"openedAt,omitempty"`
 }
 
@@ -369,7 +371,9 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.public_scene,t.area_id,a.name,t.name,t.table_code,t.capacity,
 		COALESCE(o.id,0),COALESCE(o.order_no,''),COALESCE(o.status,''),COALESCE(o.payment_status,''),
 		COALESCE(o.settlement_mode_snapshot,''),COALESCE(o.addition_count,0),COALESCE(o.diner_count,0),
-		COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),
+		COALESCE(o.customer_name,''),COALESCE(o.total_cents,0),COALESCE(o.paid_cents,0),
+		EXISTS(SELECT 1 FROM payment_transactions p WHERE p.tenant_id=o.tenant_id AND p.order_id=o.id
+		  AND p.status IN ('CREATING','PENDING','SUCCESS')),
 		COALESCE(DATE_FORMAT(o.created_at,'%Y-%m-%d %H:%i:%s'),'')
 		FROM table_codes t JOIN table_areas a ON a.id=t.area_id AND a.tenant_id=t.tenant_id AND a.store_id=t.store_id
 		LEFT JOIN orders o ON o.id=(SELECT o2.id FROM orders o2 WHERE o2.tenant_id=t.tenant_id AND o2.store_id=t.store_id
@@ -390,7 +394,8 @@ func (s *Server) getMerchantTableBoard(w http.ResponseWriter, r *http.Request) {
 		var item tableBoardTable
 		if err = rows.Scan(&item.ID, &item.PublicID, &item.AreaID, &item.AreaName, &item.Name, &item.TableCode, &item.Capacity,
 			&item.OrderID, &item.OrderNo, &item.OrderStatus, &item.PaymentStatus, &item.SettlementMode,
-			&item.AdditionCount, &item.DinerCount, &item.CustomerName, &item.TotalCents, &item.OpenedAt); err != nil {
+			&item.AdditionCount, &item.DinerCount, &item.CustomerName, &item.TotalCents, &item.PaidCents,
+			&item.PaymentLocked, &item.OpenedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -416,6 +421,9 @@ func tableBoardState(orderStatus, paymentStatus, settlementMode string) string {
 	}
 	if settlementMode == "PAY_AFTER" && paymentStatus == "UNPAID" {
 		return "UNSETTLED"
+	}
+	if orderStatus == "READY" {
+		return "READY"
 	}
 	if orderStatus == "PENDING_PAYMENT" {
 		return "PENDING_PAYMENT"

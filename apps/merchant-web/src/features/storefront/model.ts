@@ -73,6 +73,9 @@ export function normalizeOrder(value: Order): Order {
     paymentStatus: stringValue(value.paymentStatus, raw.payment_status).toUpperCase() as Order['paymentStatus'],
     settlementMode: stringValue(value.settlementMode, raw.settlement_mode, raw.settlement_mode_snapshot).toUpperCase() as Order['settlementMode'],
     additionCount: numberValue(value.additionCount, raw.addition_count),
+    canAddItems: raw.canAddItems !== undefined || raw.can_add_items !== undefined
+      ? Boolean(raw.canAddItems ?? raw.can_add_items)
+      : value.canAddItems,
     dinerCount: numberValue(value.dinerCount, raw.diner_count),
     memberLevelName: stringValue(value.memberLevelName, raw.member_level_name, raw.member_level_name_snapshot) || undefined,
     memberDiscount: raw.member_discount_cents !== undefined ? Number(raw.member_discount_cents) / 100 : numberValue(value.memberDiscount),

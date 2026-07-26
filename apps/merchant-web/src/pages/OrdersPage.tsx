@@ -36,6 +36,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -47,6 +48,12 @@ import { useAuth } from '../auth/AuthContext';
 import { canManageMerchant } from '../auth/permissions';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
+import {
+  canOperateUnpaidPayAfterOrder,
+  canReturnItemsFromOrder,
+  dineInOperationBlockedReason,
+  isMergeableTableBill,
+} from '../features/orders/editability';
 import { ordersForBusinessType } from '../features/orders/model';
 import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowActionText } from '../features/orders/workflow';
 import { merchantFeatureCopy } from '../features/availability/copy';
@@ -420,7 +427,12 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
 
   const boardTables = useMemo(() => tableBoard?.areas.flatMap((area) => area.tables.map((table) => ({ ...table, areaName: area.name }))) || [], [tableBoard]);
   const transferableTables = boardTables.filter((table) => !table.orderId && String(table.id) !== String(selected?.tableCodeId));
-  const mergeableOrders = boardTables.filter((table) => table.orderId && String(table.orderId) !== String(selected?.id));
+  const mergeableOrders = boardTables.filter((table) => isMergeableTableBill(table, selected?.id));
+  const canOperateSelectedTable = canOperateUnpaidPayAfterOrder(selected);
+  const canReturnSelectedItems = canReturnItemsFromOrder(selected);
+  const transferBlockedReason = canOperateSelectedTable ? '' : dineInOperationBlockedReason('TRANSFER', selected);
+  const mergeBlockedReason = canOperateSelectedTable ? '' : dineInOperationBlockedReason('MERGE', selected);
+  const returnBlockedReason = canReturnSelectedItems ? '' : dineInOperationBlockedReason('RETURN', selected);
 
   const columns = [
     {
@@ -560,9 +572,11 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         footer={selected && (
           <div className="drawer-footer-actions">
             {selected.status === 'PENDING_PAYMENT' && <Button danger icon={<CloseCircleOutlined />} onClick={closeOrder}>关闭订单</Button>}
+            {selected.orderType === 'DINE_IN' && <>
+              <Tooltip title={transferBlockedReason}><span><Button disabled={!canOperateSelectedTable} loading={actionLoading} onClick={() => void openOperation({ type: 'TRANSFER' })}>转台</Button></span></Tooltip>
+              <Tooltip title={mergeBlockedReason}><span><Button disabled={!canOperateSelectedTable} loading={actionLoading} onClick={() => void openOperation({ type: 'MERGE' })}>并台</Button></span></Tooltip>
+            </>}
             {selected.settlementMode === 'PAY_AFTER' && selected.paymentStatus === 'UNPAID' && <>
-              {selected.orderType === 'DINE_IN' && Number(selected.paidAmount || 0) === 0 && <Button loading={actionLoading} onClick={() => void openOperation({ type: 'TRANSFER' })}>转台</Button>}
-              {selected.orderType === 'DINE_IN' && Number(selected.paidAmount || 0) === 0 && <Button loading={actionLoading} onClick={() => void openOperation({ type: 'MERGE' })}>并台</Button>}
               {selected.orderType === 'DINE_IN' && <Button loading={actionLoading} onClick={() => void openOperation({ type: 'SPLIT' })}>拆分收款</Button>}
               <Button size="large" loading={actionLoading} onClick={() => settleOffline('EXTERNAL')}>确认系统外支付</Button>
               <Button type="primary" size="large" loading={actionLoading} onClick={() => settleOffline('CASH')}>现金结账完毕</Button>
@@ -594,7 +608,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
               dataSource={selected.items ?? []}
               locale={{ emptyText: '暂无商品明细' }}
               renderItem={(item) => (
-                <List.Item extra={<Space direction="vertical" align="end"><strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>{selected.settlementMode === 'PAY_AFTER' && selected.paymentStatus === 'UNPAID' && Number(selected.paidAmount || 0) === 0 && item.id && item.quantity > 0 ? <Button size="small" danger onClick={() => void openOperation({ type: 'RETURN', item })}>申请退菜</Button> : null}</Space>}>
+                <List.Item extra={<Space direction="vertical" align="end"><strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>{selected.orderType === 'DINE_IN' && item.id && item.quantity > 0 ? <Tooltip title={returnBlockedReason}><span><Button size="small" danger disabled={!canReturnSelectedItems} onClick={() => void openOperation({ type: 'RETURN', item })}>申请退菜</Button></span></Tooltip> : null}</Space>}>
                   <List.Item.Meta
                     title={<Space>{item.productName}<Typography.Text type="secondary">× {item.quantity}</Typography.Text>{Number(item.additionSequence) > 1 && <Tag color="orange">加菜 #{Number(item.additionSequence) - 1}</Tag>}</Space>}
                     description={[item.skuName, ...itemConfigurationSummary(item), item.remark, item.memberDiscount ? `${item.memberLevelName || '会员'}优惠 ${yuan(item.memberDiscount)}` : ''].filter(Boolean).join(' · ') || `单价 ${yuan(item.unitPrice)}`}
@@ -702,6 +716,7 @@ const tableStateMeta: Record<TableBoardTable['state'], { label: string; color: s
   PENDING_PAYMENT: { label: '待付款', color: '#fa8c16', hint: '先付订单尚未完成收款' },
   SETTLED: { label: '已结账', color: '#52a378', hint: '已收款，等待制作或接单' },
   DINING: { label: '就餐中', color: '#faad14', hint: '商户已开始制作或待出餐' },
+  READY: { label: '待清台', color: '#7656a8', hint: '餐品已制作完成，等待完成订单并清台' },
   UNSETTLED: { label: '待结账', color: '#ff4d4f', hint: '用餐账单尚未完成收款' },
 };
 
@@ -711,7 +726,7 @@ function TableBoard({ board, loading, onRefresh, onOpenOrder }: { board: TableBo
       <div className="table-board-intro">
         <div>
           <Typography.Title level={5}>桌台现场</Typography.Title>
-          <Typography.Paragraph type="secondary">未开台表示空闲；待付款与已结账分别展示先付订单的收款前后状态；就餐中表示正在制作或出餐；待结账表示后付账订单尚未完成收款。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">未开台表示空闲；待付款与已结账分别展示先付订单的收款前后状态；就餐中表示正在制作；待清台表示餐品已完成；待结账表示后付账订单尚未完成收款。</Typography.Paragraph>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>刷新桌台</Button>
       </div>

@@ -135,3 +135,62 @@ func TestDineInOperationsRequireUnpaidPayAfterMealOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestDineInItemChangesCoverBothSettlementModesBeforeCollection(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"PAID", "ACCEPTED", "PREPARING", "READY"} {
+		if !validDineInItemChangeOrder(orderTypeDineIn, "PAY_AFTER", "UNPAID", status, 0) {
+			t.Fatalf("pay-after order in %s should allow item changes", status)
+		}
+	}
+	if !validDineInItemChangeOrder(orderTypeDineIn, "PAY_BEFORE", "UNPAID", "PENDING_PAYMENT", 0) {
+		t.Fatal("unpaid pay-before order should allow item changes before payment starts")
+	}
+	for _, test := range []struct {
+		orderType, settlement, payment, status string
+		paid                                   int64
+	}{
+		{orderTypeTakeout, "PAY_BEFORE", "UNPAID", "PENDING_PAYMENT", 0},
+		{orderTypeDineIn, "PAY_BEFORE", "PAID", "PAID", 0},
+		{orderTypeDineIn, "PAY_AFTER", "UNPAID", "READY", 1},
+		{orderTypeDineIn, "PAY_AFTER", "UNPAID", "COMPLETED", 0},
+	} {
+		if validDineInItemChangeOrder(test.orderType, test.settlement, test.payment, test.status, test.paid) {
+			t.Fatalf("invalid item-change state was accepted: %+v", test)
+		}
+	}
+}
+
+func TestCanChangeDineInItemsRejectsActivePaymentTransaction(t *testing.T) {
+	t.Parallel()
+	base := orderDTO{
+		OrderType: orderTypeDineIn, SettlementMode: "PAY_AFTER", PaymentStatus: "UNPAID",
+		Status: "PREPARING",
+	}
+	if !canChangeDineInItems(base) {
+		t.Fatal("unpaid pay-after order should be editable before payment starts")
+	}
+	for _, status := range []string{"CREATING", "PENDING", "SUCCESS"} {
+		item := base
+		item.Payment = map[string]any{"status": status}
+		if canChangeDineInItems(item) {
+			t.Fatalf("payment transaction %s must lock item changes", status)
+		}
+	}
+}
+
+func TestMergedDineInOrderReturnsToTheEarlierProductionStage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		left, right, expected string
+	}{
+		{"READY", "PREPARING", "PREPARING"},
+		{"PAID", "READY", "PAID"},
+		{"ACCEPTED", "ACCEPTED", "ACCEPTED"},
+	}
+	for _, test := range tests {
+		if actual := earlierDineInStatus(test.left, test.right); actual != test.expected {
+			t.Fatalf("earlierDineInStatus(%s,%s)=%s want %s", test.left, test.right, actual, test.expected)
+		}
+	}
+}

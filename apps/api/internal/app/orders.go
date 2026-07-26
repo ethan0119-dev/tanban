@@ -30,6 +30,7 @@ type orderDTO struct {
 	OrderType      string                 `json:"order_type"`
 	SettlementMode string                 `json:"settlement_mode"`
 	AdditionCount  int                    `json:"addition_count"`
+	CanAddItems    bool                   `json:"can_add_items"`
 	DinerCount     int                    `json:"diner_count"`
 	MemberID       int64                  `json:"member_id,omitempty"`
 	MemberLevelID  int64                  `json:"member_level_id,omitempty"`
@@ -283,7 +284,21 @@ func (s *Server) loadOrderWith(ctx context.Context, queryer sqlQueryer, tenantID
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return item, err
 	}
+	item.CanAddItems = canChangeDineInItems(item)
 	return item, nil
+}
+
+func canChangeDineInItems(order orderDTO) bool {
+	if !validDineInItemChangeOrder(order.OrderType, order.SettlementMode, order.PaymentStatus, order.Status, order.PaidCents) {
+		return false
+	}
+	if payment, ok := order.Payment.(map[string]any); ok {
+		status := strings.ToUpper(strings.TrimSpace(fmt.Sprint(payment["status"])))
+		if validStatus(status, "CREATING", "PENDING", "SUCCESS") {
+			return false
+		}
+	}
+	return true
 }
 
 func setOrderTable(order *orderDTO, tableID sql.NullInt64, publicID, areaName, name, tableCode string) {

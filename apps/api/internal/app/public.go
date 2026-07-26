@@ -698,15 +698,19 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	var additionOrderID, additionCurrentTotal int64
 	var additionSequence int
-	if input.OrderType == orderTypeDineIn && policy.SettlementMode == "PAY_AFTER" {
-		err = tx.QueryRowContext(r.Context(), `SELECT id,total_cents,addition_count+1 FROM orders
+	var additionSettlementMode, additionStatus string
+	if input.OrderType == orderTypeDineIn {
+		err = tx.QueryRowContext(r.Context(), `SELECT id,total_cents,addition_count+1,settlement_mode_snapshot,status FROM orders
 			WHERE tenant_id=? AND store_id=? AND table_id=? AND order_type='DINE_IN'
-			  AND settlement_mode_snapshot='PAY_AFTER' AND payment_status='UNPAID' AND paid_cents=0
-			  AND status IN ('PAID','ACCEPTED','PREPARING','READY')
+			  AND payment_status='UNPAID' AND paid_cents=0
+			  AND (
+			    (settlement_mode_snapshot='PAY_AFTER' AND status IN ('PAID','ACCEPTED','PREPARING','READY'))
+			    OR (settlement_mode_snapshot='PAY_BEFORE' AND status='PENDING_PAYMENT')
+			  )
 			  AND NOT EXISTS (SELECT 1 FROM payment_transactions p WHERE p.tenant_id=orders.tenant_id
 			    AND p.order_id=orders.id AND p.status IN ('CREATING','PENDING','SUCCESS'))
 			ORDER BY id DESC LIMIT 1 FOR UPDATE`, store.TenantID, store.ID, table.ID).
-			Scan(&additionOrderID, &additionCurrentTotal, &additionSequence)
+			Scan(&additionOrderID, &additionCurrentTotal, &additionSequence, &additionSettlementMode, &additionStatus)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			handleSQLError(w, err)
 			return
@@ -916,13 +920,15 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 			customer_id=COALESCE(customer_id,?),customer_openid=IF(customer_openid='',?,customer_openid),
 			customer_name=IF(customer_name='',?,customer_name),customer_phone=IF(customer_phone='',?,customer_phone),
 			status=IF(status='READY','PAID',status),updated_at=NOW(3)
-			WHERE id=? AND tenant_id=? AND payment_status='UNPAID'
-			  AND settlement_mode_snapshot='PAY_AFTER' AND addition_count=?`,
+			WHERE id=? AND tenant_id=? AND order_type='DINE_IN' AND payment_status='UNPAID' AND paid_cents=0
+			  AND settlement_mode_snapshot=? AND status=? AND addition_count=?
+			  AND NOT EXISTS (SELECT 1 FROM payment_transactions p WHERE p.tenant_id=orders.tenant_id
+			    AND p.order_id=orders.id AND p.status IN ('CREATING','PENDING','SUCCESS'))`,
 			total, merchandiseSubtotal, appliedPromotion.DiscountCents, appliedCoupon.Discount, memberDiscountTotal,
 			nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.Name,
 			nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Name,
 			nullableID(customerID), input.OpenID, input.CustomerName, input.CustomerPhone,
-			additionOrderID, store.TenantID, additionSequence-1)
+			additionOrderID, store.TenantID, additionSettlementMode, additionStatus, additionSequence-1)
 		if updateErr != nil {
 			handleSQLError(w, updateErr)
 			return
@@ -957,11 +963,13 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		extra := fmt.Sprintf("【加单 #%d】", additionSequence)
-		dedupeKey := fmt.Sprintf("ORDER:%d:ADDITION:%d", additionOrderID, requestID)
-		if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, additionOrderID, "ORDER_CREATED", dedupeKey, cashierPrintActorID, extra); err != nil {
-			handleSQLError(w, err)
-			return
+		if additionSettlementMode == "PAY_AFTER" {
+			extra := fmt.Sprintf("【加单 #%d】", additionSequence)
+			dedupeKey := fmt.Sprintf("ORDER:%d:ADDITION:%d", additionOrderID, requestID)
+			if err = enqueuePrintOutboxWith(r.Context(), tx, store.TenantID, store.ID, additionOrderID, "ORDER_CREATED", dedupeKey, cashierPrintActorID, extra); err != nil {
+				handleSQLError(w, err)
+				return
+			}
 		}
 		if err = tx.Commit(); err != nil {
 			handleSQLError(w, err)
@@ -1295,7 +1303,7 @@ func publicOrderView(order orderDTO) map[string]any {
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "dinerCount": order.DinerCount, "memberLevelName": order.MemberLevel, "memberDiscount": order.MemberDiscount, "canAddItems": order.SettlementMode == "PAY_AFTER" && order.PaymentStatus == "UNPAID" && order.PaidCents == 0 && validStatus(order.Status, "PAID", "ACCEPTED", "PREPARING", "READY"), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "paidAmount": order.PaidCents, "remainingAmount": order.RemainingCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "dinerCount": order.DinerCount, "memberLevelName": order.MemberLevel, "memberDiscount": order.MemberDiscount, "canAddItems": canChangeDineInItems(order), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "paidAmount": order.PaidCents, "remainingAmount": order.RemainingCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
 	if order.FastFoodPlate != nil {
 		view["fastFoodPlate"] = map[string]any{"publicId": order.FastFoodPlate.PublicID, "plateName": order.FastFoodPlate.Name, "plateCode": order.FastFoodPlate.PlateCode}
 		view["fastFoodPlatePublicId"] = order.FastFoodPlate.PublicID

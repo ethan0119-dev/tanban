@@ -60,6 +60,7 @@ func TestTableBoardStateKeepsPaymentAndTableLifecycleDistinct(t *testing.T) {
 		{"PENDING_PAYMENT", "UNPAID", "PAY_BEFORE", "PENDING_PAYMENT"},
 		{"PAID", "PAID", "PAY_BEFORE", "SETTLED"},
 		{"PREPARING", "PAID", "PAY_BEFORE", "DINING"},
+		{"READY", "PAID", "PAY_BEFORE", "READY"},
 		{"PAID", "UNPAID", "PAY_AFTER", "UNSETTLED"},
 		{"READY", "UNPAID", "PAY_AFTER", "UNSETTLED"},
 	}
@@ -124,10 +125,10 @@ func TestMerchantTableBoardUsesStablePublicScene(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "public_scene", "area_id", "area_name", "name", "table_code", "capacity",
 			"order_id", "order_no", "order_status", "payment_status", "settlement_mode",
-			"addition_count", "diner_count", "customer_name", "total_cents", "opened_at",
+			"addition_count", "diner_count", "customer_name", "total_cents", "paid_cents", "payment_locked", "opened_at",
 		}).AddRow(
 			3, "0123456789abcdef0123456789ab", 2, "大厅", "A01", "A01", 4,
-			0, "", "", "", "", 0, 0, "", 0, "",
+			0, "", "", "", "", 0, 0, "", 0, 0, 0, "",
 		))
 
 	server := &Server{DB: db, Logger: slog.Default()}

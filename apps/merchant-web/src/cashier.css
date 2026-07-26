@@ -284,8 +284,7 @@
 .cashier-create-actions {
   width: 180px;
   display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 10px;
+  grid-template-rows: 1fr;
 }
 
 .cashier-create-actions .ant-btn {
@@ -293,10 +292,11 @@
   border-color: #d96832;
   color: #cf5f28;
   background: #fff;
-  font-size: 17px;
+  font-size: 19px;
+  font-weight: 650;
 }
 
-.cashier-create-actions .ant-btn:last-child {
+.cashier-create-actions .ant-btn.is-takeout {
   border-color: #3b8b61;
   color: #367f59;
 }
@@ -438,6 +438,10 @@
   background: var(--cashier-blue);
 }
 
+.cashier-table-card.is-ready::before {
+  background: #7656a8;
+}
+
 .cashier-table-card.is-unsettled::before {
   background: #e76f19;
 }
@@ -476,6 +480,10 @@
 
 .cashier-table-card.is-dining .cashier-table-state {
   color: var(--cashier-blue);
+}
+
+.cashier-table-card.is-ready .cashier-table-state {
+  color: #7656a8;
 }
 
 .cashier-table-card.is-unsettled .cashier-table-state,
@@ -783,6 +791,33 @@
   font-size: 19px;
 }
 
+.cashier-action-wrapper {
+  display: block;
+  min-width: 0;
+}
+
+.cashier-action-wrapper > .ant-btn {
+  width: 100%;
+}
+
+.cashier-order-lock-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #75675e;
+  background: #f6f2ee;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cashier-order-lock-note .anticon {
+  margin-top: 3px;
+  color: #9a6a4d;
+}
+
 .cashier-primary-actions .anticon {
   font-size: 24px;
 }
@@ -793,6 +828,11 @@
 }
 
 .cashier-primary-actions .ant-btn:nth-child(3) {
+  border-color: #9f6545;
+  color: #392b23;
+}
+
+.cashier-primary-actions.is-takeout .cashier-action-print {
   border-color: #9f6545;
   color: #392b23;
 }
@@ -827,8 +867,26 @@
 
 .cashier-status-actions .ant-btn {
   height: 45px;
-  border-color: #39845d;
-  color: #337e56;
+  font-weight: 650;
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled) {
+  border-color: #955c39;
+  color: #fff;
+  background: #a5683f;
+  box-shadow: 0 4px 10px rgba(112, 66, 39, .18);
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled):hover {
+  border-color: #7f4b2f;
+  color: #fff;
+  background: #8f5736;
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled):active {
+  border-color: #704128;
+  color: #fff;
+  background: #7b492e;
 }
 
 .cashier-handover-modal > p {
@@ -1376,8 +1434,8 @@
   }
   .cashier-create-actions {
     width: auto;
-    height: 48px;
-    grid-template-columns: 1fr 1fr;
+    height: 56px;
+    grid-template-columns: 1fr;
     grid-template-rows: 1fr;
     margin-top: 10px;
   }
