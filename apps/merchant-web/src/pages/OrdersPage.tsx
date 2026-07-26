@@ -44,8 +44,6 @@ import type { TablePaginationConfig } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
-import { useAuth } from '../auth/AuthContext';
-import { canManageMerchant } from '../auth/permissions';
 import { OrderStatusTag, orderStatusMap } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
 import {
@@ -74,6 +72,7 @@ const statusTabs: Array<{ key: 'ALL' | OrderStatus; label: string }> = [
 ];
 
 const timelineStatuses: OrderStatus[] = ['PENDING_PAYMENT', 'PAID', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED'];
+const returnReasonOptions = ['顾客点错', '顾客临时取消', '重复下单', '菜品尚未制作', '缺货无法制作', '菜品质量问题'];
 
 function orderSceneLabel(order: Order): string {
   if (order.orderType === 'DINE_IN') return order.tableAreaName || '店内桌码';
@@ -159,8 +158,6 @@ type OrderOperation =
   | { type: 'RETURN'; item: OrderItem };
 
 export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, sceneMode }: { businessType?: OrderBusinessType; unavailable?: boolean; sceneMode?: 'DINE_IN' | 'TAKEOUT' }) {
-  const { user } = useAuth();
-  const canReviewReturns = canManageMerchant(user);
   const [viewMode, setViewMode] = useState<'ORDERS' | 'TABLES'>('ORDERS');
   const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL');
   const [serviceMode, setServiceMode] = useState<'DINE_IN' | 'TAKEOUT'>(sceneMode || 'DINE_IN');
@@ -336,27 +333,13 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
           quantity: Number(values.quantity),
           reason: values.reason,
         });
-        messageApi.success('退菜申请已提交，等待店长审批');
+        messageApi.success('退菜已完成，账单和库存已同步更新');
       }
       setOperation(null);
       operationForm.resetFields();
       await refreshSelected(selected.id);
       await load(1);
       if (sceneMode === 'DINE_IN') await loadTableBoard();
-    } catch (error) {
-      messageApi.error(errorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const reviewReturn = async (request: OrderReturnRequest, action: 'APPROVE' | 'REJECT') => {
-    if (!selected) return;
-    setActionLoading(true);
-    try {
-      await api.post(`/merchant/order-return-requests/${request.id}/review`, { action, remark: action === 'APPROVE' ? '店长确认退菜' : '店长驳回退菜' });
-      messageApi.success(action === 'APPROVE' ? '退菜已批准，库存与订单金额已更新' : '退菜申请已驳回');
-      await refreshSelected(selected.id);
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
@@ -608,7 +591,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
               dataSource={selected.items ?? []}
               locale={{ emptyText: '暂无商品明细' }}
               renderItem={(item) => (
-                <List.Item extra={<Space direction="vertical" align="end"><strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>{selected.orderType === 'DINE_IN' && item.id && item.quantity > 0 ? <Tooltip title={returnBlockedReason}><span><Button size="small" danger disabled={!canReturnSelectedItems} onClick={() => void openOperation({ type: 'RETURN', item })}>申请退菜</Button></span></Tooltip> : null}</Space>}>
+                <List.Item extra={<Space direction="vertical" align="end"><strong>{yuan(item.amount ?? item.unitPrice * item.quantity)}</strong>{selected.orderType === 'DINE_IN' && item.id && item.quantity > 0 ? <Tooltip title={returnBlockedReason}><span><Button size="small" danger disabled={!canReturnSelectedItems} onClick={() => void openOperation({ type: 'RETURN', item })}>退菜</Button></span></Tooltip> : null}</Space>}>
                   <List.Item.Meta
                     title={<Space>{item.productName}<Typography.Text type="secondary">× {item.quantity}</Typography.Text>{Number(item.additionSequence) > 1 && <Tag color="orange">加菜 #{Number(item.additionSequence) - 1}</Tag>}</Space>}
                     description={[item.skuName, ...itemConfigurationSummary(item), item.remark, item.memberDiscount ? `${item.memberLevelName || '会员'}优惠 ${yuan(item.memberDiscount)}` : ''].filter(Boolean).join(' · ') || `单价 ${yuan(item.unitPrice)}`}
@@ -627,15 +610,12 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
               <List
                 dataSource={returnRequests}
                 renderItem={(request) => (
-                  <List.Item actions={request.status === 'PENDING' && canReviewReturns ? [
-                    <Button key="reject" size="small" onClick={() => void reviewReturn(request, 'REJECT')}>驳回</Button>,
-                    <Button key="approve" size="small" type="primary" danger onClick={() => void reviewReturn(request, 'APPROVE')}>批准退菜</Button>,
-                  ] : undefined}>
+                  <List.Item>
                     <List.Item.Meta
-                      title={<Space>{request.productName} × {request.quantity}<Tag color={request.status === 'APPROVED' ? 'success' : request.status === 'REJECTED' ? 'default' : 'processing'}>{request.status === 'APPROVED' ? '已批准' : request.status === 'REJECTED' ? '已驳回' : '待审批'}</Tag></Space>}
+                      title={<Space><Tag color="error">退</Tag>{request.productName} × {request.quantity}<Tag color={request.status === 'APPROVED' ? 'success' : request.status === 'REJECTED' ? 'default' : 'processing'}>{request.status === 'APPROVED' ? '已退菜' : request.status === 'REJECTED' ? '已取消' : '历史待处理'}</Tag></Space>}
                       description={`${request.reason} · ${dateTime(request.createdAt)}${request.reviewRemark ? ` · ${request.reviewRemark}` : ''}`}
                     />
-                    <strong>{yuan(request.amount)}</strong>
+                    <strong style={{ color: '#cf3f35' }}>−{yuan(request.amount)}</strong>
                   </List.Item>
                 )}
               />
@@ -661,12 +641,13 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         ) : <Empty />}
       </Drawer>
       <Modal
-        title={operation?.type === 'TRANSFER' ? '转移桌台' : operation?.type === 'MERGE' ? '合并桌台账单' : operation?.type === 'SPLIT' ? '拆分收款' : operation?.type === 'RETURN' ? `申请退菜：${operation.item.productName}` : ''}
+        title={operation?.type === 'TRANSFER' ? '转移桌台' : operation?.type === 'MERGE' ? '合并桌台账单' : operation?.type === 'SPLIT' ? '拆分收款' : operation?.type === 'RETURN' ? `确认退菜：${operation.item.productName}` : ''}
         open={!!operation}
         onCancel={() => { setOperation(null); operationForm.resetFields(); }}
         onOk={() => void submitOperation()}
         confirmLoading={actionLoading}
-        okText={operation?.type === 'RETURN' ? '提交审批' : '确认'}
+        okText={operation?.type === 'RETURN' ? '确认退菜并更新账单' : '确认'}
+        okButtonProps={operation?.type === 'RETURN' ? { danger: true } : undefined}
       >
         <Form form={operationForm} layout="vertical">
           {operation?.type === 'TRANSFER' && <Form.Item label="目标空闲桌台" name="targetTableId" rules={[{ required: true, message: '请选择目标桌台' }]}>
@@ -695,11 +676,12 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
             </Form.Item>
           </>}
           {operation?.type === 'RETURN' && <>
+            <Alert type="warning" showIcon message="确认后立即生效，并保留负金额退菜记录" style={{ marginBottom: 16 }} />
             <Form.Item label="退菜数量" name="quantity" rules={[{ required: true, message: '请输入退菜数量' }, { type: 'number', min: 1, max: operation.item.quantity, message: `最多可退 ${operation.item.quantity} 份` }]}>
               <InputNumber min={1} max={operation.item.quantity} precision={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="退菜原因" name="reason" rules={[{ required: true, message: '请填写退菜原因' }]}>
-              <Input.TextArea rows={3} maxLength={255} showCount placeholder="例如：顾客点错、菜品未制作" />
+            <Form.Item label="退菜原因" name="reason" rules={[{ required: true, message: '请选择退菜原因' }]}>
+              <Select options={returnReasonOptions.map((reason) => ({ value: reason, label: reason }))} placeholder="选择退菜原因" />
             </Form.Item>
           </>}
           {operation && operation.type !== 'RETURN' && <Form.Item label="操作备注（可选）" name="remark">

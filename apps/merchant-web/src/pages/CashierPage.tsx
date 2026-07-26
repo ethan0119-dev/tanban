@@ -42,6 +42,7 @@ import {
   InputNumber,
   Modal,
   Radio,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -65,7 +66,16 @@ import {
 } from '../features/orders/editability';
 import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowActionText } from '../features/orders/workflow';
 import { normalizeOrder } from '../features/storefront/model';
-import type { DashboardData, MerchantSettings, Order, OrderItem, TableBoardResponse, TableBoardTable } from '../types';
+import type {
+  DashboardData,
+  MerchantSettings,
+  Order,
+  OrderItem,
+  OrderReturnRequest,
+  PaymentRecord,
+  TableBoardResponse,
+  TableBoardTable,
+} from '../types';
 import { dateTime, yuan } from '../utils/format';
 import '../cashier.css';
 
@@ -166,7 +176,18 @@ interface CartLine {
 }
 
 type CashierMode = 'DINE_IN' | 'TAKEOUT';
+type CashierLayoutMode = 'COMPACT' | 'STANDARD';
 type CashierTableFilter = 'ALL' | 'UNSETTLED' | 'SETTLED' | 'OVERDUE';
+
+const CASHIER_LAYOUT_MODE_KEY = 'tanban_cashier_layout_mode';
+const returnReasonOptions = [
+  '顾客点错',
+  '顾客临时取消',
+  '重复下单',
+  '菜品尚未制作',
+  '缺货无法制作',
+  '菜品质量问题',
+];
 
 const tableMeta: Record<TableBoardTable['state'], { label: string; className: string }> = {
   UNOPENED: { label: '空闲', className: 'is-free' },
@@ -269,6 +290,9 @@ const previewTakeoutOrders: Order[] = [
   { id: 6103, orderNo: 'T260725151403', pickupNo: '036', status: 'PENDING_PAYMENT', paymentStatus: 'UNPAID', settlementMode: 'PAY_BEFORE', amount: 56, remainingAmount: 56, orderType: 'TAKEOUT', createdAt: '2026-07-25 15:14:03', items: [{ productName: '双人套餐', quantity: 1, unitPrice: 56 }] },
 ];
 
+const previewPaymentRecords: PaymentRecord[] = [];
+const previewReturnRequests: OrderReturnRequest[] = [];
+
 const previewCatalog: CashierCatalog = {
   categories: [{ id: 1, name: '热销' }, { id: 2, name: '主食' }, { id: 3, name: '小菜' }],
   products: [
@@ -366,6 +390,48 @@ function orderItemTotal(item: OrderItem): number {
   return Number(item.amount ?? item.unitPrice * item.quantity);
 }
 
+function normalizeReturnRequest(value: OrderReturnRequest): OrderReturnRequest {
+  const raw = value as unknown as Record<string, unknown>;
+  return {
+    ...value,
+    id: value.id ?? raw.id as string | number,
+    orderItemId: value.orderItemId ?? raw.order_item_id as string | number,
+    skuId: value.skuId ?? raw.sku_id as string | number,
+    productName: value.productName ?? String(raw.product_name ?? ''),
+    quantity: Number(value.quantity ?? raw.quantity ?? 0),
+    amount: raw.amount_cents !== undefined ? Number(raw.amount_cents) / 100 : Number(value.amount ?? 0),
+    reason: value.reason ?? String(raw.reason ?? ''),
+    status: String(value.status ?? raw.status ?? 'APPROVED') as OrderReturnRequest['status'],
+    createdAt: value.createdAt ?? String(raw.created_at ?? ''),
+  };
+}
+
+function normalizeCashierPayment(value: PaymentRecord): PaymentRecord {
+  const raw = value as unknown as Record<string, unknown>;
+  const method = String(value.method ?? raw.payment_method ?? raw.provider ?? '').toUpperCase();
+  return {
+    ...value,
+    orderId: value.orderId ?? raw.order_id as string | number,
+    orderNo: value.orderNo ?? String(raw.order_no ?? ''),
+    paymentNo: value.paymentNo ?? String(raw.provider_order_no ?? ''),
+    provider: value.provider ?? String(raw.provider ?? ''),
+    method,
+    amount: raw.amount_cents !== undefined ? Number(raw.amount_cents) / 100 : Number(value.amount ?? 0),
+    status: String(value.status ?? raw.status ?? ''),
+    paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
+    createdAt: value.createdAt ?? String(raw.created_at ?? ''),
+  };
+}
+
+function cashierPaymentMethodLabel(payment: PaymentRecord): string {
+  const method = String(payment.method || payment.provider || '').toUpperCase();
+  if (method === 'BALANCE') return '会员余额';
+  if (method === 'WECHAT_MICROPAY' || method === 'WECHAT_PARTNER') return '微信付款码';
+  if (method === 'OFFLINE_CASH' || method === 'CASH') return '现金';
+  if (method === 'EXTERNAL') return '系统外支付';
+  return payment.method || payment.provider || '其他支付';
+}
+
 function nextIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() || `cashier-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -384,10 +450,17 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const [loading, setLoading] = useState(!previewMode);
   const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState<CashierMode>('DINE_IN');
+  const [layoutMode, setLayoutMode] = useState<CashierLayoutMode>(() => {
+    const storage = typeof window === 'undefined' ? undefined : window.localStorage;
+    const saved = typeof storage?.getItem === 'function' ? storage.getItem(CASHIER_LAYOUT_MODE_KEY) : '';
+    return saved === 'STANDARD' ? 'STANDARD' : 'COMPACT';
+  });
   const [board, setBoard] = useState<TableBoardResponse | null>(previewMode ? previewBoard : null);
   const [takeoutOrders, setTakeoutOrders] = useState<Order[]>(previewMode ? previewTakeoutOrders : []);
   const [selectedTable, setSelectedTable] = useState<TableBoardTable | null>(previewMode ? previewBoard.areas[0].tables[4] : null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(previewMode ? demoOrder : null);
+  const [returnRequests, setReturnRequests] = useState<OrderReturnRequest[]>(previewMode ? previewReturnRequests : []);
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(previewMode ? previewPaymentRecords : []);
   const [context, setContext] = useState<CashierContext | null>(previewMode ? {
     storeId: 1, storeCode: 'preview-store', storeName: '川味小馆（天府店）', operatorName: '张小雨', role: 'MERCHANT_MANAGER',
     paymentProvider: 'wechat_partner', wechatCodePaymentEnabled: true,
@@ -415,12 +488,14 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const [returnReason, setReturnReason] = useState('');
   const [handoverOpen, setHandoverOpen] = useState(false);
   const [handoverRemark, setHandoverRemark] = useState('');
-  const [detailFocused, setDetailFocused] = useState(Boolean(previewMode));
+  const [detailFocused, setDetailFocused] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [wechatScanOpen, setWechatScanOpen] = useState(false);
   const [wechatCodeInput, setWechatCodeInput] = useState('');
   const [wechatPayment, setWechatPayment] = useState<WechatCodePaymentResult | null>(null);
   const [cameraError, setCameraError] = useState('');
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const orderLoadSequenceRef = useRef(0);
   const scanVideoRef = useRef<HTMLVideoElement | null>(null);
   const scanControlsRef = useRef<IScannerControls | null>(null);
   const scanSubmittingRef = useRef(false);
@@ -446,7 +521,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   }, [allTables, areaID, overdueTables, tableFilter]);
   const pendingAmount = unsettledTables.reduce((sum, table) => sum + Number(table.totalCents ?? 0) / 100, 0);
   const cartTotalCents = cart.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
-  const orderOriginalTotal = selectedOrder?.items.reduce((sum, item) => sum + orderItemTotal(item), 0) ?? 0;
+  const approvedReturnRequests = returnRequests.filter((request) => request.status === 'APPROVED');
   const orderPaidAmount = Number(selectedOrder?.paidAmount ?? 0);
   const orderRemainingAmount = Number(selectedOrder?.remainingAmount ?? selectedOrder?.amount ?? 0);
   const canOperateUnpaidDineIn = mode === 'DINE_IN' && canOperateUnpaidPayAfterOrder(selectedOrder);
@@ -476,13 +551,28 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   );
 
   const loadOrder = useCallback(async (orderID: string | number) => {
+    const requestSequence = ++orderLoadSequenceRef.current;
     if (previewMode) {
-      setSelectedOrder(String(orderID) === String(demoOrder.id) ? demoOrder : previewTakeoutOrders.find((item) => String(item.id) === String(orderID)) ?? demoOrder);
+      const order = String(orderID) === String(demoOrder.id)
+        ? demoOrder
+        : previewTakeoutOrders.find((item) => String(item.id) === String(orderID)) ?? demoOrder;
+      setSelectedOrder(order);
+      setReturnRequests(String(order.id) === String(demoOrder.id) ? previewReturnRequests : []);
+      setPaymentRecords(String(order.id) === String(demoOrder.id) ? previewPaymentRecords : []);
       return;
     }
     try {
-      setSelectedOrder(normalizeOrder(await api.get<Order>(`/merchant/orders/${orderID}`)));
+      const [rawOrder, rawReturns, rawPayments] = await Promise.all([
+        api.get<Order>(`/merchant/orders/${orderID}`),
+        api.getList<OrderReturnRequest>(`/merchant/orders/${orderID}/return-requests`),
+        api.getList<PaymentRecord>(`/merchant/orders/${orderID}/payments`),
+      ]);
+      if (requestSequence !== orderLoadSequenceRef.current) return;
+      setSelectedOrder(normalizeOrder(rawOrder));
+      setReturnRequests(rawReturns.items.map(normalizeReturnRequest));
+      setPaymentRecords(rawPayments.items.map(normalizeCashierPayment));
     } catch (error) {
+      if (requestSequence !== orderLoadSequenceRef.current) return;
       message.error(errorMessage(error));
     }
   }, [message, previewMode]);
@@ -563,14 +653,18 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const selectTable = (table: TableBoardTable) => {
     setSelectedTable(table);
     setSelectedOrder(null);
-    setDetailFocused(true);
+    setReturnRequests([]);
+    setPaymentRecords([]);
+    setDetailFocused(layoutMode === 'STANDARD');
     if (table.orderId) void loadOrder(table.orderId);
   };
 
   const selectTakeoutOrder = (order: Order) => {
     setSelectedTable(null);
     setSelectedOrder(order);
-    setDetailFocused(true);
+    setReturnRequests([]);
+    setPaymentRecords([]);
+    setDetailFocused(layoutMode === 'STANDARD');
     void loadOrder(order.id);
   };
 
@@ -578,12 +672,23 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     if (nextMode === mode) return;
     setMode(nextMode);
     setSelectedOrder(null);
+    setReturnRequests([]);
+    setPaymentRecords([]);
     setDetailFocused(false);
     if (nextMode === 'TAKEOUT') {
       setSelectedTable(null);
       return;
     }
     setSelectedTable(allTables.find((table) => table.orderId) ?? allTables[0] ?? null);
+  };
+
+  const switchLayoutMode = (nextMode: CashierLayoutMode) => {
+    setLayoutMode(nextMode);
+    if (typeof window.localStorage?.setItem === 'function') {
+      window.localStorage.setItem(CASHIER_LAYOUT_MODE_KEY, nextMode);
+    }
+    setDetailFocused(false);
+    window.requestAnimationFrame(() => boardRef.current?.scrollTo?.({ top: 0, behavior: 'auto' }));
   };
 
   const openOrdering = (nextMode: CashierMode, table?: TableBoardTable | null) => {
@@ -770,6 +875,16 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     try {
       if (previewMode) {
         setSelectedOrder({ ...selectedOrder, status: selectedOrder.settlementMode === 'PAY_AFTER' ? 'COMPLETED' : 'PAID', paymentStatus: 'PAID', paidAmount: selectedOrder.amount, remainingAmount: 0 });
+        setPaymentRecords((current) => [{
+          id: `preview-payment-${Date.now()}`,
+          orderId: selectedOrder.id,
+          orderNo: selectedOrder.orderNo,
+          amount: orderRemainingAmount,
+          method,
+          provider: method === 'CASH' ? 'offline_cash' : 'external',
+          status: 'SUCCESS',
+          paidAt: '2026-07-25 15:30:00',
+        }, ...current]);
         setCheckoutOpen(false);
         message.success('收款已登记，订单状态已更新');
         return;
@@ -805,10 +920,21 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         paidAmount: selectedOrder.amount,
         remainingAmount: 0,
       });
+      setPaymentRecords((current) => [{
+        id: `preview-wechat-${Date.now()}`,
+        orderId: selectedOrder.id,
+        orderNo: selectedOrder.orderNo,
+        paymentNo: result.providerTransactionNo,
+        amount: orderRemainingAmount,
+        method: result.paymentMethod || 'WECHAT_MICROPAY',
+        provider: 'wechat_partner',
+        status: 'SUCCESS',
+        paidAt: '2026-07-25 15:30:00',
+      }, ...current]);
       return;
     }
     await load(true);
-  }, [load, message, previewMode, selectedOrder]);
+  }, [load, message, orderRemainingAmount, previewMode, selectedOrder]);
 
   const submitWechatCode = useCallback(async (rawCode: string) => {
     const code = rawCode.trim();
@@ -1023,19 +1149,46 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const submitReturn = async () => {
     if (!selectedOrder || !returnItemID || !returnReason.trim()) {
-      message.warning('请选择商品并填写退菜原因');
+      message.warning('请选择商品和退菜原因');
       return;
     }
     setSubmitting(true);
     try {
-      if (!previewMode) {
-        await api.post(`/merchant/orders/${selectedOrder.id}/return-requests`, {
+      if (previewMode) {
+        const selectedItem = selectedOrder.items.find((item) => String(item.id) === String(returnItemID));
+        if (!selectedItem) return;
+        const returnedAmount = selectedItem.unitPrice * returnQuantity;
+        setSelectedOrder({
+          ...selectedOrder,
+          amount: Math.max(0, selectedOrder.amount - returnedAmount),
+          remainingAmount: Math.max(0, Number(selectedOrder.remainingAmount ?? selectedOrder.amount) - returnedAmount),
+          items: selectedOrder.items
+            .map((item) => String(item.id) === String(returnItemID)
+              ? { ...item, quantity: item.quantity - returnQuantity, amount: orderItemTotal(item) - returnedAmount }
+              : item)
+            .filter((item) => item.quantity > 0),
+        });
+        setReturnRequests((current) => [{
+          id: `preview-return-${Date.now()}`,
+          orderItemId: returnItemID,
+          skuId: 0,
+          productName: selectedItem.productName,
+          quantity: returnQuantity,
+          amount: returnedAmount,
+          reason: returnReason,
+          status: 'APPROVED',
+          createdAt: '2026-07-25 15:28:00',
+        }, ...current]);
+      } else {
+        await api.post<Order>(`/merchant/orders/${selectedOrder.id}/return-requests`, {
           order_item_id: Number(returnItemID),
           quantity: returnQuantity,
           reason: returnReason.trim(),
         });
+        await loadOrder(selectedOrder.id);
+        await load(true);
       }
-      message.success('退菜申请已提交');
+      message.success('退菜已完成，账单和库存已同步更新');
       setReturnOpen(false);
     } catch (error) {
       message.error(errorMessage(error));
@@ -1129,14 +1282,24 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           <div className="cashier-title"><strong>摊伴收银台</strong><i /><span>{context?.storeName || user?.storeName || '当前门店'}</span></div>
           <Tag bordered={false} className="cashier-shift-tag">早班营业中</Tag>
           <span className="cashier-operator">收银员：{context?.operatorName || user?.name || '店员'}</span>
+          <Segmented
+            className="cashier-layout-switch"
+            aria-label="收银台模式"
+            value={layoutMode}
+            onChange={(value) => switchLayoutMode(value as CashierLayoutMode)}
+            options={[
+              { label: '简洁模式', value: 'COMPACT' },
+              { label: '标准模式', value: 'STANDARD' },
+            ]}
+          />
           <div className="cashier-clock"><strong>{previewMode ? '15:26' : clock.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</strong><small>{previewMode ? '2026-07-25　周六' : clock.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' })}</small></div>
           <div className="cashier-device"><PrinterOutlined /><span>打印机<small><i />正常</small></span></div>
           <div className="cashier-device"><WifiOutlined /><span>网络<small><i />正常</small></span></div>
           <Button className="cashier-handover" onClick={startHandover}>交接班</Button>
         </header>
 
-        <div className={`cashier-workspace ${detailFocused ? 'is-detail-focused' : ''}`}>
-          <section className="cashier-board">
+        <div className={`cashier-workspace is-${layoutMode.toLowerCase()} ${detailFocused ? 'is-detail-focused' : ''}`}>
+          <section className="cashier-board" ref={boardRef}>
             <div className="cashier-mode-row">
               <div className="cashier-mode-tabs">
                 <button type="button" className={mode === 'DINE_IN' ? 'active' : ''} onClick={() => switchMode('DINE_IN')}><TeamOutlined /><span>堂食点单</span></button>
@@ -1197,9 +1360,8 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
             )}
           </section>
 
-          <aside className="cashier-operation">
+          {layoutMode === 'COMPACT' && <aside className="cashier-operation">
             <div className="cashier-operation-title">
-              <Button className="cashier-detail-back" type="text" icon={<ArrowLeftOutlined />} onClick={() => setDetailFocused(false)}>返回桌台</Button>
               <strong>当前操作</strong>
               <Button type="text" icon={<ReloadOutlined spin={refreshing} />} onClick={() => void load(true)}>刷新</Button>
             </div>
@@ -1227,6 +1389,13 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                           <strong>{yuan(orderItemTotal(item))}</strong>
                         </div>
                       </Fragment>
+                    ))}
+                    {approvedReturnRequests.map((request) => (
+                      <div className="cashier-order-item is-returned" key={`return-${String(request.id)}`}>
+                        <span><i className="cashier-return-icon">退</i>{request.productName}<small>{request.reason}</small></span>
+                        <b>−{request.quantity}</b>
+                        <strong>−{yuan(request.amount)}</strong>
+                      </div>
                     ))}
                   </div>
                   </>
@@ -1293,7 +1462,141 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                 </div>
               )}
             </div>
-          </aside>
+          </aside>}
+
+          {layoutMode === 'STANDARD' && detailFocused && (
+            <section className="cashier-standard-detail">
+              <header className="cashier-standard-head">
+                <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setDetailFocused(false)}>
+                  返回{mode === 'DINE_IN' ? '桌台列表' : '带走订单'}
+                </Button>
+                <div>
+                  <strong>{currentOrderLabel}</strong>
+                  <span>{selectedOrder ? `订单号 ${selectedOrder.orderNo}` : '当前桌台尚未开台'}</span>
+                </div>
+                <Tag color={selectedOrder?.paymentStatus === 'UNPAID' ? 'error' : selectedOrder ? 'success' : 'default'}>
+                  {selectedOrder ? cashierOrderStatusText(selectedOrder) : '空闲'}
+                </Tag>
+                <Button type="text" icon={<ReloadOutlined spin={refreshing} />} onClick={() => void load(true)}>刷新</Button>
+              </header>
+
+              <div className="cashier-standard-grid">
+                <section className="cashier-standard-bill">
+                  <div className="cashier-standard-section-title">
+                    <strong>订单与桌台操作</strong>
+                    {selectedOrder && <span>{selectedOrder.dinerCount || 1} 位 · {dateTime(selectedOrder.createdAt).slice(11, 16)} 下单</span>}
+                  </div>
+                  {selectedOrder ? (
+                    <>
+                      <div className="cashier-checkout-bill-head"><span>商品</span><span>数量</span><span>金额</span></div>
+                      <div className="cashier-standard-items">
+                        {selectedOrder.items.map((item, index) => (
+                          <Fragment key={String(item.id ?? index)}>
+                            {Number(item.additionSequence || 1) > 1 && Number(selectedOrder.items[index - 1]?.additionSequence || 1) !== Number(item.additionSequence) && (
+                              <div className="cashier-addition-divider"><i />第{Number(item.additionSequence) - 1}次加菜<i /></div>
+                            )}
+                            <div className="cashier-checkout-item">
+                              <span><strong>{item.productName}</strong>{item.skuName && item.skuName !== '默认' && <small>{item.skuName}</small>}</span>
+                              <b>×{item.quantity}</b>
+                              <strong>{yuan(orderItemTotal(item))}</strong>
+                            </div>
+                          </Fragment>
+                        ))}
+                        {approvedReturnRequests.map((request) => (
+                          <div className="cashier-checkout-item is-returned" key={`standard-return-${String(request.id)}`}>
+                            <span><strong><i className="cashier-return-icon">退</i>{request.productName}</strong><small>原因：{request.reason}</small></span>
+                            <b>−{request.quantity}</b>
+                            <strong>−{yuan(request.amount)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="cashier-standard-empty">
+                      <CoffeeOutlined />
+                      <strong>{selectedTable?.name || '当前桌台'}为空闲桌台</strong>
+                      <span>点击下方“点单开台”开始录单</span>
+                    </div>
+                  )}
+                  <div className="cashier-standard-actions">
+                    {mode === 'DINE_IN' && (
+                      <Tooltip title={!canOpenSelectedTableOrder ? addBlockedReason : ''}>
+                        <span><Button icon={<PlusOutlined />} disabled={!canOpenSelectedTableOrder} onClick={() => openOrdering('DINE_IN', selectedTable)}>{selectedTable?.orderId ? '加菜' : '点单开台'}</Button></span>
+                      </Tooltip>
+                    )}
+                    {mode === 'DINE_IN' && <Button icon={<TeamOutlined />} disabled={!selectedOrder} onClick={updateDinerCount}>修改人数</Button>}
+                    <Button icon={<PrinterOutlined />} disabled={!selectedOrder} onClick={() => void printCustomerCopy()}>打印预结单</Button>
+                    {mode === 'DINE_IN' && <Button icon={<RetweetOutlined />} disabled={Boolean(transferBlockedReason)} onClick={transferTable}>转台</Button>}
+                    {mode === 'DINE_IN' && <Button icon={<MergeCellsOutlined />} disabled={Boolean(mergeBlockedReason)} onClick={mergeTable}>并台</Button>}
+                    {mode === 'DINE_IN' && <Button danger icon={<MinusOutlined />} disabled={!canReturnSelectedOrder} onClick={() => { setReturnItemID(selectedOrder?.items[0]?.id); setReturnQuantity(1); setReturnReason(''); setReturnOpen(true); }}>退菜</Button>}
+                    {selectedOrder && workflowAction && (
+                      <Button type="primary" disabled={!workflowActionEnabled} onClick={() => void updateStatus(workflowAction.status)}>
+                        {workflowActionEnabled ? workflowActionLabel : '请先结账'}
+                      </Button>
+                    )}
+                  </div>
+                </section>
+
+                <section className="cashier-standard-payment">
+                  <div className="cashier-standard-section-title">
+                    <strong>结账与支付</strong>
+                    <span>选择顾客本次实际使用的支付方式</span>
+                  </div>
+                  <div className="cashier-standard-amount">
+                    <span>{selectedOrder?.paymentStatus === 'UNPAID' ? '本次应收' : '订单实收'}</span>
+                    <strong>{yuan(selectedOrder?.paymentStatus === 'UNPAID' ? orderRemainingAmount : orderPaidAmount || selectedOrder?.amount || 0)}</strong>
+                    {Number(selectedOrder?.memberDiscount || 0) > 0 && <small>已优惠 {yuan(selectedOrder?.memberDiscount || 0)}</small>}
+                  </div>
+                  <div className="cashier-payment-methods">
+                    <Button icon={<DollarOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} onClick={() => void confirmSettlement('CASH')}>
+                      <strong>现金收款</strong><small>确认现金已收妥</small>
+                    </Button>
+                    <Tooltip title={context?.wechatCodePaymentEnabled ? '' : context?.wechatCodePaymentReason}>
+                      <span>
+                        <Button
+                          className="is-wechat"
+                          icon={<WechatOutlined />}
+                          disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID' || !context?.wechatCodePaymentEnabled}
+                          onClick={openWechatScanner}
+                        >
+                          <strong>微信付款码</strong><small>摄像头或扫码枪收款</small>
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Button icon={<WalletOutlined />} disabled={!selectedOrder || selectedOrder.paymentStatus !== 'UNPAID'} onClick={() => void confirmSettlement('EXTERNAL')}>
+                      <strong>系统外支付</strong><small>其他渠道已确认到账</small>
+                    </Button>
+                  </div>
+                  {selectedOrder?.paymentStatus === 'PAID' && <Alert type="success" showIcon message="本单已完成收款" description="如需退款，请前往支付与退款页面操作。" />}
+                  {!selectedOrder && <Alert type="info" showIcon message="请先点单开台" />}
+                </section>
+
+                <aside className="cashier-standard-payments">
+                  <div className="cashier-standard-section-title">
+                    <strong>支付记录</strong>
+                    <span>{paymentRecords.length ? `共 ${paymentRecords.length} 笔` : '收款后自动记录'}</span>
+                  </div>
+                  {paymentRecords.length ? (
+                    <div className="cashier-payment-record-list">
+                      {paymentRecords.map((payment) => (
+                        <article key={String(payment.id)}>
+                          <div>
+                            <strong>{cashierPaymentMethodLabel(payment)}</strong>
+                            <Tag color={payment.status === 'SUCCESS' ? 'success' : ['PENDING', 'CREATING'].includes(payment.status) ? 'processing' : 'default'}>
+                              {payment.status === 'SUCCESS' ? '支付成功' : payment.status === 'PENDING' ? '确认中' : payment.status === 'CREATING' ? '发起中' : payment.status === 'CLOSED' ? '已关闭' : payment.status}
+                            </Tag>
+                          </div>
+                          <b>{yuan(payment.amount)}</b>
+                          <span>{dateTime(payment.paidAt || payment.createdAt)}</span>
+                          {payment.paymentNo && <small>{payment.paymentNo}</small>}
+                        </article>
+                      ))}
+                    </div>
+                  ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无支付记录" />}
+                </aside>
+              </div>
+            </section>
+          )}
         </div>
 
         <footer className="cashier-summary">
@@ -1304,11 +1607,12 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         </footer>
       </main>
 
-      <Drawer
-        className="cashier-checkout-drawer"
-        width="min(980px, 100vw)"
-        open={checkoutOpen}
-        onClose={() => {
+      <Modal
+        className="cashier-compact-checkout"
+        width={520}
+        footer={null}
+        open={checkoutOpen && layoutMode === 'COMPACT'}
+        onCancel={() => {
           if (wechatPaymentPending) {
             message.warning('微信支付结果仍在确认，请先查明结果或撤销本次收款');
             return;
@@ -1317,100 +1621,54 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         }}
         closable={!wechatPaymentPending}
         maskClosable={!wechatPaymentPending}
-        title={(
-          <div className="cashier-checkout-title">
-            <span>{mode === 'DINE_IN' ? '桌台结账' : '带走订单结账'}</span>
-            <strong>{currentOrderLabel}</strong>
-            {selectedOrder && <small>订单号 {selectedOrder.orderNo}</small>}
-          </div>
-        )}
+        title={`${currentOrderLabel} · 选择结账方式`}
       >
         {selectedOrder && (
-          <div className="cashier-checkout-layout">
-            <section className="cashier-checkout-bill">
-              <header>
-                <div><Tag color="orange">{cashierOrderStatusText(selectedOrder)}</Tag><strong>{currentOrderLabel}</strong></div>
-                <Button icon={<PrinterOutlined />} onClick={() => void printCustomerCopy()}>打印客户联/预结单</Button>
-              </header>
-              <div className="cashier-checkout-bill-head"><span>商品</span><span>数量</span><span>金额</span></div>
-              <div className="cashier-checkout-items">
-                {selectedOrder.items.map((item, index) => (
-                  <div className="cashier-checkout-item" key={String(item.id ?? index)}>
-                    <span><strong>{item.productName}</strong>{item.skuName && item.skuName !== '默认' && <small>{item.skuName}</small>}</span>
-                    <b>×{item.quantity}</b>
-                    <strong>{yuan(orderItemTotal(item))}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="cashier-checkout-quick-actions">
-                {mode === 'DINE_IN' && <Button icon={<PlusOutlined />} disabled={!canAddSelectedOrder} onClick={() => { setCheckoutOpen(false); openOrdering('DINE_IN', selectedTable); }}>加菜</Button>}
-                {mode === 'DINE_IN' && <Button icon={<TeamOutlined />} onClick={updateDinerCount}>修改人数</Button>}
-                <Dropdown
-                  menu={{
-                    items: mode === 'DINE_IN' ? [
-                      { key: 'transfer', label: '转台', disabled: Boolean(transferBlockedReason), onClick: transferTable },
-                      { key: 'merge', label: '并台', disabled: Boolean(mergeBlockedReason), onClick: mergeTable },
-                      { key: 'return', label: '退菜', disabled: !canReturnSelectedOrder, onClick: () => setReturnOpen(true) },
-                    ] : [],
-                  }}
-                >
-                  <Button icon={<MoreOutlined />}>更多操作</Button>
-                </Dropdown>
-              </div>
-            </section>
-
-            <section className="cashier-checkout-payment">
-              <div className="cashier-checkout-section-title"><strong>选择收款方式</strong><span>顾客完成付款后系统自动落账</span></div>
-              <div className="cashier-payment-methods">
-                <Button icon={<DollarOutlined />} onClick={() => void confirmSettlement('CASH')}>
-                  <strong>现金收款</strong><small>店员确认实收</small>
-                </Button>
-                <Tooltip title={context?.wechatCodePaymentEnabled ? '' : context?.wechatCodePaymentReason}>
-                  <span>
-                    <Button
-                      className="is-wechat"
-                      icon={<WechatOutlined />}
-                      disabled={!context?.wechatCodePaymentEnabled}
-                      onClick={openWechatScanner}
-                    >
-                      <strong>微信付款码</strong>
-                      <small>{context?.wechatCodePaymentEnabled ? '摄像头或扫码枪收款' : '等待商户支付配置'}</small>
-                    </Button>
-                  </span>
-                </Tooltip>
-                <Button icon={<WalletOutlined />} onClick={() => void confirmSettlement('EXTERNAL')}>
-                  <strong>系统外支付</strong><small>其他渠道已收款</small>
-                </Button>
-              </div>
-              {!context?.wechatCodePaymentEnabled && (
-                <Alert
-                  type="info"
-                  showIcon
-                  message="微信付款码支付暂不可用"
-                  description={context?.wechatCodePaymentReason || '补充服务商、特约商户和 API 证书配置后自动开放。'}
-                />
-              )}
-            </section>
-
-            <aside className="cashier-checkout-summary">
-              <div>
-                <span>商品原价</span>
-                <strong>{yuan(orderOriginalTotal || selectedOrder.amount + Number(selectedOrder.memberDiscount || 0))}</strong>
-              </div>
-              {Number(selectedOrder.memberDiscount || 0) > 0 && (
-                <div className="is-discount"><span>会员优惠</span><strong>-{yuan(selectedOrder.memberDiscount || 0)}</strong></div>
-              )}
-              {orderPaidAmount > 0 && <div><span>已收金额</span><strong>{yuan(orderPaidAmount)}</strong></div>}
-              <div className="cashier-checkout-due">
-                <span>本次应收</span>
-                <strong>{yuan(orderRemainingAmount)}</strong>
-                <small>金额由服务端订单账单计算，收银端不可修改</small>
-              </div>
-              <div className="cashier-checkout-safety"><LockOutlined />结账期间锁定订单，避免重复收款</div>
-            </aside>
+          <div className="cashier-compact-checkout-body">
+            <div className="cashier-compact-due">
+              <span>本次应收</span>
+              <strong>{yuan(orderRemainingAmount)}</strong>
+              <small>
+                订单 {selectedOrder.orderNo}
+                {Number(selectedOrder.memberDiscount || 0) > 0 ? ` · 已优惠 ${yuan(selectedOrder.memberDiscount || 0)}` : ''}
+              </small>
+            </div>
+            <div className="cashier-payment-methods">
+              <Button icon={<DollarOutlined />} onClick={() => void confirmSettlement('CASH')}>
+                <strong>现金收款</strong><small>确认现金已收妥</small>
+              </Button>
+              <Tooltip title={context?.wechatCodePaymentEnabled ? '' : context?.wechatCodePaymentReason}>
+                <span>
+                  <Button
+                    className="is-wechat"
+                    icon={<WechatOutlined />}
+                    disabled={!context?.wechatCodePaymentEnabled}
+                    onClick={openWechatScanner}
+                  >
+                    <strong>微信付款码</strong>
+                    <small>{context?.wechatCodePaymentEnabled ? '摄像头或扫码枪收款' : '等待商户支付配置'}</small>
+                  </Button>
+                </span>
+              </Tooltip>
+              <Button icon={<WalletOutlined />} onClick={() => void confirmSettlement('EXTERNAL')}>
+                <strong>系统外支付</strong><small>其他渠道已确认到账</small>
+              </Button>
+            </div>
+            {!context?.wechatCodePaymentEnabled && (
+              <Alert
+                type="info"
+                showIcon
+                message="微信付款码支付暂不可用"
+                description={context?.wechatCodePaymentReason || '补充服务商、特约商户和 API 证书配置后自动开放。'}
+              />
+            )}
+            <div className="cashier-compact-checkout-footer">
+              <Button icon={<PrinterOutlined />} onClick={() => void printCustomerCopy()}>打印预结单</Button>
+              <span><LockOutlined />结账期间锁定订单，避免重复收款</span>
+            </div>
           </div>
         )}
-      </Drawer>
+      </Modal>
 
       <Modal
         className="cashier-wechat-modal"
@@ -1513,11 +1771,21 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         </div>}
       </Modal>
 
-      <Modal title="退菜申请" open={returnOpen} onCancel={() => setReturnOpen(false)} okText="提交退菜" confirmLoading={submitting} onOk={() => void submitReturn()}>
+      <Modal title="确认退菜" open={returnOpen} onCancel={() => setReturnOpen(false)} okText="确认退菜并更新账单" okButtonProps={{ danger: true }} confirmLoading={submitting} onOk={() => void submitReturn()}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Alert type="warning" showIcon message="确认后立即生效" description="系统会直接扣减订单金额、恢复对应库存，并在订单记录中保留一条负金额退菜明细。" />
           <Select value={returnItemID} onChange={(value) => { setReturnItemID(value); setReturnQuantity(1); }} options={selectedOrder?.items.filter((item) => item.id).map((item) => ({ label: `${item.productName} ×${item.quantity}`, value: item.id! }))} placeholder="选择退菜商品" style={{ width: '100%' }} />
-          <InputNumber value={returnQuantity} onChange={(value) => setReturnQuantity(Number(value || 1))} min={1} max={selectedOrder?.items.find((item) => String(item.id) === String(returnItemID))?.quantity || 1} addonAfter="份" style={{ width: '100%' }} />
-          <Input.TextArea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} maxLength={255} rows={3} placeholder="填写退菜原因" />
+          <div className="cashier-number-field">
+            <InputNumber value={returnQuantity} onChange={(value) => setReturnQuantity(Number(value || 1))} min={1} max={selectedOrder?.items.find((item) => String(item.id) === String(returnItemID))?.quantity || 1} />
+            <span>份</span>
+          </div>
+          <Select
+            value={returnReason || undefined}
+            onChange={setReturnReason}
+            options={returnReasonOptions.map((reason) => ({ label: reason, value: reason }))}
+            placeholder="选择退菜原因"
+            style={{ width: '100%' }}
+          />
         </Space>
       </Modal>
 

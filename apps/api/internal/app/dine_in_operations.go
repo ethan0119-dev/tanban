@@ -487,7 +487,7 @@ func (s *Server) createOrderReturnRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !validDineInItemChangeOrder(orderType, settlementMode, paymentStatus, status, paidCents) {
-		writeError(w, http.StatusConflict, "ORDER_NOT_RETURNABLE", "仅未开始收款的堂食订单可以申请退菜")
+		writeError(w, http.StatusConflict, "ORDER_NOT_RETURNABLE", "仅未开始收款的堂食订单可以退菜")
 		return
 	}
 	var activePayment int
@@ -510,32 +510,77 @@ func (s *Server) createOrderReturnRequest(w http.ResponseWriter, r *http.Request
 		handleSQLError(w, err)
 		return
 	}
-	var pendingQuantity int
-	if err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(quantity),0) FROM order_return_requests
-		WHERE tenant_id=? AND order_id=? AND order_item_id=? AND status='PENDING'`,
-		actor.TenantID, orderID, input.OrderItemID).Scan(&pendingQuantity); err != nil {
+	if input.Quantity > itemQuantity {
+		writeError(w, http.StatusConflict, "RETURN_QUANTITY_EXCEEDED", "退菜数量超过该商品当前可退数量")
+		return
+	}
+	var orderQuantity int
+	if err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(quantity),0) FROM order_items
+		WHERE tenant_id=? AND order_id=?`, actor.TenantID, orderID).Scan(&orderQuantity); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	if input.Quantity+pendingQuantity > itemQuantity {
-		writeError(w, http.StatusConflict, "RETURN_QUANTITY_EXCEEDED", "申请退菜数量超过该商品当前可退数量")
+	if input.Quantity >= orderQuantity {
+		writeError(w, http.StatusConflict, "RETURN_ALL_ITEMS_NOT_ALLOWED", "不能通过退菜清空整单；如需取消整单，请关闭订单")
 		return
 	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO order_return_requests(
-		tenant_id,store_id,order_id,order_item_id,sku_id,product_name_snapshot,quantity,amount_cents,reason,requested_by
-	) VALUES(?,?,?,?,?,?,?,?,?,?)`, actor.TenantID, storeID, orderID, input.OrderItemID, skuID, productName,
-		input.Quantity, unitPrice*int64(input.Quantity), input.Reason, actor.UserID)
+		tenant_id,store_id,order_id,order_item_id,sku_id,product_name_snapshot,quantity,amount_cents,reason,status,
+		requested_by,reviewed_by,reviewed_at,review_remark
+	) VALUES(?,?,?,?,?,?,?,?,?,'APPROVED',?,?,NOW(3),'退菜直接生效')`,
+		actor.TenantID, storeID, orderID, input.OrderItemID, skuID, productName,
+		input.Quantity, unitPrice*int64(input.Quantity), input.Reason, actor.UserID, actor.UserID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	requestID, _ := result.LastInsertId()
+	if _, err = tx.ExecContext(r.Context(), `UPDATE order_items SET quantity=quantity-?,subtotal_cents=unit_price_cents*(quantity-?)
+		WHERE id=? AND tenant_id=?`, input.Quantity, input.Quantity, input.OrderItemID, actor.TenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), "UPDATE inventory SET stock=stock+? WHERE tenant_id=? AND sku_id=?",
+		input.Quantity, actor.TenantID, skuID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	var merchandise, memberTotal, storeDiscount, couponDiscount int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(subtotal_cents),0),COALESCE(SUM(member_discount_cents*quantity),0)
+		FROM order_items WHERE tenant_id=? AND order_id=?`, actor.TenantID, orderID).Scan(&merchandise, &memberTotal); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.QueryRowContext(r.Context(), `SELECT store_promotion_discount_cents,coupon_discount_cents FROM orders
+		WHERE id=? AND tenant_id=?`, orderID, actor.TenantID).Scan(&storeDiscount, &couponDiscount); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if storeDiscount > merchandise {
+		storeDiscount = merchandise
+	}
+	if couponDiscount > merchandise-storeDiscount {
+		couponDiscount = merchandise - storeDiscount
+	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE orders SET merchandise_subtotal_cents=?,member_discount_cents=?,
+		store_promotion_discount_cents=?,coupon_discount_cents=?,total_cents=?,updated_at=NOW(3)
+		WHERE id=? AND tenant_id=?`, merchandise, memberTotal, storeDiscount, couponDiscount,
+		merchandise-storeDiscount-couponDiscount, orderID, actor.TenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = enqueuePrintOutboxWith(r.Context(), tx, actor.TenantID, storeID, orderID, "ORDER_CREATED",
+		fmt.Sprintf("ORDER:%d:RETURN:%d", orderID, requestID), actor.UserID,
+		fmt.Sprintf("【退菜】%s ×%d；原因：%s", productName, input.Quantity, input.Reason)); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	s.audit(r.Context(), actor, "order.return_request", "order_return_request", int64String(requestID), input, r)
-	s.listOrderReturnRequests(w, r)
+	s.audit(r.Context(), actor, "order.return_direct", "order_return_request", int64String(requestID), input, r)
+	s.getOrderByID(w, r, actor.TenantID, orderID)
 }
 
 func (s *Server) listOrderReturnRequests(w http.ResponseWriter, r *http.Request) {

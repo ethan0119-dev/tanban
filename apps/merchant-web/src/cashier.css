@@ -151,6 +151,22 @@
   font-size: 15px;
 }
 
+.cashier-layout-switch {
+  flex: 0 0 auto;
+  padding: 3px;
+  background: #f1ede9;
+}
+
+.cashier-layout-switch .ant-segmented-item {
+  min-width: 76px;
+  font-size: 13px;
+}
+
+.cashier-layout-switch .ant-segmented-item-selected {
+  color: #9a4e24;
+  font-weight: 650;
+}
+
 .cashier-clock {
   min-width: 118px;
   padding-right: 23px;
@@ -225,6 +241,18 @@
   display: grid;
   grid-template-columns: minmax(610px, 58.6fr) minmax(470px, 41.4fr);
   overflow: hidden;
+}
+
+.cashier-workspace.is-standard {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cashier-workspace.is-standard > .cashier-operation {
+  display: none;
+}
+
+.cashier-workspace.is-standard.is-detail-focused > .cashier-board {
+  display: none;
 }
 
 .cashier-board {
@@ -560,10 +588,6 @@
   font-size: 23px;
 }
 
-.cashier-detail-back {
-  display: none;
-}
-
 .cashier-order-card {
   min-height: 240px;
   flex: 1 1 auto;
@@ -677,6 +701,37 @@
   font-size: 15px;
   font-weight: 500;
   text-align: right;
+}
+
+.cashier-order-item.is-returned,
+.cashier-checkout-item.is-returned {
+  color: #b24138;
+  background: #fff7f5;
+}
+
+.cashier-order-item.is-returned > span {
+  display: flex;
+  align-items: center;
+}
+
+.cashier-order-item.is-returned > span small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cashier-return-icon {
+  width: 25px;
+  height: 25px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 25px;
+  margin-right: 8px;
+  border-radius: 50%;
+  color: #fff;
+  background: #d45348;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .cashier-addition-divider {
@@ -1296,6 +1351,274 @@
   color: var(--cashier-muted);
 }
 
+.cashier-compact-checkout .ant-modal-content {
+  padding: 22px;
+}
+
+.cashier-compact-checkout-body {
+  display: grid;
+  gap: 18px;
+}
+
+.cashier-compact-due {
+  padding: 18px 20px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #b9512b, #d67538);
+}
+
+.cashier-compact-due span,
+.cashier-compact-due strong,
+.cashier-compact-due small {
+  display: block;
+}
+
+.cashier-compact-due span {
+  opacity: .85;
+  font-size: 14px;
+}
+
+.cashier-compact-due strong {
+  margin: 3px 0;
+  font-size: 36px;
+}
+
+.cashier-compact-due small {
+  opacity: .78;
+}
+
+.cashier-compact-checkout-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #82766e;
+  font-size: 12px;
+}
+
+.cashier-compact-checkout-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cashier-standard-detail {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f7f5f2;
+}
+
+.cashier-standard-head {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 22px;
+  border-bottom: 1px solid #e5ddd7;
+  background: #fff;
+}
+
+.cashier-standard-head > div {
+  min-width: 0;
+}
+
+.cashier-standard-head > div strong,
+.cashier-standard-head > div span {
+  display: block;
+}
+
+.cashier-standard-head > div strong {
+  font-size: 22px;
+}
+
+.cashier-standard-head > div span {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #837870;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.cashier-standard-grid {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(330px, 1.2fr) minmax(285px, .88fr) minmax(250px, .76fr);
+  overflow: hidden;
+}
+
+.cashier-standard-bill,
+.cashier-standard-payment,
+.cashier-standard-payments {
+  min-width: 0;
+  min-height: 0;
+  padding: 22px;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.cashier-standard-bill,
+.cashier-standard-payment {
+  border-right: 1px solid #e7dfd9;
+}
+
+.cashier-standard-bill {
+  display: flex;
+  flex-direction: column;
+}
+
+.cashier-standard-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eee7e2;
+}
+
+.cashier-standard-section-title strong {
+  font-size: 20px;
+}
+
+.cashier-standard-section-title span {
+  color: #887d76;
+  font-size: 12px;
+}
+
+.cashier-standard-items {
+  min-height: 180px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cashier-standard-empty {
+  min-height: 280px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #847970;
+}
+
+.cashier-standard-empty .anticon {
+  color: #c3b6ac;
+  font-size: 52px;
+}
+
+.cashier-standard-empty strong {
+  color: #4d433d;
+  font-size: 20px;
+}
+
+.cashier-standard-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  padding-top: 16px;
+  border-top: 1px solid #eee7e2;
+}
+
+.cashier-standard-actions > span,
+.cashier-standard-actions > span > .ant-btn,
+.cashier-standard-actions > .ant-btn {
+  width: 100%;
+}
+
+.cashier-standard-actions .ant-btn {
+  min-height: 46px;
+  white-space: normal;
+}
+
+.cashier-standard-payment {
+  background: #fffdfb;
+}
+
+.cashier-standard-amount {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #ecd8ca;
+  border-radius: 12px;
+  background: #fff6ef;
+}
+
+.cashier-standard-amount span,
+.cashier-standard-amount strong,
+.cashier-standard-amount small {
+  display: block;
+}
+
+.cashier-standard-amount span {
+  color: #74675f;
+}
+
+.cashier-standard-amount strong {
+  margin: 3px 0;
+  color: #d84a37;
+  font-size: 38px;
+}
+
+.cashier-standard-amount small {
+  color: #b0643e;
+}
+
+.cashier-standard-payment .ant-alert {
+  margin-top: 16px;
+}
+
+.cashier-payment-record-list {
+  display: grid;
+  gap: 11px;
+  margin-top: 16px;
+}
+
+.cashier-payment-record-list article {
+  padding: 14px;
+  border: 1px solid #e8e1dc;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.cashier-payment-record-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cashier-payment-record-list article .ant-tag {
+  margin: 0;
+}
+
+.cashier-payment-record-list article b,
+.cashier-payment-record-list article span,
+.cashier-payment-record-list article small {
+  display: block;
+}
+
+.cashier-payment-record-list article b {
+  margin-top: 9px;
+  color: #cf4d36;
+  font-size: 24px;
+}
+
+.cashier-payment-record-list article span,
+.cashier-payment-record-list article small {
+  margin-top: 4px;
+  color: #8a817b;
+  font-size: 11px;
+}
+
+.cashier-payment-record-list article small {
+  overflow-wrap: anywhere;
+}
+
 .cashier-number-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -1732,26 +2055,14 @@
   .cashier-workspace {
     grid-template-columns: minmax(500px, 1.35fr) minmax(410px, 1fr);
   }
-  .cashier-workspace.is-detail-focused {
+  .cashier-workspace.is-standard.is-detail-focused {
     display: block;
   }
-  .cashier-workspace.is-detail-focused .cashier-board {
+  .cashier-workspace.is-standard.is-detail-focused .cashier-board {
     display: none;
   }
-  .cashier-workspace.is-detail-focused .cashier-operation {
+  .cashier-workspace.is-standard.is-detail-focused .cashier-standard-detail {
     height: 100%;
-    padding: 20px 24px 14px;
-    border-left: 0;
-  }
-  .cashier-workspace.is-detail-focused .cashier-detail-back {
-    display: inline-flex;
-  }
-  .cashier-workspace.is-detail-focused .cashier-operation-title {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-  }
-  .cashier-workspace.is-detail-focused .cashier-operation-title > strong {
-    padding-left: 10px;
   }
   .cashier-board {
     padding-inline: 20px;
@@ -1818,6 +2129,28 @@
   }
   .cashier-workspace {
     grid-template-columns: minmax(340px, 1fr) minmax(350px, .92fr);
+  }
+  .cashier-standard-grid {
+    grid-template-columns: minmax(270px, 1.08fr) minmax(220px, .9fr) minmax(190px, .72fr);
+  }
+  .cashier-standard-bill,
+  .cashier-standard-payment,
+  .cashier-standard-payments {
+    padding: 16px;
+  }
+  .cashier-standard-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn {
+    height: 72px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    padding-inline: 11px;
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn > .anticon {
+    font-size: 24px;
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn strong {
+    font-size: 15px;
   }
   .cashier-mode-row {
     display: block;
@@ -2028,6 +2361,39 @@
   .cashier-workspace {
     display: block;
     overflow: visible;
+  }
+  .cashier-workspace.is-standard.is-detail-focused,
+  .cashier-standard-detail,
+  .cashier-standard-grid {
+    overflow: visible;
+  }
+  .cashier-standard-head {
+    position: sticky;
+    top: 66px;
+    z-index: 8;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .cashier-standard-head > .ant-tag {
+    display: none;
+  }
+  .cashier-standard-head > .ant-btn:last-child {
+    padding-inline: 8px;
+  }
+  .cashier-standard-grid {
+    display: block;
+  }
+  .cashier-standard-bill,
+  .cashier-standard-payment {
+    border-right: 0;
+    border-bottom: 1px solid #e7dfd9;
+  }
+  .cashier-standard-items {
+    max-height: 55vh;
+  }
+  .cashier-standard-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .cashier-board,
   .cashier-operation {
