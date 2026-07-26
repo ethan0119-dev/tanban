@@ -158,8 +158,9 @@ describe('cashier operations', () => {
 
   it('filters the table board from operational alerts and never invents overdue counts', () => {
     renderCashier();
-    expect(screen.getByRole('button', { name: /双人桌.*桌号 B03.*待结账/ })).toBeTruthy();
-    expect(screen.getByText('桌号 B03')).toBeTruthy();
+    const namedTable = screen.getByRole('button', { name: /B03.*双人桌.*待结账/ });
+    expect(namedTable.querySelector('strong')?.textContent).toBe('B03');
+    expect(namedTable.querySelector('.cashier-table-name')?.textContent).toBe('双人桌');
     expect(screen.getByRole('button', { name: /1单超时待取/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /A02.*待清台/ })).toBeTruthy();
 

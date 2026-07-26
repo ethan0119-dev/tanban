@@ -1402,9 +1402,9 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
                     const selected = String(selectedTable?.id) === String(table.id);
                     return (
                       <button type="button" className={`cashier-table-card ${meta.className} ${table.totalCents ? 'has-total' : ''} ${selected ? 'selected' : ''}`} key={String(table.id)} onClick={() => selectTable(table)}>
-                        <strong>{table.name}</strong>
-                        {table.tableCode?.trim() && table.tableCode.trim() !== table.name.trim() && (
-                          <span className="cashier-table-code">桌号 {table.tableCode}</span>
+                        <strong>{table.tableCode?.trim() || table.name}</strong>
+                        {table.tableCode?.trim() && table.name.trim() && table.name.trim() !== table.tableCode.trim() && (
+                          <span className="cashier-table-name">{table.name}</span>
                         )}
                         <span className="cashier-table-state">{meta.label}</span>
                         <div className="cashier-table-meta">
