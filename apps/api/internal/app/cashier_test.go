@@ -33,3 +33,46 @@ func TestCashierTokenPathAllowed(t *testing.T) {
 		}
 	}
 }
+
+func TestValidWechatPaymentCode(t *testing.T) {
+	t.Parallel()
+	for _, code := range []string{
+		"101234567890123456",
+		"121234567890123456",
+		"151234567890123456",
+	} {
+		if !validWechatPaymentCode(code) {
+			t.Fatalf("valid WeChat payment code %q was rejected", code)
+		}
+	}
+	for _, code := range []string{
+		"", "091234567890123456", "161234567890123456",
+		"10123456789012345", "1012345678901234567", "10123456789012345x",
+	} {
+		if validWechatPaymentCode(code) {
+			t.Fatalf("invalid WeChat payment code %q was accepted", code)
+		}
+	}
+}
+
+func TestValidateWechatCodePayableOrder(t *testing.T) {
+	t.Parallel()
+	ready := wechatCodePayableOrder{
+		Status: "READY", PaymentStatus: "UNPAID", SettlementMode: "PAY_AFTER",
+		TenantPaymentProvider: "wechat_partner", MerchantNo: "1900000109",
+		OnboardingStatus: "ACTIVE", ProductAuthorizationStatus: "AUTHORIZED",
+	}
+	if code, message := validateWechatCodePayableOrder(ready, "wechat_partner"); code != "" {
+		t.Fatalf("ready order rejected: %s %s", code, message)
+	}
+	paid := ready
+	paid.PaymentStatus = "PAID"
+	if code, _ := validateWechatCodePayableOrder(paid, "wechat_partner"); code != "ORDER_ALREADY_PAID" {
+		t.Fatalf("paid order returned code %q", code)
+	}
+	notAuthorized := ready
+	notAuthorized.ProductAuthorizationStatus = "NOT_AUTHORIZED"
+	if code, _ := validateWechatCodePayableOrder(notAuthorized, "wechat_partner"); code != "WECHAT_PAY_MERCHANT_NOT_READY" {
+		t.Fatalf("unauthorized merchant returned code %q", code)
+	}
+}

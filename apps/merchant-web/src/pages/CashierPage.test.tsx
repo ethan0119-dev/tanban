@@ -61,7 +61,30 @@ describe('cashier operations', () => {
     fireEvent.click(screen.getByRole('button', { name: /结账 ¥132/ }));
 
     expect(await screen.findByRole('button', { name: /现金收款/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /微信付款码/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /系统外支付/ })).toBeTruthy();
+    expect(screen.getByText('商品原价')).toBeTruthy();
+    expect(screen.getByText('本次应收')).toBeTruthy();
+  });
+
+  it('accepts a WeChat payment code without keeping it in the checkout UI', async () => {
+    renderCashier();
+    fireEvent.click(screen.getByRole('button', { name: /结账 ¥132/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /微信付款码/ }));
+
+    const input = await screen.findByPlaceholderText('18 位微信付款码');
+    fireEvent.change(input, { target: { value: '101234567890123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认收款' }));
+
+    expect(await screen.findByText('微信支付成功')).toBeTruthy();
+    expect(screen.queryByDisplayValue('101234567890123456')).toBeNull();
+  });
+
+  it('uses focused order detail mode and can return to the table board', () => {
+    const view = renderCashier();
+    expect(view.container.querySelector('.cashier-workspace.is-detail-focused')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /返回桌台/ }));
+    expect(view.container.querySelector('.cashier-workspace.is-detail-focused')).toBeNull();
   });
 
   it('opens transfer and handover workflows', async () => {

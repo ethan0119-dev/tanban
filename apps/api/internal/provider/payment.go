@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -72,6 +73,58 @@ type PaymentProvider interface {
 	Close(context.Context, string) error
 	Refund(context.Context, RefundRequest) (RefundResult, error)
 	QueryRefund(context.Context, string) (QueryRefundResult, error)
+}
+
+type CodePaymentRequest struct {
+	MerchantNo   string
+	OrderNo      string
+	Amount       int64
+	AuthCode     string
+	Description  string
+	SubAppID     string
+	DeviceID     string
+	ServerIP     string
+	StoreID      string
+	StoreName    string
+	StoreAddress string
+}
+
+type CodePaymentResult struct {
+	ProviderOrderNo       string            `json:"provider_order_no"`
+	ProviderTransactionNo string            `json:"provider_transaction_no,omitempty"`
+	Status                PaymentStatus     `json:"status"`
+	ErrorCode             string            `json:"error_code,omitempty"`
+	Message               string            `json:"message,omitempty"`
+	NeedCustomerAction    bool              `json:"need_customer_action"`
+	PaidAt                *time.Time        `json:"paid_at,omitempty"`
+	Raw                   map[string]string `json:"raw,omitempty"`
+}
+
+type QueryCodePaymentRequest struct {
+	MerchantNo string
+	OrderNo    string
+}
+
+type ReverseCodePaymentRequest struct {
+	MerchantNo string
+	OrderNo    string
+}
+
+type ReverseCodePaymentResult struct {
+	Status    PaymentStatus `json:"status"`
+	Retry     bool          `json:"retry"`
+	ErrorCode string        `json:"error_code,omitempty"`
+	Message   string        `json:"message,omitempty"`
+}
+
+// PaymentCodeProvider models customer-presented payment-code collection.
+// AuthCode is deliberately absent from query/reverse requests so callers
+// cannot accidentally persist or replay a customer's short-lived credential.
+type PaymentCodeProvider interface {
+	CodePaymentReady() (bool, string)
+	PayCode(context.Context, CodePaymentRequest) (CodePaymentResult, error)
+	QueryCode(context.Context, QueryCodePaymentRequest) (CodePaymentResult, error)
+	ReverseCode(context.Context, ReverseCodePaymentRequest) (ReverseCodePaymentResult, error)
 }
 
 type MockPayment struct {
@@ -230,13 +283,20 @@ func (t TianQue) QueryRefund(context.Context, string) (QueryRefundResult, error)
 type WeChatPayPartnerConfig struct {
 	BaseURL, ServiceProviderMchID, ServiceProviderAppID, APICertSerialNo   string
 	MerchantPrivateKey, APIV3Key, WeChatPayPublicKeyID, WeChatPayPublicKey string
+	APIV2Key, MerchantCertificate, ServerIP                                string
 	NotifyURL, RefundNotifyURL                                             string
 }
 
-// WeChatPayPartner is the API v3 ordinary service-provider boundary. Real
-// signing, notification decryption and transport remain disabled until the
-// service-provider account and a test sub-merchant are approved.
-type WeChatPayPartner struct{ Config WeChatPayPartnerConfig }
+// WeChatPayPartner exposes the ordinary service-provider boundary. Customer
+// payment-code collection uses the official APIv2 MICROPAY flow; Mini Program
+// APIv3 creation and callback verification remain fail-closed until the
+// service-provider account and a test sub-merchant are supplied.
+type WeChatPayPartner struct {
+	Config     WeChatPayPartnerConfig
+	HTTPClient interface {
+		Do(*http.Request) (*http.Response, error)
+	}
+}
 
 func (w WeChatPayPartner) Name() string { return "wechat_partner" }
 func (w WeChatPayPartner) Create(context.Context, CreatePaymentRequest) (CreatePaymentResult, error) {

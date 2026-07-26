@@ -22,9 +22,12 @@ type WeChatPayPartner struct {
 	ServiceProviderAppID string
 	APICertSerialNo      string
 	MerchantPrivateKey   string
+	MerchantCertificate  string
+	APIV2Key             string
 	APIV3Key             string
 	WeChatPayPublicKeyID string
 	WeChatPayPublicKey   string
+	ServerIP             string
 	NotifyURL            string
 	RefundNotifyURL      string
 }
@@ -104,9 +107,12 @@ func Load() (Config, error) {
 			ServiceProviderAppID: strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_SP_APP_ID")),
 			APICertSerialNo:      strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_CERT_SERIAL_NO")),
 			MerchantPrivateKey:   strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PRIVATE_KEY")),
+			MerchantCertificate:  strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_CERT")),
+			APIV2Key:             strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_V2_KEY")),
 			APIV3Key:             strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_API_V3_KEY")),
 			WeChatPayPublicKeyID: strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PUBLIC_KEY_ID")),
 			WeChatPayPublicKey:   strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_PUBLIC_KEY")),
+			ServerIP:             strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_SERVER_IP")),
 			NotifyURL:            strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_NOTIFY_URL")),
 			RefundNotifyURL:      strings.TrimSpace(os.Getenv("TB_WECHAT_PAY_REFUND_NOTIFY_URL")),
 		},

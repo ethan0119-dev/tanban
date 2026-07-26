@@ -59,15 +59,18 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 			NotifyURL: cfg.TianQue.NotifyURL,
 		}}
 	} else if cfg.PaymentProvider == "wechat_partner" {
-		payment = provider.WeChatPayPartner{Config: provider.WeChatPayPartnerConfig{
+		payment = &provider.WeChatPayPartner{Config: provider.WeChatPayPartnerConfig{
 			BaseURL:              cfg.WeChatPayPartner.BaseURL,
 			ServiceProviderMchID: cfg.WeChatPayPartner.ServiceProviderMchID,
 			ServiceProviderAppID: cfg.WeChatPayPartner.ServiceProviderAppID,
 			APICertSerialNo:      cfg.WeChatPayPartner.APICertSerialNo,
 			MerchantPrivateKey:   cfg.WeChatPayPartner.MerchantPrivateKey,
+			MerchantCertificate:  cfg.WeChatPayPartner.MerchantCertificate,
+			APIV2Key:             cfg.WeChatPayPartner.APIV2Key,
 			APIV3Key:             cfg.WeChatPayPartner.APIV3Key,
 			WeChatPayPublicKeyID: cfg.WeChatPayPartner.WeChatPayPublicKeyID,
 			WeChatPayPublicKey:   cfg.WeChatPayPartner.WeChatPayPublicKey,
+			ServerIP:             cfg.WeChatPayPartner.ServerIP,
 			NotifyURL:            cfg.WeChatPayPartner.NotifyURL,
 			RefundNotifyURL:      cfg.WeChatPayPartner.RefundNotifyURL,
 		}}

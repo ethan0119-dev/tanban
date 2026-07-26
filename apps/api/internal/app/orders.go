@@ -933,6 +933,53 @@ func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, 
 	if providerName != s.Payment.Name() {
 		return fmt.Errorf("payment provider %s is not active", providerName)
 	}
+	var paymentMethod, merchantNo string
+	var createdAt time.Time
+	if providerName == "wechat_partner" {
+		if err = conn.QueryRowContext(ctx, `SELECT payment_method,merchant_no,created_at FROM payment_transactions
+			WHERE id=? AND tenant_id=?`, id, tenantID).Scan(&paymentMethod, &merchantNo, &createdAt); err != nil {
+			return err
+		}
+	}
+	if paymentMethod == wechatCodePaymentMethod {
+		codeProvider, ok := s.Payment.(provider.PaymentCodeProvider)
+		if !ok {
+			return errors.New("WeChat code payment provider is unavailable")
+		}
+		queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		queryResult, queryErr := codeProvider.QueryCode(queryCtx, provider.QueryCodePaymentRequest{
+			MerchantNo: merchantNo, OrderNo: providerNo,
+		})
+		cancel()
+		if queryErr == nil {
+			if err = s.recordWechatCodeQueryResult(ctx, conn, tenantID, id, providerNo, queryResult); err != nil {
+				return err
+			}
+			switch queryResult.Status {
+			case provider.PaymentSuccess:
+				return errPaymentAlreadyPaid
+			case provider.PaymentFailed, provider.PaymentClosed:
+				return nil
+			}
+		}
+		if time.Since(createdAt) < 15*time.Second {
+			return errors.New("WeChat code payment is still inside the 15-second query window")
+		}
+		reverseCtx, reverseCancel := context.WithTimeout(ctx, 10*time.Second)
+		reverseResult, reverseErr := codeProvider.ReverseCode(reverseCtx, provider.ReverseCodePaymentRequest{
+			MerchantNo: merchantNo, OrderNo: providerNo,
+		})
+		reverseCancel()
+		if reverseErr != nil {
+			return reverseErr
+		}
+		if reverseResult.Status != provider.PaymentClosed {
+			return errors.New("WeChat code payment reversal is still pending")
+		}
+		_, err = conn.ExecContext(ctx, `UPDATE payment_transactions SET status='CLOSED'
+			WHERE id=? AND tenant_id=? AND status IN ('CREATING','PENDING')`, id, tenantID)
+		return err
+	}
 	if status == paymentStatusCreating {
 		intent, loadErr := s.loadPaymentCreationIntent(ctx, conn, id)
 		if loadErr != nil {

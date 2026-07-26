@@ -27,7 +27,8 @@ func (s *Server) StartPaymentReconciler(ctx context.Context) {
 }
 
 func (s *Server) reconcilePayments(ctx context.Context) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider_order_no,p.status,o.payment_status,p.provider_request_no,p.amount_cents,p.merchant_no
+	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider_order_no,p.status,o.payment_status,p.provider_request_no,p.amount_cents,p.merchant_no,p.payment_method,
+		TIMESTAMPDIFF(SECOND,p.updated_at,NOW(3))
 		FROM payment_transactions p
 		JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
 		WHERE p.provider=? AND (p.status IN ('CREATING','PENDING') OR (p.status='SUCCESS' AND o.payment_status='UNPAID'))
@@ -37,13 +38,13 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 		return
 	}
 	type pendingPayment struct {
-		id, tenantID, orderID, amount                                         int64
-		providerNo, status, orderPaymentStatus, providerRequestNo, merchantNo string
+		id, tenantID, orderID, amount, ageSeconds                                            int64
+		providerNo, status, orderPaymentStatus, providerRequestNo, merchantNo, paymentMethod string
 	}
 	var pending []pendingPayment
 	for rows.Next() {
 		var item pendingPayment
-		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.providerRequestNo, &item.amount, &item.merchantNo) == nil {
+		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.providerRequestNo, &item.amount, &item.merchantNo, &item.paymentMethod, &item.ageSeconds) == nil {
 			pending = append(pending, item)
 		}
 	}
@@ -53,6 +54,37 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 			if err = s.markPaymentPaid(ctx, s.Payment.Name(), item.providerNo, time.Now()); err != nil {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
 				s.Logger.Error("finish locally successful payment", "payment_id", item.id, "error", err)
+			}
+			continue
+		}
+		if item.paymentMethod == wechatCodePaymentMethod {
+			if item.status == paymentStatusCreating && item.ageSeconds < 20 {
+				continue
+			}
+			codeProvider, available := s.Payment.(provider.PaymentCodeProvider)
+			if !available {
+				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
+				s.Logger.Error("WeChat code payment provider is unavailable during reconciliation", "payment_id", item.id)
+				continue
+			}
+			queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			result, queryErr := codeProvider.QueryCode(queryCtx, provider.QueryCodePaymentRequest{
+				MerchantNo: item.merchantNo, OrderNo: item.providerNo,
+			})
+			cancel()
+			if queryErr != nil {
+				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET status='PENDING',updated_at=NOW(3) WHERE id=? AND status IN ('CREATING','PENDING')", item.id)
+				s.Logger.Warn("query WeChat code payment during reconciliation", "payment_id", item.id, "error", queryErr)
+				continue
+			}
+			conn, release, lockErr := s.acquirePaymentOrderLock(ctx, item.tenantID, item.orderID)
+			if lockErr == nil {
+				lockErr = s.recordWechatCodeQueryResult(ctx, conn, item.tenantID, item.id, item.providerNo, result)
+				release()
+			}
+			if lockErr != nil {
+				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
+				s.Logger.Error("finalize WeChat code payment reconciliation", "payment_id", item.id, "error", lockErr)
 			}
 			continue
 		}

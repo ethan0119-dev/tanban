@@ -110,17 +110,50 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	var storeCode, storeName, logoURL string
-	err = s.DB.QueryRowContext(r.Context(), `SELECT code,name,logo_url FROM stores
-		WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL`, storeID, actor.TenantID).
-		Scan(&storeCode, &storeName, &logoURL)
+	var storeCode, storeName, logoURL, paymentProvider, merchantNo, onboardingStatus, productAuthorizationStatus string
+	err = s.DB.QueryRowContext(r.Context(), `SELECT st.code,st.name,st.logo_url,t.payment_provider,t.payment_merchant_no,
+		t.payment_onboarding_status,t.payment_product_authorization_status
+		FROM stores st JOIN tenants t ON t.id=st.tenant_id
+		WHERE st.id=? AND st.tenant_id=? AND st.status='ACTIVE' AND st.deleted_at IS NULL
+		  AND t.status='ACTIVE' AND t.deleted_at IS NULL`, storeID, actor.TenantID).
+		Scan(&storeCode, &storeName, &logoURL, &paymentProvider, &merchantNo, &onboardingStatus, &productAuthorizationStatus)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
+	acceptanceEnabled, acceptanceErr := s.paymentAcceptanceEnabled(r.Context())
+	if acceptanceErr != nil {
+		handleSQLError(w, acceptanceErr)
+		return
+	}
+	codeProvider, codeProviderAvailable := s.Payment.(provider.PaymentCodeProvider)
+	codeProviderReady, codeProviderReason := false, "平台尚未启用微信付款码支付"
+	if codeProviderAvailable {
+		codeProviderReady, codeProviderReason = codeProvider.CodePaymentReady()
+	}
+	merchantReady := paymentProvider == "wechat_partner" && merchantNo != "" &&
+		onboardingStatus == "ACTIVE" && productAuthorizationStatus == "AUTHORIZED"
+	wechatCodePaymentEnabled := acceptanceEnabled && s.Payment.Name() == "wechat_partner" &&
+		codeProviderReady && merchantReady
+	wechatCodePaymentReason := ""
+	switch {
+	case !acceptanceEnabled:
+		wechatCodePaymentReason = "平台已暂停支付受理"
+	case paymentProvider != "wechat_partner":
+		wechatCodePaymentReason = "当前商户未选择微信支付服务商"
+	case s.Payment.Name() != "wechat_partner":
+		wechatCodePaymentReason = "服务器当前未启用微信支付服务商"
+	case !merchantReady:
+		wechatCodePaymentReason = "特约商户进件或付款码支付产品授权尚未完成"
+	case !codeProviderReady:
+		wechatCodePaymentReason = codeProviderReason
+	}
 	writeData(w, http.StatusOK, map[string]any{
 		"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logoUrl": logoURL,
 		"operatorName": actor.DisplayName, "role": actor.Role,
+		"paymentProvider":          paymentProvider,
+		"wechatCodePaymentEnabled": wechatCodePaymentEnabled,
+		"wechatCodePaymentReason":  wechatCodePaymentReason,
 	})
 }
 

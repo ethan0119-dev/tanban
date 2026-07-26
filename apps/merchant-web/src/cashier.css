@@ -560,6 +560,10 @@
   font-size: 23px;
 }
 
+.cashier-detail-back {
+  display: none;
+}
+
 .cashier-order-card {
   min-height: 240px;
   flex: 1 1 auto;
@@ -1312,6 +1316,381 @@
   background: #fafafa;
 }
 
+.cashier-checkout-drawer .ant-drawer-header {
+  min-height: 76px;
+  padding: 15px 24px;
+  border-bottom-color: #e8e1dc;
+}
+
+.cashier-checkout-drawer .ant-drawer-body {
+  padding: 0;
+  background: #f7f5f2;
+}
+
+.cashier-checkout-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.cashier-checkout-title > span {
+  color: #8a4a28;
+  font-size: 15px;
+}
+
+.cashier-checkout-title > strong {
+  color: #2c2521;
+  font-size: 24px;
+}
+
+.cashier-checkout-title > small {
+  color: #81766f;
+  font-weight: 400;
+}
+
+.cashier-checkout-layout {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.08fr) minmax(250px, .86fr) 250px;
+  background: #fff;
+}
+
+.cashier-checkout-bill,
+.cashier-checkout-payment,
+.cashier-checkout-summary {
+  min-width: 0;
+  padding: 24px;
+}
+
+.cashier-checkout-bill,
+.cashier-checkout-payment {
+  border-right: 1px solid #e8e1dc;
+}
+
+.cashier-checkout-bill {
+  display: flex;
+  flex-direction: column;
+}
+
+.cashier-checkout-bill > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #eee8e3;
+}
+
+.cashier-checkout-bill > header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-checkout-bill > header strong {
+  font-size: 21px;
+}
+
+.cashier-checkout-bill-head,
+.cashier-checkout-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 86px;
+  gap: 10px;
+  align-items: center;
+}
+
+.cashier-checkout-bill-head {
+  padding: 16px 0 9px;
+  color: #918780;
+  font-size: 12px;
+}
+
+.cashier-checkout-bill-head span:nth-child(n+2) {
+  text-align: right;
+}
+
+.cashier-checkout-items {
+  min-height: 220px;
+  max-height: calc(100vh - 300px);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cashier-checkout-item {
+  min-height: 56px;
+  border-bottom: 1px solid #f0ebe7;
+}
+
+.cashier-checkout-item > span {
+  min-width: 0;
+}
+
+.cashier-checkout-item > span strong,
+.cashier-checkout-item > span small {
+  display: block;
+}
+
+.cashier-checkout-item > span small {
+  margin-top: 3px;
+  color: #8a817b;
+}
+
+.cashier-checkout-item > b,
+.cashier-checkout-item > strong {
+  text-align: right;
+}
+
+.cashier-checkout-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.cashier-checkout-section-title {
+  margin-bottom: 18px;
+}
+
+.cashier-checkout-section-title strong,
+.cashier-checkout-section-title span {
+  display: block;
+}
+
+.cashier-checkout-section-title strong {
+  font-size: 20px;
+}
+
+.cashier-checkout-section-title span {
+  margin-top: 5px;
+  color: #81766f;
+  font-size: 12px;
+}
+
+.cashier-payment-methods {
+  display: grid;
+  gap: 12px;
+}
+
+.cashier-payment-methods > .ant-btn,
+.cashier-payment-methods > span,
+.cashier-payment-methods > span > .ant-btn {
+  width: 100%;
+}
+
+.cashier-payment-methods .ant-btn {
+  height: 82px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  column-gap: 12px;
+  padding: 12px 16px;
+  border-color: #d9c8bd;
+  color: #4c382d;
+  text-align: left;
+}
+
+.cashier-payment-methods .ant-btn > .anticon {
+  grid-row: 1 / 3;
+  color: #b66435;
+  font-size: 29px;
+}
+
+.cashier-payment-methods .ant-btn strong {
+  align-self: end;
+  font-size: 17px;
+}
+
+.cashier-payment-methods .ant-btn small {
+  align-self: start;
+  color: #887d76;
+  font-size: 11px;
+}
+
+.cashier-payment-methods .ant-btn.is-wechat:not(:disabled) {
+  border-color: #55a974;
+  color: #205f3b;
+  background: #f3fbf6;
+}
+
+.cashier-payment-methods .ant-btn.is-wechat:not(:disabled) > .anticon {
+  color: #159447;
+}
+
+.cashier-checkout-payment .ant-alert {
+  margin-top: 18px;
+}
+
+.cashier-checkout-summary {
+  display: flex;
+  flex-direction: column;
+  background: #fffaf6;
+}
+
+.cashier-checkout-summary > div:not(.cashier-checkout-due):not(.cashier-checkout-safety) {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 10px 0;
+  color: #736862;
+  border-bottom: 1px solid #eee6df;
+}
+
+.cashier-checkout-summary .is-discount strong {
+  color: #d05835;
+}
+
+.cashier-checkout-due {
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.cashier-checkout-due span,
+.cashier-checkout-due strong,
+.cashier-checkout-due small {
+  display: block;
+}
+
+.cashier-checkout-due span {
+  font-size: 17px;
+}
+
+.cashier-checkout-due strong {
+  margin-top: 5px;
+  color: #d84934;
+  font-size: 38px;
+}
+
+.cashier-checkout-due small {
+  margin-top: 8px;
+  color: #958a82;
+  line-height: 1.5;
+}
+
+.cashier-checkout-safety {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  padding: 10px;
+  border-radius: 8px;
+  color: #6e625b;
+  background: #f2ebe5;
+  font-size: 12px;
+}
+
+.cashier-wechat-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-wechat-title > .anticon {
+  color: #159447;
+  font-size: 25px;
+}
+
+.cashier-wechat-title > strong {
+  margin-left: auto;
+  color: #d84a37;
+  font-size: 24px;
+}
+
+.cashier-wechat-scan {
+  display: grid;
+  gap: 14px;
+}
+
+.cashier-camera {
+  position: relative;
+  height: 270px;
+  overflow: hidden;
+  border-radius: 13px;
+  background: #171717;
+}
+
+.cashier-camera video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.cashier-camera-frame {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(rgba(0, 0, 0, .42), transparent 28%, transparent 72%, rgba(0, 0, 0, .42));
+  pointer-events: none;
+}
+
+.cashier-camera-frame i {
+  width: min(430px, 82%);
+  height: 112px;
+  border: 3px solid #55d884;
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .23);
+}
+
+.cashier-camera-frame span {
+  position: absolute;
+  bottom: 18px;
+  font-size: 14px;
+}
+
+.cashier-scanner-fallback {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.cashier-scanner-fallback > span {
+  color: #736963;
+  font-size: 13px;
+}
+
+.cashier-wechat-status {
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px;
+  border-radius: 13px;
+  background: #f7f6f4;
+  text-align: center;
+}
+
+.cashier-wechat-status > .anticon {
+  color: #239756;
+  font-size: 64px;
+}
+
+.cashier-wechat-status > strong {
+  font-size: 23px;
+}
+
+.cashier-wechat-status > span,
+.cashier-wechat-status > small {
+  color: #756b65;
+}
+
+.cashier-wechat-status.status-failed > .anticon,
+.cashier-wechat-status.status-closed > .anticon {
+  color: #b9754e;
+}
+
+.cashier-wechat-notice {
+  margin: 0;
+  color: #8d837d;
+  font-size: 12px;
+  text-align: center;
+}
+
 .cashier-loading {
   position: fixed;
   inset: 0;
@@ -1352,6 +1731,27 @@
   }
   .cashier-workspace {
     grid-template-columns: minmax(500px, 1.35fr) minmax(410px, 1fr);
+  }
+  .cashier-workspace.is-detail-focused {
+    display: block;
+  }
+  .cashier-workspace.is-detail-focused .cashier-board {
+    display: none;
+  }
+  .cashier-workspace.is-detail-focused .cashier-operation {
+    height: 100%;
+    padding: 20px 24px 14px;
+    border-left: 0;
+  }
+  .cashier-workspace.is-detail-focused .cashier-detail-back {
+    display: inline-flex;
+  }
+  .cashier-workspace.is-detail-focused .cashier-operation-title {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+  }
+  .cashier-workspace.is-detail-focused .cashier-operation-title > strong {
+    padding-left: 10px;
   }
   .cashier-board {
     padding-inline: 20px;
@@ -1483,6 +1883,30 @@
   }
   .cashier-takeout-grid {
     grid-template-columns: repeat(2, minmax(170px, 1fr));
+  }
+  .cashier-checkout-layout {
+    grid-template-columns: minmax(330px, 1.15fr) minmax(280px, .85fr);
+  }
+  .cashier-checkout-payment {
+    border-right: 0;
+  }
+  .cashier-checkout-summary {
+    min-height: 240px;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 22px;
+    border-top: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-due {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    margin: 0;
+    padding: 0 0 0 20px;
+    border-left: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-safety {
+    grid-column: 1 / 3;
   }
 }
 
@@ -1635,5 +2059,29 @@
   }
   .cashier-handover-summary {
     grid-template-columns: 1fr;
+  }
+  .cashier-checkout-layout {
+    display: block;
+  }
+  .cashier-checkout-bill,
+  .cashier-checkout-payment {
+    border-right: 0;
+    border-bottom: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-summary {
+    display: flex;
+    min-height: 320px;
+  }
+  .cashier-checkout-due {
+    margin-top: 18px;
+    padding: 18px 0 0;
+    border-top: 1px solid #e8e1dc;
+    border-left: 0;
+  }
+  .cashier-scanner-fallback {
+    grid-template-columns: 1fr auto;
+  }
+  .cashier-scanner-fallback > span {
+    grid-column: 1 / -1;
   }
 }
