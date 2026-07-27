@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 const menuTemplatePath = fileURLToPath(new URL("../miniprogram/pages/menu/index.wxml", import.meta.url));
 const menuTemplate = readFileSync(menuTemplatePath, "utf8");
+const menuStylesPath = fileURLToPath(new URL("../miniprogram/pages/menu/index.wxss", import.meta.url));
+const menuStyles = readFileSync(menuStylesPath, "utf8");
 
 describe("menu overlays", () => {
   it("keeps the ordering page and its overlays in the same conditional render root", () => {
@@ -19,5 +21,11 @@ describe("menu overlays", () => {
     expect(menuTemplate.slice(stageStart, stageEnd)).toContain('<view class="cart-sheet-mask"');
     expect(menuTemplate.slice(stageStart, stageEnd)).toContain('<view class="sku-mask"');
     expect(menuTemplate).not.toContain("<block wx:if");
+  });
+
+  it("keeps configuration choices compact and hides only the scroll indicator", () => {
+    expect(menuTemplate).toContain('class="configuration-scroll" scroll-y enhanced show-scrollbar="{{false}}"');
+    expect(menuTemplate).not.toContain('class="configuration-option-cell"');
+    expect(menuStyles).toMatch(/\.configuration-option \{[^}]*min-width: 80rpx;[^}]*flex: 0 1 auto;/);
   });
 });
