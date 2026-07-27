@@ -26,6 +26,9 @@ describe("menu overlays", () => {
   it("keeps configuration choices compact and hides only the scroll indicator", () => {
     expect(menuTemplate).toContain('class="configuration-scroll" scroll-y enhanced show-scrollbar="{{false}}"');
     expect(menuTemplate).not.toContain('class="configuration-option-cell"');
-    expect(menuStyles).toMatch(/\.configuration-option \{[^}]*min-width: 80rpx;[^}]*flex: 0 1 auto;/);
+    expect(menuTemplate).toContain('<view role="button" class="configuration-option');
+    expect(menuTemplate).not.toContain('<button class="configuration-option');
+    expect(menuStyles).toMatch(/\.configuration-options \{[^}]*display: block;[^}]*font-size: 0;/);
+    expect(menuStyles).toMatch(/\.configuration-option \{[^}]*display: inline-flex;[^}]*min-width: 72rpx;[^}]*margin: 0 10rpx 12rpx 0;/);
   });
 });
