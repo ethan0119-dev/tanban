@@ -29,6 +29,6 @@ describe("menu overlays", () => {
     expect(menuTemplate).toContain('<view role="button" class="configuration-option');
     expect(menuTemplate).not.toContain('<button class="configuration-option');
     expect(menuStyles).toMatch(/\.configuration-options \{[^}]*display: block;[^}]*font-size: 0;/);
-    expect(menuStyles).toMatch(/\.configuration-option \{[^}]*display: inline-flex;[^}]*min-width: 72rpx;[^}]*margin: 0 10rpx 12rpx 0;/);
+    expect(menuStyles).toMatch(/\.configuration-option \{[^}]*display: inline-flex;[^}]*min-width: 144rpx;[^}]*margin: 0 10rpx 12rpx 0;/);
   });
 });
