@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- this Vite app imports a fingerprinted local brand asset */
-import { ShopOutlined, LockOutlined, MobileOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { CoffeeOutlined, LockOutlined, MobileOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Alert, Button, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -43,11 +43,11 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-atmosphere">
-        <div className="brand-orbit orbit-one" />
-        <div className="brand-orbit orbit-two" />
+        <div className="coffee-orbit orbit-one" />
+        <div className="coffee-orbit orbit-two" />
         <div className="login-story">
-          <div className="story-mark"><ShopOutlined /></div>
-          <Typography.Title level={1}>让每一单，都被认真交付。</Typography.Title>
+          <div className="story-mark"><CoffeeOutlined /></div>
+          <Typography.Title level={1}>让每一杯，都被认真交付。</Typography.Title>
           <Typography.Paragraph>
             从扫码点单、支付状态到出单提醒，摊伴把夜市小摊和独立门店的日常经营装进一块简单可靠的工作台。
           </Typography.Paragraph>
