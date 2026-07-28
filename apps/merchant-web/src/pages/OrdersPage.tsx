@@ -104,7 +104,7 @@ function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order)
         <span className="order-work-card-icon">{dineIn ? <TableOutlined /> : <NumberOutlined />}</span>
         <div>
           <small>{dineIn ? '当前桌台' : '取餐号'}</small>
-          <strong>{dineIn ? `${order.tableName || '未绑定桌台'}${order.pickupNo ? `（${order.pickupNo}）` : ''}` : `#${order.pickupNo || '--'}`}</strong>
+          <strong>{dineIn ? `${order.tableName || '未绑定桌台'}${order.tableNo ? `（${order.tableNo}）` : ''}` : `#${order.pickupNo || '--'}`}</strong>
           <span>{orderSceneLabel(order)}</span>
         </div>
       </div>
