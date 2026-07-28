@@ -543,6 +543,13 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const scanSubmittingRef = useRef(false);
   const [clock, setClock] = useState(new Date());
 
+  const currentShift = useMemo(() => {
+    const hour = clock.getHours();
+    if (hour >= 6 && hour < 14) return { label: '早班营业中', color: 'gold' };
+    if (hour >= 14 && hour < 22) return { label: '中班营业中', color: 'blue' };
+    return { label: '晚班营业中', color: 'purple' };
+  }, [clock]);
+
   const allTables = useMemo(() => board?.areas.flatMap((area) => area.tables) ?? [], [board]);
   const unsettledTables = allTables.filter((table) => table.state === 'UNSETTLED');
   const settledTables = allTables.filter((table) => table.state === 'SETTLED');
@@ -1353,7 +1360,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       <main className="cashier-stage">
         <header className="cashier-topbar">
           <div className="cashier-title"><strong>摊伴收银台</strong><i /><span>{context?.storeName || user?.storeName || '当前门店'}</span></div>
-          <Tag bordered={false} className="cashier-shift-tag">早班营业中</Tag>
+          <Tag bordered={false} className="cashier-shift-tag" color={currentShift.color}>{currentShift.label}</Tag>
           <span className="cashier-operator">收银员：{context?.operatorName || user?.name || '店员'}</span>
           <Segmented
             className="cashier-layout-switch"

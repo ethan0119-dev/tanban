@@ -143,6 +143,24 @@
   font-size: 14px;
 }
 
+/* 早班：金色/暖橙（覆盖默认绿色，区分更明显） */
+.cashier-shift-tag.ant-tag-gold {
+  color: #b06a1c;
+  background: #fff8ed;
+}
+
+/* 中班：蓝色 */
+.cashier-shift-tag.ant-tag-blue {
+  color: #1e6996;
+  background: #edf6fc;
+}
+
+/* 晚班：紫色 */
+.cashier-shift-tag.ant-tag-purple {
+  color: #6b3fa0;
+  background: #f6f1fc;
+}
+
 .cashier-operator {
   flex: 1;
   overflow: hidden;
