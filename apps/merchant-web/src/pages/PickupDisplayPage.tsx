@@ -151,6 +151,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const previousReady = useRef<Set<string> | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(() => localStorage.getItem(VOICE_STORAGE_KEY) === '1');
+  const voiceEnabledRef = useRef(voiceEnabled);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechQueue = useRef<string[]>([]);
   const speaking = useRef(false);
@@ -162,7 +163,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   }, []);
 
   const speakNext = useCallback(() => {
-    if (!voiceEnabled || speaking.current || !speechQueue.current.length) return;
+    if (!voiceEnabledRef.current || speaking.current || !speechQueue.current.length) return;
     const code = speechQueue.current.shift();
     if (!code) return;
     speaking.current = true;
@@ -175,17 +176,18 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     utter.onend = () => { speaking.current = false; speakNext(); };
     utter.onerror = () => { speaking.current = false; speakNext(); };
     window.speechSynthesis.speak(utter);
-  }, [voiceEnabled]);
+  }, []);
 
   const speak = useCallback((codes: Set<string>) => {
-    if (!voiceEnabled || !window.speechSynthesis) return;
+    if (!voiceEnabledRef.current || !window.speechSynthesis) return;
     for (const code of codes) speechQueue.current.push(code);
     speakNext();
-  }, [voiceEnabled, speakNext]);
+  }, [speakNext]);
 
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
       const next = !prev;
+      voiceEnabledRef.current = next;
       localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
       if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
       else {
