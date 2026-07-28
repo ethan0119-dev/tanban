@@ -171,7 +171,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
     utter.lang = 'zh-CN';
     utter.rate = 0.95;
-    utter.pitch = 1.1;
+    utter.pitch = 1.5;
     if (voiceRef.current) utter.voice = voiceRef.current;
     utter.onend = () => { speaking.current = false; speakNext(); };
     utter.onerror = () => { speaking.current = false; speakNext(); };
@@ -196,6 +196,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
         const test = new SpeechSynthesisUtterance('语音播报已开启');
         test.lang = 'zh-CN';
         test.rate = 0.95;
+        test.pitch = 1.5;
         if (voiceRef.current) test.voice = voiceRef.current;
         window.speechSynthesis?.speak(test);
       }
@@ -296,18 +297,16 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
         <div className="pickup-display-actions">
           <Button
             type="text"
-            icon={voiceEnabled ? <SoundOutlined /> : <MutedOutlined />}
-            onClick={toggleVoice}
-          >
-            {voiceEnabled ? '语音播报中' : '开启语音播报'}
-          </Button>
-          <Button
-            type="text"
             icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
             onClick={() => void toggleFullscreen()}
           >
             {fullscreen ? '退出全屏' : '全屏显示'}
           </Button>
+          <Button
+            type="text"
+            icon={voiceEnabled ? <SoundOutlined /> : <MutedOutlined />}
+            onClick={toggleVoice}
+          />
         </div>
       </header>
 
