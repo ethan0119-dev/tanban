@@ -189,11 +189,13 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
       if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
       else {
-        // 用户点击是手势，借此机会解锁 speechSynthesis
+        // 用户点击是手势，播一句测试音确认语音可用
         window.speechSynthesis?.cancel();
-        const unlock = new SpeechSynthesisUtterance('');
-        unlock.volume = 0;
-        window.speechSynthesis?.speak(unlock);
+        const test = new SpeechSynthesisUtterance('语音播报已开启');
+        test.lang = 'zh-CN';
+        test.rate = 0.95;
+        if (voiceRef.current) test.voice = voiceRef.current;
+        window.speechSynthesis?.speak(test);
       }
       return next;
     });
