@@ -155,6 +155,8 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechQueue = useRef<string[]>([]);
   const speaking = useRef(false);
+  const readyRef = useRef<PickupDisplayOrder[]>([]);
+  const repeatTimer = useRef<number | null>(null);
 
   const pickVoice = useCallback(() => {
     const voices = window.speechSynthesis?.getVoices() ?? [];
@@ -225,6 +227,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
         }
       }
       previousReady.current = currentReady;
+      readyRef.current = next.ready || [];
       setData({ ...next, preparing: next.preparing || [], ready: next.ready || [] });
       setConnectionError('');
     } catch (error) {
@@ -245,6 +248,17 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [load, previewMode]);
+
+  // 每 15 秒轮播待取餐号码，直到被取走
+  useEffect(() => {
+    if (previewMode) return;
+    repeatTimer.current = window.setInterval(() => {
+      if (!voiceEnabledRef.current || !readyRef.current.length) return;
+      const codes = new Set(readyRef.current.map((o) => o.pickupCode));
+      speak(codes);
+    }, 15_000);
+    return () => { if (repeatTimer.current) window.clearInterval(repeatTimer.current); };
+  }, [previewMode, speak]);
 
   useEffect(() => {
     const clock = window.setInterval(() => setNow(new Date()), 1_000);
