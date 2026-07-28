@@ -1,7 +1,14 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { normalizePickupDisplayLayout, PickupDisplayPage } from './PickupDisplayPage';
+import {
+  formatPickupCodeForSpeech,
+  normalizePickupDisplayLayout,
+  PICKUP_SPEECH_PITCH,
+  PICKUP_SPEECH_RATE,
+  pickupAnnouncementText,
+  PickupDisplayPage,
+} from './PickupDisplayPage';
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ user: { id: 1, name: '测试店主', storeName: '测试门店' } }),
@@ -14,6 +21,13 @@ describe('pickup display', () => {
     expect(normalizePickupDisplayLayout('portrait')).toBe('portrait');
     expect(normalizePickupDisplayLayout('anything')).toBe('landscape');
     expect(normalizePickupDisplayLayout(null)).toBe('landscape');
+  });
+
+  it('reads pickup codes digit by digit with a calm speaking profile', () => {
+    expect(formatPickupCodeForSpeech('a012')).toBe('A 零 一 二');
+    expect(pickupAnnouncementText('A012')).toBe('请取餐号 A 零 一 二 的顾客，前来取餐。');
+    expect(PICKUP_SPEECH_RATE).toBeLessThan(1);
+    expect(PICKUP_SPEECH_PITCH).toBeLessThanOrEqual(1);
   });
 
   it('renders large preparing and ready queues in portrait preview mode', () => {

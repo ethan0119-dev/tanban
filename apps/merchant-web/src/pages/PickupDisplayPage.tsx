@@ -54,9 +54,57 @@ const previewDisplay: PickupDisplayData = {
 };
 
 const VOICE_STORAGE_KEY = 'pickup-display-voice';
+export const PICKUP_SPEECH_RATE = 0.92;
+export const PICKUP_SPEECH_PITCH = 0.98;
+
+const spokenDigits: Record<string, string> = {
+  '0': '零',
+  '1': '一',
+  '2': '二',
+  '3': '三',
+  '4': '四',
+  '5': '五',
+  '6': '六',
+  '7': '七',
+  '8': '八',
+  '9': '九',
+};
 
 export function normalizePickupDisplayLayout(value: string | null | undefined): PickupDisplayLayout {
   return value === 'portrait' ? 'portrait' : 'landscape';
+}
+
+export function formatPickupCodeForSpeech(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .split('')
+    .map((character) => spokenDigits[character] ?? character)
+    .join(' ');
+}
+
+export function pickupAnnouncementText(code: string): string {
+  return `请取餐号 ${formatPickupCodeForSpeech(code)} 的顾客，前来取餐。`;
+}
+
+function loadVoiceEnabled(): boolean {
+  try {
+    return typeof localStorage !== 'undefined'
+      && typeof localStorage.getItem === 'function'
+      && localStorage.getItem(VOICE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveVoiceEnabled(enabled: boolean): void {
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
+      localStorage.setItem(VOICE_STORAGE_KEY, enabled ? '1' : '0');
+    }
+  } catch {
+    // 部分电视浏览器或隐私模式会禁用本地存储，不影响本次语音开关。
+  }
 }
 
 function formatClock(value: Date): string {
@@ -150,7 +198,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const [recentReady, setRecentReady] = useState<Set<string>>(new Set());
   const previousReady = useRef<Set<string> | null>(null);
   const highlightTimer = useRef<number | null>(null);
-  const [voiceEnabled, setVoiceEnabled] = useState(() => localStorage.getItem(VOICE_STORAGE_KEY) === '1');
+  const [voiceEnabled, setVoiceEnabled] = useState(loadVoiceEnabled);
   const voiceEnabledRef = useRef(voiceEnabled);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechQueue = useRef<string[]>([]);
@@ -170,35 +218,46 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       try {
         const ctx = getAudioCtx();
         const now = ctx.currentTime;
-        // 叮咚两声
+        // 柔和的下行叮咚，避免大屏或平板扬声器出现尖锐爆音。
         const tones: [number, number, number][] = [
-          [830, 0, 0.25],    // 叮
-          [622, 0.18, 0.35], // 咚
+          [784, 0, 0.32],
+          [659, 0.24, 0.46],
         ];
         for (const [freq, delay, dur] of tones) {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
           osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.25, now + delay);
+          gain.gain.setValueAtTime(0.001, now + delay);
+          gain.gain.linearRampToValueAtTime(0.09, now + delay + 0.025);
           gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
           osc.connect(gain).connect(ctx.destination);
           osc.start(now + delay);
           osc.stop(now + delay + dur);
         }
-        setTimeout(resolve, 600);
+        setTimeout(resolve, 760);
       } catch { resolve(); }
     });
   }, [getAudioCtx]);
 
   const pickVoice = useCallback(() => {
     const voices = window.speechSynthesis?.getVoices() ?? [];
-    const zhVoices = voices.filter((v) => v.lang.startsWith('zh'));
-    // 优先找年轻女声
+    const zhVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('zh'));
+    const preferredNaturalVoice =
+      /xiaoxiao.*natural|xiaoyi.*natural|yunxi.*natural|yunyang.*natural|ting[- ]?ting|meijia|google.*(?:普通话|mandarin|中文)/i;
     voiceRef.current =
-      zhVoices.find((v) => /xiaoxiao|xiaoyi|xiaohan|xiaomo|xiaoxuan|xiaorui/i.test(v.name)) ??
-      zhVoices.find((v) => /女|female/i.test(v.name)) ??
+      zhVoices.find((voice) => preferredNaturalVoice.test(voice.name)) ??
+      zhVoices.find((voice) => voice.lang.toLowerCase() === 'zh-cn' && voice.localService) ??
+      zhVoices.find((voice) => voice.lang.toLowerCase() === 'zh-cn') ??
       zhVoices[0] ?? null;
+  }, []);
+
+  const configureUtterance = useCallback((utterance: SpeechSynthesisUtterance) => {
+    utterance.lang = 'zh-CN';
+    utterance.rate = PICKUP_SPEECH_RATE;
+    utterance.pitch = PICKUP_SPEECH_PITCH;
+    utterance.volume = 0.9;
+    if (voiceRef.current) utterance.voice = voiceRef.current;
   }, []);
 
   const speakNext = useCallback(() => {
@@ -208,16 +267,13 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     speaking.current = true;
     void playChime().then(() => {
       window.speechSynthesis?.resume();
-      const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
-      utter.lang = 'zh-CN';
-      utter.rate = 1.05;
-      utter.pitch = 1.3;
-      if (voiceRef.current) utter.voice = voiceRef.current;
+      const utter = new SpeechSynthesisUtterance(pickupAnnouncementText(code));
+      configureUtterance(utter);
       utter.onend = () => { speaking.current = false; speakNext(); };
       utter.onerror = () => { speaking.current = false; speakNext(); };
       window.speechSynthesis.speak(utter);
     });
-  }, [playChime]);
+  }, [configureUtterance, playChime]);
 
   const speak = useCallback((codes: Set<string>) => {
     if (!voiceEnabledRef.current || !window.speechSynthesis) return;
@@ -232,22 +288,19 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     setVoiceEnabled((prev) => {
       const next = !prev;
       voiceEnabledRef.current = next;
-      localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
+      saveVoiceEnabled(next);
       if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
       else {
         window.speechSynthesis?.cancel();
         void playChime().then(() => {
-          const test = new SpeechSynthesisUtterance('语音播报已开启');
-          test.lang = 'zh-CN';
-          test.rate = 1.05;
-          test.pitch = 1.3;
-          if (voiceRef.current) test.voice = voiceRef.current;
+          const test = new SpeechSynthesisUtterance('语音播报已开启。');
+          configureUtterance(test);
           window.speechSynthesis?.speak(test);
         });
       }
       return next;
     });
-  }, [playChime]);
+  }, [configureUtterance, playChime]);
 
   useEffect(() => {
     pickVoice();
