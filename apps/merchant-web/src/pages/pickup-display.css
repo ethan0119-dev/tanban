@@ -99,16 +99,17 @@
   font-weight: 600;
 }
 
-.pickup-display-fullscreen {
-  position: absolute !important;
+.pickup-display-actions {
+  position: absolute;
   top: clamp(18px, 1.6vw, 28px);
   right: clamp(18px, 1.6vw, 28px);
-  color: #765d4f !important;
-  font-size: clamp(13px, 1vw, 17px) !important;
+  display: flex;
+  gap: 4px;
 }
 
-.pickup-display-header .pickup-display-fullscreen:first-of-type {
-  right: clamp(150px, 14vw, 230px);
+.pickup-display-actions .ant-btn {
+  color: #765d4f !important;
+  font-size: clamp(13px, 1vw, 17px) !important;
 }
 
 .pickup-display-columns {

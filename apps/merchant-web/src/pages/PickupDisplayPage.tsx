@@ -166,6 +166,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     const code = speechQueue.current.shift();
     if (!code) return;
     speaking.current = true;
+    window.speechSynthesis?.resume();
     const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
     utter.lang = 'zh-CN';
     utter.rate = 0.95;
@@ -187,6 +188,13 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       const next = !prev;
       localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
       if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
+      else {
+        // 用户点击是手势，借此机会解锁 speechSynthesis
+        window.speechSynthesis?.cancel();
+        const unlock = new SpeechSynthesisUtterance('');
+        unlock.volume = 0;
+        window.speechSynthesis?.speak(unlock);
+      }
       return next;
     });
   }, []);
@@ -281,22 +289,22 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
           <strong>{formatClock(now)}</strong>
           <span>{data.businessDate ? formatDate(data.businessDate) : '正在读取营业日期'} · {activeCount} 单处理中</span>
         </div>
-        <Button
-          className="pickup-display-fullscreen"
-          type="text"
-          icon={voiceEnabled ? <SoundOutlined /> : <MutedOutlined />}
-          onClick={toggleVoice}
-        >
-          {voiceEnabled ? '语音播报中' : '开启语音播报'}
-        </Button>
-        <Button
-          className="pickup-display-fullscreen"
-          type="text"
-          icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-          onClick={() => void toggleFullscreen()}
-        >
-          {fullscreen ? '退出全屏' : '全屏显示'}
-        </Button>
+        <div className="pickup-display-actions">
+          <Button
+            type="text"
+            icon={voiceEnabled ? <SoundOutlined /> : <MutedOutlined />}
+            onClick={toggleVoice}
+          >
+            {voiceEnabled ? '语音播报中' : '开启语音播报'}
+          </Button>
+          <Button
+            type="text"
+            icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            onClick={() => void toggleFullscreen()}
+          >
+            {fullscreen ? '退出全屏' : '全屏显示'}
+          </Button>
+        </div>
       </header>
 
       <div className="pickup-display-columns">
