@@ -575,7 +575,7 @@ export function OrdersPage({ businessType = 'DINE_IN', unavailable = false, scen
         {selected ? (
           <div className="order-detail">
             <div className="detail-hero">
-              <span>{selected.tableName ? '当前桌台' : isDelivery ? '配送单' : '取餐号'}</span><strong>{selected.tableName || `#${selected.pickupNo || '--'}`}</strong>
+              <span>{selected.tableName ? '当前桌台' : isDelivery ? '配送单' : '取餐号'}</span><strong>{selected.tableName ? `${selected.tableName}${selected.tableNo ? `（${selected.tableNo}）` : ''}` : `#${selected.pickupNo || '--'}`}</strong>
               <small>{selected.orderNo}</small>
             </div>
             {selected.status !== 'CLOSED' ? (
