@@ -107,6 +107,10 @@
   font-size: clamp(13px, 1vw, 17px) !important;
 }
 
+.pickup-display-header .pickup-display-fullscreen:first-of-type {
+  right: clamp(150px, 14vw, 230px);
+}
+
 .pickup-display-columns {
   min-height: 0;
   display: grid;

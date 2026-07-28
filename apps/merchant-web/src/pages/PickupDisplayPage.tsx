@@ -4,7 +4,9 @@ import {
   FullscreenExitOutlined,
   FullscreenOutlined,
   HourglassOutlined,
+  MutedOutlined,
   ReloadOutlined,
+  SoundOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
 import { Button } from 'antd';
@@ -50,6 +52,8 @@ const previewDisplay: PickupDisplayData = {
     { id: 8, pickupCode: 'A011', status: 'READY' },
   ],
 };
+
+const VOICE_STORAGE_KEY = 'pickup-display-voice';
 
 export function normalizePickupDisplayLayout(value: string | null | undefined): PickupDisplayLayout {
   return value === 'portrait' ? 'portrait' : 'landscape';
@@ -146,6 +150,52 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const [recentReady, setRecentReady] = useState<Set<string>>(new Set());
   const previousReady = useRef<Set<string> | null>(null);
   const highlightTimer = useRef<number | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(() => localStorage.getItem(VOICE_STORAGE_KEY) === '1');
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const speechQueue = useRef<string[]>([]);
+  const speaking = useRef(false);
+
+  const pickVoice = useCallback(() => {
+    const voices = window.speechSynthesis?.getVoices() ?? [];
+    const zhVoices = voices.filter((v) => v.lang.startsWith('zh'));
+    voiceRef.current = zhVoices.find((v) => v.name.includes('女') || v.name.includes('Female') || v.name.includes('Xiaoxiao') || v.name.includes('Yaoyao')) ?? zhVoices[0] ?? null;
+  }, []);
+
+  const speakNext = useCallback(() => {
+    if (!voiceEnabled || speaking.current || !speechQueue.current.length) return;
+    const code = speechQueue.current.shift();
+    if (!code) return;
+    speaking.current = true;
+    const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
+    utter.lang = 'zh-CN';
+    utter.rate = 0.95;
+    utter.pitch = 1.1;
+    if (voiceRef.current) utter.voice = voiceRef.current;
+    utter.onend = () => { speaking.current = false; speakNext(); };
+    utter.onerror = () => { speaking.current = false; speakNext(); };
+    window.speechSynthesis.speak(utter);
+  }, [voiceEnabled]);
+
+  const speak = useCallback((codes: Set<string>) => {
+    if (!voiceEnabled || !window.speechSynthesis) return;
+    for (const code of codes) speechQueue.current.push(code);
+    speakNext();
+  }, [voiceEnabled, speakNext]);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
+      if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    pickVoice();
+    window.speechSynthesis?.addEventListener('voiceschanged', pickVoice);
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', pickVoice);
+  }, [pickVoice]);
 
   const load = useCallback(async () => {
     if (previewMode) return;
@@ -158,6 +208,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
           setRecentReady(added);
           if (highlightTimer.current) window.clearTimeout(highlightTimer.current);
           highlightTimer.current = window.setTimeout(() => setRecentReady(new Set()), 12_000);
+          speak(added);
         }
       }
       previousReady.current = currentReady;
@@ -230,6 +281,14 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
           <strong>{formatClock(now)}</strong>
           <span>{data.businessDate ? formatDate(data.businessDate) : '正在读取营业日期'} · {activeCount} 单处理中</span>
         </div>
+        <Button
+          className="pickup-display-fullscreen"
+          type="text"
+          icon={voiceEnabled ? <SoundOutlined /> : <MutedOutlined />}
+          onClick={toggleVoice}
+        >
+          {voiceEnabled ? '语音播报中' : '开启语音播报'}
+        </Button>
         <Button
           className="pickup-display-fullscreen"
           type="text"
