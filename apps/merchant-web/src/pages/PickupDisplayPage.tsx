@@ -155,13 +155,50 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechQueue = useRef<string[]>([]);
   const speaking = useRef(false);
-  const readyRef = useRef<PickupDisplayOrder[]>([]);
-  const repeatTimer = useRef<number | null>(null);
+
+
+  const audioCtx = useRef<AudioContext | null>(null);
+
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtx.current) audioCtx.current = new AudioContext();
+    if (audioCtx.current.state === 'suspended') void audioCtx.current.resume();
+    return audioCtx.current;
+  }, []);
+
+  const playChime = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        // 叮咚两声
+        const tones: [number, number, number][] = [
+          [830, 0, 0.25],    // 叮
+          [622, 0.18, 0.35], // 咚
+        ];
+        for (const [freq, delay, dur] of tones) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.25, now + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now + delay);
+          osc.stop(now + delay + dur);
+        }
+        setTimeout(resolve, 600);
+      } catch { resolve(); }
+    });
+  }, [getAudioCtx]);
 
   const pickVoice = useCallback(() => {
     const voices = window.speechSynthesis?.getVoices() ?? [];
     const zhVoices = voices.filter((v) => v.lang.startsWith('zh'));
-    voiceRef.current = zhVoices.find((v) => v.name.includes('女') || v.name.includes('Female') || v.name.includes('Xiaoxiao') || v.name.includes('Yaoyao')) ?? zhVoices[0] ?? null;
+    // 优先找年轻女声
+    voiceRef.current =
+      zhVoices.find((v) => /xiaoxiao|xiaoyi|xiaohan|xiaomo|xiaoxuan|xiaorui/i.test(v.name)) ??
+      zhVoices.find((v) => /女|female/i.test(v.name)) ??
+      zhVoices[0] ?? null;
   }, []);
 
   const speakNext = useCallback(() => {
@@ -169,20 +206,25 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     const code = speechQueue.current.shift();
     if (!code) return;
     speaking.current = true;
-    window.speechSynthesis?.resume();
-    const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
-    utter.lang = 'zh-CN';
-    utter.rate = 0.95;
-    utter.pitch = 1.5;
-    if (voiceRef.current) utter.voice = voiceRef.current;
-    utter.onend = () => { speaking.current = false; speakNext(); };
-    utter.onerror = () => { speaking.current = false; speakNext(); };
-    window.speechSynthesis.speak(utter);
-  }, []);
+    void playChime().then(() => {
+      window.speechSynthesis?.resume();
+      const utter = new SpeechSynthesisUtterance(`请${code}号顾客取餐`);
+      utter.lang = 'zh-CN';
+      utter.rate = 1.05;
+      utter.pitch = 1.3;
+      if (voiceRef.current) utter.voice = voiceRef.current;
+      utter.onend = () => { speaking.current = false; speakNext(); };
+      utter.onerror = () => { speaking.current = false; speakNext(); };
+      window.speechSynthesis.speak(utter);
+    });
+  }, [playChime]);
 
   const speak = useCallback((codes: Set<string>) => {
     if (!voiceEnabledRef.current || !window.speechSynthesis) return;
-    for (const code of codes) speechQueue.current.push(code);
+    for (const code of codes) {
+      speechQueue.current.push(code);
+      speechQueue.current.push(code); // 播两次
+    }
     speakNext();
   }, [speakNext]);
 
@@ -193,18 +235,19 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       localStorage.setItem(VOICE_STORAGE_KEY, next ? '1' : '0');
       if (!next) { window.speechSynthesis?.cancel(); speechQueue.current = []; }
       else {
-        // 用户点击是手势，播一句测试音确认语音可用
         window.speechSynthesis?.cancel();
-        const test = new SpeechSynthesisUtterance('语音播报已开启');
-        test.lang = 'zh-CN';
-        test.rate = 0.95;
-        test.pitch = 1.5;
-        if (voiceRef.current) test.voice = voiceRef.current;
-        window.speechSynthesis?.speak(test);
+        void playChime().then(() => {
+          const test = new SpeechSynthesisUtterance('语音播报已开启');
+          test.lang = 'zh-CN';
+          test.rate = 1.05;
+          test.pitch = 1.3;
+          if (voiceRef.current) test.voice = voiceRef.current;
+          window.speechSynthesis?.speak(test);
+        });
       }
       return next;
     });
-  }, []);
+  }, [playChime]);
 
   useEffect(() => {
     pickVoice();
@@ -227,7 +270,6 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
         }
       }
       previousReady.current = currentReady;
-      readyRef.current = next.ready || [];
       setData({ ...next, preparing: next.preparing || [], ready: next.ready || [] });
       setConnectionError('');
     } catch (error) {
@@ -249,16 +291,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     };
   }, [load, previewMode]);
 
-  // 每 15 秒轮播待取餐号码，直到被取走
-  useEffect(() => {
-    if (previewMode) return;
-    repeatTimer.current = window.setInterval(() => {
-      if (!voiceEnabledRef.current || !readyRef.current.length) return;
-      const codes = new Set(readyRef.current.map((o) => o.pickupCode));
-      speak(codes);
-    }, 15_000);
-    return () => { if (repeatTimer.current) window.clearInterval(repeatTimer.current); };
-  }, [previewMode, speak]);
+
 
   useEffect(() => {
     const clock = window.setInterval(() => setNow(new Date()), 1_000);
