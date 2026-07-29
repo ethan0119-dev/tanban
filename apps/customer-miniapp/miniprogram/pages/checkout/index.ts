@@ -1,4 +1,3 @@
-import { env } from "../../config/env";
 import type { TanbanAppOption } from "../../app";
 import type { CartItem, FastFoodOrderingContext, MarketingCoupon, Order, Store, StoreFullReduction, TableOrderingContext } from "../../types/domain";
 import { cartLineKey, clearCart, readCart } from "../../utils/cart";
@@ -13,6 +12,7 @@ import { customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { bestEligibleCoupon, eligibleCoupons, forgetClaimedCoupon } from "../../utils/coupon-wallet";
 import { balancePaymentBreakdown } from "../../utils/payment-breakdown";
+import { requestNotificationSubscriptions, type NotificationScene } from "../../utils/notification-subscriptions";
 
 interface PaymentResult {
   id: number;
@@ -364,6 +364,16 @@ Page({
         remark: order.remark || "",
       });
       rememberOrder(storeCode, order.orderNo);
+      const notificationScenes: NotificationScene[] = [];
+      if (!tableContext && order.fulfillmentType !== "DINE_IN") notificationScenes.push("PICKUP_READY");
+      if (this.data.useBalance && this.data.balanceCents > 0) notificationScenes.push("BALANCE_CONSUMED");
+      await requestNotificationSubscriptions({
+        storeCode,
+        scenes: notificationScenes,
+        requestContext: "ORDER",
+        businessNo: order.orderNo,
+        includeOnboarding: true,
+      });
       const payAfterMeal = Boolean(tableContext) && (order.settlementMode === "PAY_AFTER" || latestStore.orderingSettings?.settlementMode === "PAY_AFTER");
       if (payAfterMeal) {
         clearCart(storeCode);

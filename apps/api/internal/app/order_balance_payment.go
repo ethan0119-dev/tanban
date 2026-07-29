@@ -129,6 +129,9 @@ func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.C
 		if changed, _ := update.RowsAffected(); changed != 1 {
 			return orderBalancePaymentResult{}, errors.New("order balance changed while applying stored value")
 		}
+		if err = s.enqueueBalanceConsumedNotificationTx(ctx, tx, tenantID, orderID, balancePaymentID, useAmount, time.Now()); err != nil {
+			return orderBalancePaymentResult{}, err
+		}
 		if err = tx.Commit(); err != nil {
 			return orderBalancePaymentResult{}, err
 		}
@@ -152,6 +155,9 @@ func (s *Server) applyOrderBalancePaymentLocked(ctx context.Context, conn *sql.C
 	}
 	if err = enqueuePrintOutboxWith(ctx, tx, tenantID, storeID, orderID, "PAYMENT_SUCCESS",
 		fmt.Sprintf("order-balance-payment:%d", balancePaymentID), 0, ""); err != nil {
+		return orderBalancePaymentResult{}, err
+	}
+	if err = s.enqueueBalanceConsumedNotificationTx(ctx, tx, tenantID, orderID, balancePaymentID, useAmount, now); err != nil {
 		return orderBalancePaymentResult{}, err
 	}
 	if err = tx.Commit(); err != nil {

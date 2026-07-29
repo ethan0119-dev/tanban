@@ -574,6 +574,12 @@ func (s *Server) transitionOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "CONCURRENT_UPDATE", "order status changed; refresh and retry")
 		return
 	}
+	if input.Status == "READY" {
+		if err = s.enqueuePickupReadyNotificationTx(r.Context(), tx, identity.TenantID, id); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		handleSQLError(w, err)
 		return

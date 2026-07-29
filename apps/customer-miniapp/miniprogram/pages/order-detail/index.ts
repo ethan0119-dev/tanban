@@ -88,8 +88,10 @@ Page({
   data: { order: null as OrderView | null, loading: true, paying: false, orderNo: "", storeCode: "", confirmationAttempts: 0, payAfterOnlinePaymentEnabled: true, appearanceStyle: "" },
   onLoad(options: Record<string, string>) { this.setData({ orderNo: options.orderNo || "" }); },
   async onShow() {
+    const app = getApp<TanbanAppOption>();
+    await app.globalData.routeReady;
     const appearance = await loadPageAppearance();
-    this.setData({ storeCode: getApp<TanbanAppOption>().globalData.storeCode });
+    this.setData({ storeCode: app.globalData.storeCode });
     this.setData({ appearanceStyle: appearance.appearanceStyle, payAfterOnlinePaymentEnabled: appearance.store.orderingSettings?.payAfterOnlinePaymentEnabled !== false });
     if (!this.data.orderNo) return;
     this.setData({ confirmationAttempts: 0 });

@@ -1228,6 +1228,54 @@ paths:
       responses:
         '201': {description: Membership payment created or free membership activated}
         '409': {description: Membership level is unavailable or idempotency conflict}
+  /public/stores/{storeCode}/notification-subscriptions/templates:
+    get:
+      summary: 获取当前小程序渠道可申请的顾客订阅消息模板
+      description: 模板按当前顾客 JWT 中的 channelKey 与 AppID 隔离，并返回该顾客是否已经完成过首次集中询问。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Enabled templates and onboarding state}
+        '401': {description: Customer session required}
+  /public/stores/{storeCode}/notification-subscriptions/results:
+    post:
+      summary: 记录微信订阅消息授权结果
+      description: requestId 对一次微信授权调用幂等；accept 记录可被一个匹配的业务通知原子占用一次。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, requestContext, results]
+              properties:
+                requestId: {type: string, maxLength: 80}
+                requestContext: {type: string, enum: [ORDER, RECHARGE]}
+                businessNo: {type: string, maxLength: 128}
+                results:
+                  type: array
+                  minItems: 1
+                  maxItems: 3
+                  items:
+                    type: object
+                    required: [scene, templateId, result]
+                    properties:
+                      scene: {type: string, enum: [PICKUP_READY, RECHARGE_SUCCESS, BALANCE_CONSUMED]}
+                      templateId: {type: string}
+                      result: {type: string, enum: [accept, reject, ban, filter]}
+      responses:
+        '201': {description: Subscription results recorded}
+        '400': {description: Template does not belong to current AppID or payload is invalid}
   /public/stores/{storeCode}/stored-value/orders:
     post:
       summary: 按储值规则发起在线充值

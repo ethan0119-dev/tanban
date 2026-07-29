@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- the store logo is merchant-managed runtime media */
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -203,7 +204,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speechQueue = useRef<string[]>([]);
   const speaking = useRef(false);
-
+  const speakNextRef = useRef<() => void>(() => {});
 
   const audioCtx = useRef<AudioContext | null>(null);
 
@@ -269,11 +270,15 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
       window.speechSynthesis?.resume();
       const utter = new SpeechSynthesisUtterance(pickupAnnouncementText(code));
       configureUtterance(utter);
-      utter.onend = () => { speaking.current = false; speakNext(); };
-      utter.onerror = () => { speaking.current = false; speakNext(); };
+      utter.onend = () => { speaking.current = false; speakNextRef.current(); };
+      utter.onerror = () => { speaking.current = false; speakNextRef.current(); };
       window.speechSynthesis.speak(utter);
     });
   }, [configureUtterance, playChime]);
+
+  useEffect(() => {
+    speakNextRef.current = speakNext;
+  }, [speakNext]);
 
   const speak = useCallback((codes: Set<string>) => {
     if (!voiceEnabledRef.current || !window.speechSynthesis) return;
@@ -330,7 +335,7 @@ export function PickupDisplayPage({ previewMode = false }: { previewMode?: boole
     } finally {
       setLoading(false);
     }
-  }, [previewMode]);
+  }, [previewMode, speak]);
 
   useEffect(() => {
     void load();

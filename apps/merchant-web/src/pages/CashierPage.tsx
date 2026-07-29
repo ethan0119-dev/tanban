@@ -32,7 +32,6 @@ import {
 import {
   App as AntApp,
   Alert,
-  Badge,
   Button,
   Checkbox,
   Drawer,
@@ -48,7 +47,6 @@ import {
   Spin,
   Tag,
   Tooltip,
-  Typography,
 } from 'antd';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -68,7 +66,6 @@ import { canRunOrderWorkflowAction, nextOrderWorkflowAction, orderWorkflowAction
 import { normalizeOrder } from '../features/storefront/model';
 import type {
   DashboardData,
-  MerchantSettings,
   Order,
   OrderItem,
   OrderReturnRequest,
@@ -628,7 +625,8 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
 
   const load = useCallback(async (quiet = false) => {
     if (previewMode) return;
-    quiet ? setRefreshing(true) : setLoading(true);
+    if (quiet) setRefreshing(true);
+    else setLoading(true);
     try {
       const cashierContext = await api.get<CashierContext>('/merchant/cashier/context');
       const [nextBoard, orderResult, rawDashboard, rawCatalog] = await Promise.all([
@@ -660,7 +658,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadOrder, message, mode, previewMode, selectedOrder?.id]);
+  }, [loadOrder, message, mode, previewMode, selectedOrder]);
 
   useEffect(() => {
     if (previewMode) return;
@@ -1052,12 +1050,13 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         status: outcomeUnknown ? 'PENDING' : 'FAILED',
         message: outcomeUnknown ? '请求结果未知，正在通过订单号持续查单，请勿重复扫码。' : errorMessage(error),
       });
-      outcomeUnknown ? message.warning('支付结果仍在确认，请勿重复扫码') : message.error(errorMessage(error));
+      if (outcomeUnknown) message.warning('支付结果仍在确认，请勿重复扫码');
+      else message.error(errorMessage(error));
     } finally {
       scanSubmittingRef.current = false;
       setSubmitting(false);
     }
-  }, [context?.storeCode, finishWechatPayment, message, previewMode, selectedOrder]);
+  }, [context, finishWechatPayment, message, previewMode, selectedOrder]);
 
   const openWechatScanner = () => {
     if (!context?.wechatCodePaymentEnabled) {

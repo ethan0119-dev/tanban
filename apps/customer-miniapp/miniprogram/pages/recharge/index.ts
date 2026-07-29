@@ -4,6 +4,7 @@ import { idempotencyKey } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
 import { customerFeatureCopy, customerSafeErrorMessage } from "../../utils/availability";
 import { completeCustomerAccountPayment, type CustomerAccountPayment } from "../../utils/customer-payment";
+import { requestNotificationSubscriptions } from "../../utils/notification-subscriptions";
 
 interface StoredValueRule {
   id: number;
@@ -27,9 +28,11 @@ Page({
   onShow() { void this.loadRules(); },
   onPullDownRefresh() { this.loadRules().finally(() => wx.stopPullDownRefresh()); },
   async loadRules() {
+    const app = getApp<TanbanAppOption>();
+    await app.globalData.routeReady;
     const appearance = await loadPageAppearance();
     this.setData({ appearanceStyle: appearance.appearanceStyle });
-    const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+    const storeCode = app.globalData.storeCode;
     try {
       const result = await request<StoredValueView>({ url: `/public/stores/${encodeURIComponent(storeCode)}/stored-value`, method: "GET" });
       const rules = (result.rules || []).map((item) => ({ ...item, rechargeText: (item.rechargeCents / 100).toFixed(0), giftText: (item.giftCents / 100).toFixed(0) }));
@@ -63,11 +66,18 @@ Page({
     this.setData({ recharging: true });
     try {
       const storeCode = getApp<TanbanAppOption>().globalData.storeCode;
+      const rechargeKey = idempotencyKey("recharge");
+      await requestNotificationSubscriptions({
+        storeCode,
+        scenes: ["RECHARGE_SUCCESS"],
+        requestContext: "RECHARGE",
+        businessNo: rechargeKey,
+      });
       const payment = await request<CustomerAccountPayment>({
         url: `/public/stores/${encodeURIComponent(storeCode)}/stored-value/orders`,
         method: "POST",
         header: {
-          "Idempotency-Key": idempotencyKey("recharge"),
+          "Idempotency-Key": rechargeKey,
         },
         data: { ruleId: rule.id },
       });

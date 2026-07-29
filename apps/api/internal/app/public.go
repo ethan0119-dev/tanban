@@ -23,6 +23,8 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Get("/stores/{storeCode}/catalog", s.publicCatalog)
 	r.Get("/stores/{storeCode}/membership", s.publicMembership)
 	r.Get("/stores/{storeCode}/stored-value", s.publicStoredValue)
+	r.Get("/stores/{storeCode}/notification-subscriptions/templates", s.publicMiniAppNotificationTemplates)
+	r.Post("/stores/{storeCode}/notification-subscriptions/results", s.publicRecordMiniAppSubscriptionResults)
 	r.Post("/stores/{storeCode}/membership/orders", s.publicCreateMembershipOrder)
 	r.Post("/stores/{storeCode}/stored-value/orders", s.publicCreateStoredValueOrder)
 	r.Get("/account-payments/{paymentID}", s.publicGetAccountPayment)

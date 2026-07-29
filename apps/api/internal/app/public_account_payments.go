@@ -27,6 +27,7 @@ type publicAccountPaymentIntent struct {
 	ID, TenantID, StoreID, CustomerID, BusinessID, AmountCents, GiftCents int64
 	BusinessType, SnapshotJSON, Provider, MerchantNo, SubAppID            string
 	OpenID, ProviderRequestNo, ProviderOrderNo, Status, RawResponse       string
+	SourceMiniAppChannelKey, SourceMiniAppID                              string
 	IdempotencyKey, RequestFingerprint                                    string
 	FulfilledAt                                                           sql.NullTime
 }
@@ -279,10 +280,12 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 	}
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO customer_account_payment_intents(
 		tenant_id,store_id,customer_id,business_type,business_id,business_snapshot_json,amount_cents,gift_cents,
-		provider,merchant_no,sub_appid,customer_openid,provider_request_no,provider_order_no,status,raw_response,idempotency_key,request_fingerprint,paid_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?='SUCCESS',NOW(3),NULL))`,
+		provider,merchant_no,sub_appid,customer_openid,source_miniapp_channel_key,source_miniapp_appid,
+		provider_request_no,provider_order_no,status,raw_response,idempotency_key,request_fingerprint,paid_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?='SUCCESS',NOW(3),NULL))`,
 		store.TenantID, store.ID, customerID, businessType, businessID, snapshotJSON, amountCents, giftCents,
-		paymentProvider, merchantNo, subAppID, openID, requestNo, localProviderNo, status, "{}", key, fingerprint, status)
+		paymentProvider, merchantNo, subAppID, openID, session.MiniAppChannelKey, session.MiniAppID,
+		requestNo, localProviderNo, status, "{}", key, fingerprint, status)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -356,13 +359,14 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 
 const publicAccountPaymentSelect = `SELECT id,tenant_id,store_id,customer_id,business_type,business_id,business_snapshot_json,
 	amount_cents,gift_cents,provider,merchant_no,sub_appid,customer_openid,provider_request_no,provider_order_no,status,
-	raw_response,idempotency_key,request_fingerprint,fulfilled_at FROM customer_account_payment_intents`
+	raw_response,idempotency_key,request_fingerprint,fulfilled_at,source_miniapp_channel_key,source_miniapp_appid
+	FROM customer_account_payment_intents`
 
 func scanPublicAccountPayment(row *sql.Row, intent *publicAccountPaymentIntent) error {
 	return row.Scan(&intent.ID, &intent.TenantID, &intent.StoreID, &intent.CustomerID, &intent.BusinessType, &intent.BusinessID,
 		&intent.SnapshotJSON, &intent.AmountCents, &intent.GiftCents, &intent.Provider, &intent.MerchantNo, &intent.SubAppID,
 		&intent.OpenID, &intent.ProviderRequestNo, &intent.ProviderOrderNo, &intent.Status, &intent.RawResponse,
-		&intent.IdempotencyKey, &intent.RequestFingerprint, &intent.FulfilledAt)
+		&intent.IdempotencyKey, &intent.RequestFingerprint, &intent.FulfilledAt, &intent.SourceMiniAppChannelKey, &intent.SourceMiniAppID)
 }
 
 func (s *Server) loadPublicAccountPayment(ctx context.Context, id int64) (publicAccountPaymentIntent, error) {
@@ -527,6 +531,9 @@ func (s *Server) fulfillPublicAccountPayment(ctx context.Context, id int64, prov
 				"STORED_VALUE", recordNo, recordKey+":bonus", "小程序储值赠送"); err != nil {
 				return err
 			}
+		}
+		if err = s.enqueueRechargeSuccessNotificationTx(ctx, tx, intent, paidAt); err != nil {
+			return err
 		}
 	default:
 		return errors.New("unsupported account payment business type")

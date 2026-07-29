@@ -8,7 +8,6 @@ import {
   EnvironmentOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
-  FolderOpenOutlined,
   GlobalOutlined,
   InfoCircleOutlined,
   PictureOutlined,
