@@ -157,7 +157,7 @@ export function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} />
                       <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(v) => v > 999 ? `${Math.round(v / 1000)}k` : `¥${v}`} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [yuan(value), '营业额']} />
+                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [yuan(value as number), '营业额']} />
                       <Bar dataKey="营业额" radius={[6, 6, 0, 0]} fill="#c98348" maxBarSize={32} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -182,7 +182,7 @@ export function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" />
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={Math.max(0, Math.floor(monthlyData.length / 8) - 1)} />
                       <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(v) => v > 999 ? `${Math.round(v / 1000)}k` : `¥${v}`} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [yuan(value), '营业额']} />
+                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [yuan(value as number), '营业额']} />
                       <Area type="monotone" dataKey="营业额" stroke="#c67e4a" strokeWidth={2} fill="url(#monthlyGrad)" dot={false} activeDot={{ r: 4, fill: '#a5683f' }} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -234,7 +234,7 @@ export function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}
-                      formatter={(value: number, name: string) => [`${value} 单`, name]}
+                      formatter={(value, name) => [`${value} 单`, name]}
                     />
                     <Legend
                       verticalAlign="bottom"
@@ -257,7 +257,7 @@ export function DashboardPage() {
                     <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip
                       contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}
-                      formatter={(value: number) => [`${value} 单`, '订单数']}
+                      formatter={(value) => [`${value} 单`, '订单数']}
                     />
                     <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
                   </BarChart>
