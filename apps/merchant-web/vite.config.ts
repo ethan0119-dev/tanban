@@ -5,6 +5,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5174,
+    proxy: {
+      '/api': {
+        target: 'https://tbapi.666qwe.cn',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
     port: 4174,
