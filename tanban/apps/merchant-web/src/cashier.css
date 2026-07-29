@@ -1,0 +1,2498 @@
+.cashier-shell {
+  --cashier-ink: #251f1b;
+  --cashier-muted: #766f69;
+  --cashier-line: #e9e3de;
+  --cashier-orange: #cd6428;
+  --cashier-orange-soft: #fff3eb;
+  --cashier-green: #278054;
+  --cashier-blue: #257bb3;
+  --cashier-red: #d64339;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  color: var(--cashier-ink);
+  background: #f7f6f4;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.cashier-rail {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #28231f;
+  box-shadow: 3px 0 15px rgba(30, 24, 20, .12);
+}
+
+.cashier-rail-brand {
+  height: 102px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: #201d1a;
+  cursor: pointer;
+}
+
+.cashier-rail-brand img {
+  width: 50px;
+  height: 50px;
+  display: block;
+  object-fit: cover;
+  border-radius: 13px;
+}
+
+.cashier-rail-item {
+  position: relative;
+  height: 168px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  border: 0;
+  color: rgba(255, 255, 255, .86);
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.cashier-rail-item .anticon {
+  font-size: 31px;
+}
+
+.cashier-rail-item:hover {
+  background: rgba(255, 255, 255, .055);
+}
+
+.cashier-rail-item.active {
+  height: 104px;
+  background: linear-gradient(145deg, #8b4b28, #513626);
+}
+
+.cashier-rail-item.active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  content: "";
+  background: #ef792f;
+}
+
+.cashier-rail-logout {
+  height: 92px;
+  margin-top: auto;
+  font-size: 14px;
+}
+
+.cashier-rail-logout .anticon {
+  font-size: 24px;
+}
+
+.cashier-stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 78px minmax(0, 1fr) 87px;
+}
+
+.cashier-topbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 0 24px 0 30px;
+  border-bottom: 1px solid var(--cashier-line);
+  background: rgba(255, 255, 255, .97);
+}
+
+.cashier-title {
+  min-width: 330px;
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  white-space: nowrap;
+}
+
+.cashier-title strong {
+  color: #824319;
+  font-size: 27px;
+  font-weight: 760;
+  letter-spacing: 1px;
+}
+
+.cashier-title i {
+  width: 1px;
+  height: 28px;
+  background: #ded8d4;
+}
+
+.cashier-title span {
+  max-width: 205px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 17px;
+}
+
+.cashier-shift-tag {
+  margin: 0;
+  padding: 5px 13px;
+  color: #34704f;
+  background: #e9f3ed;
+  font-size: 14px;
+}
+
+.cashier-operator {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.cashier-layout-switch {
+  flex: 0 0 auto;
+  padding: 3px;
+  background: #f1ede9;
+}
+
+.cashier-layout-switch .ant-segmented-item {
+  min-width: 76px;
+  font-size: 13px;
+}
+
+.cashier-layout-switch .ant-segmented-item-selected {
+  color: #9a4e24;
+  font-weight: 650;
+}
+
+.cashier-clock {
+  min-width: 118px;
+  padding-right: 23px;
+  border-right: 1px solid var(--cashier-line);
+  line-height: 1.25;
+}
+
+.cashier-clock strong,
+.cashier-clock small {
+  display: block;
+}
+
+.cashier-clock strong {
+  font-size: 24px;
+}
+
+.cashier-clock small {
+  margin-top: 3px;
+  color: var(--cashier-muted);
+  font-size: 11px;
+}
+
+.cashier-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.cashier-device > .anticon {
+  font-size: 25px;
+}
+
+.cashier-device span,
+.cashier-device small {
+  display: block;
+}
+
+.cashier-device small {
+  margin-top: 3px;
+  color: var(--cashier-green);
+  font-size: 11px;
+}
+
+.cashier-device small i {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--cashier-green);
+}
+
+.cashier-handover {
+  height: 46px;
+  padding-inline: 24px;
+  border: 0;
+  color: #fff;
+  background: #c76b36;
+  font-size: 16px;
+}
+
+.cashier-handover:hover {
+  color: #fff !important;
+  background: #b85d2a !important;
+}
+
+.cashier-workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(610px, 58.6fr) minmax(470px, 41.4fr);
+  overflow: hidden;
+}
+
+.cashier-workspace.is-standard {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cashier-workspace.is-standard > .cashier-operation {
+  display: none;
+}
+
+.cashier-workspace.is-standard.is-detail-focused > .cashier-board {
+  display: none;
+}
+
+.cashier-board {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 28px 12px;
+  background: #faf9f7;
+  scrollbar-width: thin;
+}
+
+.cashier-mode-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 26px;
+}
+
+.cashier-mode-tabs {
+  height: 108px;
+  width: min(490px, calc(100% - 205px));
+  flex: 0 1 490px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid #ded7d1;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.cashier-mode-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 19px;
+  border: 0;
+  border-right: 1px solid #e4ded9;
+  color: #342c27;
+  background: #fff;
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.cashier-mode-tabs button:last-child {
+  border-right: 0;
+}
+
+.cashier-mode-tabs button .anticon {
+  font-size: 42px;
+}
+
+.cashier-mode-tabs button.active {
+  color: #fff;
+  background: linear-gradient(145deg, #c45d25, #d77b3d);
+}
+
+.cashier-create-actions {
+  width: 180px;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.cashier-create-actions .ant-btn {
+  height: auto;
+  border-color: #d96832;
+  color: #cf5f28;
+  background: #fff;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.cashier-create-actions .ant-btn.is-takeout {
+  border-color: #3b8b61;
+  color: #367f59;
+}
+
+.cashier-area-tabs {
+  height: 62px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(96px, 1fr);
+  align-items: center;
+  gap: 2px;
+  margin-top: 25px;
+  width: min(470px, 100%);
+  padding: 8px 12px;
+  overflow-x: auto;
+  border: 1px solid #e0dad5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cashier-area-tabs button,
+.cashier-categories button {
+  min-width: 90px;
+  height: 43px;
+  border: 0;
+  border-radius: 9px;
+  color: #3e3732;
+  background: transparent;
+  font-size: 17px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cashier-area-tabs button.active,
+.cashier-categories button.active {
+  color: #fff;
+  background: linear-gradient(145deg, #c35d29, #db7d3c);
+  box-shadow: 0 5px 13px rgba(196, 91, 39, .2);
+}
+
+.cashier-alerts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.cashier-alerts button {
+  height: 57px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 15px;
+  border: 1px solid #e5d5ca;
+  border-radius: 10px;
+  color: #413832;
+  background: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.cashier-alerts button.active {
+  border-color: #d56a37;
+  background: #fff8f3;
+  box-shadow: 0 0 0 2px rgba(205, 100, 40, .1);
+}
+
+.cashier-alerts button .anticon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #d6473d;
+  flex: 0 0 29px;
+}
+
+.cashier-alerts button:nth-child(2) .anticon {
+  background: #e98728;
+}
+
+.cashier-alerts button:nth-child(3) .anticon {
+  background: #bb4c3f;
+}
+
+.cashier-alerts button span {
+  flex: 1;
+}
+
+.cashier-alerts button b {
+  color: #9b7664;
+  font-size: 27px;
+  font-weight: 400;
+}
+
+.cashier-table-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(135px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.cashier-table-card {
+  position: relative;
+  min-height: 150px;
+  overflow: hidden;
+  padding: 22px 20px 14px;
+  border: 1px solid #e3ded9;
+  border-radius: 11px;
+  color: var(--cashier-ink);
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(45, 35, 28, .025);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cashier-table-card.has-total {
+  padding-bottom: 34px;
+}
+
+.cashier-table-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  content: "";
+  background: var(--cashier-green);
+}
+
+.cashier-table-card.is-pending-payment::before {
+  background: #ec811d;
+}
+
+.cashier-table-card.is-settled::before {
+  background: #4a9b70;
+}
+
+.cashier-table-card.is-dining::before {
+  background: var(--cashier-blue);
+}
+
+.cashier-table-card.is-ready::before {
+  background: #7656a8;
+}
+
+.cashier-table-card.is-unsettled::before {
+  background: #e76f19;
+}
+
+.cashier-table-card.selected {
+  border: 2px solid var(--cashier-red);
+  box-shadow: 0 6px 17px rgba(205, 61, 52, .12);
+}
+
+.cashier-table-card.selected::before {
+  inset: -1px -1px auto;
+  background: var(--cashier-red);
+}
+
+.cashier-table-card > strong {
+  display: block;
+  font-size: 27px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.cashier-table-name {
+  display: block;
+  margin-top: 7px;
+  color: #887d76;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.cashier-table-state {
+  display: block;
+  margin-top: 10px;
+  color: var(--cashier-green);
+  font-size: 16px;
+}
+
+.cashier-table-card.is-pending-payment .cashier-table-state {
+  color: #e17317;
+}
+
+.cashier-table-card.is-settled .cashier-table-state {
+  color: #39845d;
+}
+
+.cashier-table-card.is-dining .cashier-table-state {
+  color: var(--cashier-blue);
+}
+
+.cashier-table-card.is-ready .cashier-table-state {
+  color: #7656a8;
+}
+
+.cashier-table-card.is-unsettled .cashier-table-state,
+.cashier-table-card.selected .cashier-table-state {
+  color: var(--cashier-red);
+}
+
+.cashier-table-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  color: #655e59;
+  font-size: 13px;
+}
+
+.cashier-table-meta span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cashier-table-meta .anticon {
+  color: var(--cashier-green);
+  font-size: 20px;
+}
+
+.cashier-table-card > b {
+  position: absolute;
+  right: 0;
+  left: 0;
+  bottom: 10px;
+  color: #e14d34;
+  font-size: 18px;
+  text-align: center;
+}
+
+.cashier-grid-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  margin: 25px 0 4px;
+  color: #77706b;
+}
+
+.cashier-grid-count i {
+  width: 130px;
+  height: 1px;
+  background: #d7d1cc;
+}
+
+.cashier-operation {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 22px 12px;
+  border-left: 1px solid var(--cashier-line);
+  background: #fff;
+  scrollbar-width: thin;
+}
+
+.cashier-operation-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.cashier-operation-title > strong {
+  font-size: 23px;
+}
+
+.cashier-order-card {
+  min-height: 240px;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e5dfda;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.cashier-order-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.cashier-order-hero {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 19px;
+  border-bottom: 1px solid var(--cashier-line);
+}
+
+.cashier-order-hero .ant-tag {
+  margin: 0;
+  padding: 4px 7px;
+  font-size: 14px;
+}
+
+.cashier-order-hero strong {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.cashier-order-hero > span {
+  margin-left: auto;
+  font-size: 15px;
+}
+
+.cashier-order-hero small {
+  color: #625b56;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cashier-order-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 13px 19px;
+  color: #615b57;
+  font-size: 14px;
+}
+
+.cashier-addition-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 19px 8px;
+}
+
+.cashier-addition-tags .ant-tag {
+  margin: 0;
+  color: #9a552b;
+  background: #fff3eb;
+  font-size: 12px;
+}
+
+.cashier-addition-tags > span {
+  margin-left: auto;
+  color: #6f6863;
+  font-size: 12px;
+}
+
+.cashier-order-items {
+  padding: 0 19px;
+}
+
+.cashier-order-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 45px 90px;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  border-bottom: 1px solid #eee9e5;
+}
+
+.cashier-order-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.cashier-order-item > span small {
+  margin-left: 6px;
+  color: var(--cashier-muted);
+}
+
+.cashier-order-item > b {
+  font-weight: 400;
+  text-align: center;
+}
+
+.cashier-order-item > strong {
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.cashier-order-item.is-returned,
+.cashier-checkout-item.is-returned {
+  color: #b24138;
+  background: #fff7f5;
+}
+
+.cashier-order-item.is-returned > span {
+  display: flex;
+  align-items: center;
+}
+
+.cashier-order-item.is-returned > span small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cashier-return-icon {
+  width: 25px;
+  height: 25px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 25px;
+  margin-right: 8px;
+  border-radius: 50%;
+  color: #fff;
+  background: #d45348;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.cashier-addition-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 28px;
+  color: #9b938e;
+  font-size: 12px;
+}
+
+.cashier-addition-divider i {
+  width: 80px;
+  height: 1px;
+  background: #dcd6d1;
+}
+
+.cashier-order-total {
+  flex: 0 0 auto;
+  padding: 8px 19px 13px;
+  border-top: 1px solid #eee8e3;
+  background: #fffdfb;
+  box-shadow: 0 -7px 18px rgba(65, 43, 28, .045);
+}
+
+.cashier-order-total > div {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}
+
+.cashier-order-total span {
+  flex: 1;
+}
+
+.cashier-order-total b {
+  color: var(--cashier-red);
+  font-size: 16px;
+}
+
+.cashier-order-total > div:last-child {
+  position: relative;
+  min-height: 91px;
+  display: block;
+  padding-top: 11px;
+}
+
+.cashier-order-total > div:last-child span {
+  display: block;
+  font-size: 20px;
+}
+
+.cashier-order-total strong {
+  display: block;
+  margin-top: 1px;
+  color: #d84a37;
+  font-size: 28px;
+}
+
+.cashier-order-total em {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  color: var(--cashier-red);
+  font-size: 21px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.cashier-empty-operation {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #8a817b;
+}
+
+.cashier-empty-operation .anticon {
+  color: #c6b7ac;
+  font-size: 54px;
+}
+
+.cashier-empty-operation strong {
+  color: #514740;
+  font-size: 20px;
+}
+
+.cashier-action-dock {
+  flex: 0 0 auto;
+  padding-top: 14px;
+  background: #fff;
+}
+
+.cashier-primary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 0;
+}
+
+.cashier-more-actions {
+  width: 100%;
+  height: 46px;
+  display: none;
+  margin-top: 10px;
+  font-size: 16px;
+}
+
+.cashier-primary-actions .ant-btn {
+  height: 74px;
+  border-color: #d96c35;
+  color: #d56229;
+  font-size: 19px;
+}
+
+.cashier-action-wrapper {
+  display: block;
+  min-width: 0;
+}
+
+.cashier-action-wrapper > .ant-btn {
+  width: 100%;
+}
+
+.cashier-order-lock-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #75675e;
+  background: #f6f2ee;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cashier-order-lock-note .anticon {
+  margin-top: 3px;
+  color: #9a6a4d;
+}
+
+.cashier-primary-actions .anticon {
+  font-size: 24px;
+}
+
+.cashier-primary-actions .ant-btn:nth-child(2) {
+  border-color: #39845d;
+  color: #337e56;
+}
+
+.cashier-primary-actions .ant-btn:nth-child(3) {
+  border-color: #9f6545;
+  color: #392b23;
+}
+
+.cashier-primary-actions.is-takeout .cashier-action-print {
+  border-color: #9f6545;
+  color: #392b23;
+}
+
+.cashier-primary-actions .ant-btn.ant-btn-dangerous {
+  border-color: var(--cashier-red);
+  color: #fff;
+  background: linear-gradient(145deg, #e45f4b, #cb3f35);
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.cashier-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.cashier-secondary-actions .ant-btn {
+  height: 48px;
+  font-size: 16px;
+}
+
+.cashier-secondary-actions .anticon {
+  font-size: 18px;
+}
+
+.cashier-status-actions {
+  margin-top: 10px;
+}
+
+.cashier-status-actions .ant-btn {
+  height: 45px;
+  font-weight: 650;
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled) {
+  border-color: #955c39;
+  color: #fff;
+  background: #a5683f;
+  box-shadow: 0 4px 10px rgba(112, 66, 39, .18);
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled):hover {
+  border-color: #7f4b2f;
+  color: #fff;
+  background: #8f5736;
+}
+
+.cashier-status-actions .ant-btn.ant-btn-primary:not(:disabled):active {
+  border-color: #704128;
+  color: #fff;
+  background: #7b492e;
+}
+
+.cashier-handover-modal > p {
+  margin: 0 0 16px;
+  color: #766f69;
+  line-height: 1.7;
+}
+
+.cashier-handover-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cashier-handover-modal .ant-alert {
+  margin-bottom: 16px;
+}
+
+.cashier-handover-summary span {
+  padding: 11px;
+  border-radius: 8px;
+  color: #746b65;
+  background: #f8f5f2;
+  font-size: 12px;
+}
+
+.cashier-handover-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: #332a24;
+  font-size: 15px;
+}
+
+.cashier-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--cashier-line);
+  background: #fff;
+}
+
+.cashier-summary > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border-right: 1px solid #e9e4df;
+}
+
+.cashier-summary > div:last-child {
+  border-right: 0;
+}
+
+.cashier-summary .anticon {
+  font-size: 25px;
+}
+
+.cashier-summary span,
+.cashier-summary strong {
+  display: block;
+}
+
+.cashier-summary span {
+  color: #6e6762;
+  font-size: 12px;
+}
+
+.cashier-summary strong {
+  color: #231e1b;
+  font-size: 18px;
+}
+
+.cashier-summary small {
+  margin-left: 4px;
+  color: #89817c;
+  font-size: 11px;
+}
+
+.cashier-takeout-board {
+  margin-top: 25px;
+}
+
+.cashier-takeout-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.cashier-takeout-head strong {
+  font-size: 22px;
+}
+
+.cashier-takeout-head span {
+  flex: 1;
+  color: var(--cashier-muted);
+}
+
+.cashier-takeout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+  gap: 16px;
+}
+
+.cashier-takeout-card {
+  padding: 18px;
+  border: 1px solid #e1dbd6;
+  border-top: 5px solid var(--cashier-blue);
+  border-radius: 11px;
+  color: var(--cashier-ink);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cashier-takeout-card.status-ready {
+  border-top-color: var(--cashier-green);
+}
+
+.cashier-takeout-card.status-pending_payment {
+  border-top-color: var(--cashier-red);
+}
+
+.cashier-takeout-card.selected {
+  outline: 2px solid #d85b33;
+}
+
+.cashier-takeout-card > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-takeout-card > div > span {
+  color: var(--cashier-muted);
+}
+
+.cashier-takeout-card > div > strong {
+  flex: 1;
+  font-size: 28px;
+}
+
+.cashier-takeout-card p {
+  min-height: 44px;
+  color: #5e5651;
+  line-height: 1.55;
+}
+
+.cashier-takeout-card footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid #eee9e5;
+}
+
+.cashier-takeout-card footer b {
+  color: #d54b36;
+  font-size: 18px;
+}
+
+.cashier-ordering-drawer .ant-drawer-body {
+  padding: 0;
+}
+
+.cashier-ordering-drawer .ant-drawer-footer {
+  padding: 13px 20px;
+}
+
+.cashier-drawer-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cashier-drawer-title strong {
+  font-size: 22px;
+}
+
+.cashier-drawer-title span {
+  color: var(--cashier-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.cashier-ordering {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.cashier-catalog {
+  min-width: 0;
+  padding: 18px 20px;
+  background: #f8f7f5;
+}
+
+.cashier-catalog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.cashier-categories {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.cashier-categories button {
+  min-width: 72px;
+  height: 38px;
+  font-size: 14px;
+}
+
+.cashier-catalog-toolbar .ant-input-affix-wrapper {
+  width: 220px;
+}
+
+.cashier-product-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr));
+  gap: 13px;
+}
+
+.cashier-product-card {
+  position: relative;
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid #e7e0db;
+  border-radius: 11px;
+  color: var(--cashier-ink);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cashier-product-card:disabled {
+  opacity: .46;
+  cursor: not-allowed;
+}
+
+.cashier-product-card img,
+.cashier-product-fallback {
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  object-fit: cover;
+  border-radius: 9px;
+  color: #bd7b50;
+  background: #f6ebe3;
+  font-size: 28px;
+}
+
+.cashier-product-card > span:not(.cashier-product-fallback) {
+  min-width: 0;
+}
+
+.cashier-product-card strong,
+.cashier-product-card small,
+.cashier-product-card b {
+  display: block;
+}
+
+.cashier-product-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.cashier-product-card small {
+  margin-top: 7px;
+  color: var(--cashier-muted);
+}
+
+.cashier-product-card b {
+  margin-top: 10px;
+  color: #d1532d;
+}
+
+.cashier-product-card > i {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--cashier-orange);
+  font-style: normal;
+}
+
+.cashier-cart {
+  min-width: 0;
+  padding: 17px;
+  overflow-y: auto;
+  border-left: 1px solid var(--cashier-line);
+  background: #fff;
+}
+
+.cashier-cart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.cashier-cart-head strong {
+  font-size: 18px;
+}
+
+.cashier-cart-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid #eee9e5;
+}
+
+.cashier-cart-line > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.cashier-cart-line strong,
+.cashier-cart-line small,
+.cashier-cart-line b {
+  display: block;
+}
+
+.cashier-cart-line small {
+  margin-top: 4px;
+  color: var(--cashier-muted);
+  font-size: 11px;
+}
+
+.cashier-cart-line b {
+  margin-top: 7px;
+  color: #d34f2e;
+}
+
+.cashier-cart-line .ant-space-compact span {
+  width: 38px;
+  display: grid;
+  place-items: center;
+  border-block: 1px solid #d9d9d9;
+}
+
+.cashier-cart-footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.cashier-cart-footer > span {
+  color: var(--cashier-muted);
+}
+
+.cashier-cart-footer > strong {
+  flex: 1;
+  color: #d24e2c;
+  font-size: 27px;
+}
+
+.cashier-cart-footer .ant-btn {
+  height: 50px;
+  min-width: 190px;
+  font-size: 17px;
+}
+
+.cashier-product-config section {
+  margin-bottom: 20px;
+}
+
+.cashier-product-config section > strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.cashier-product-config section > strong small {
+  margin-left: 8px;
+  color: var(--cashier-muted);
+  font-weight: 400;
+}
+
+.cashier-product-config .ant-radio-group,
+.cashier-product-config .ant-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cashier-settle-choice p {
+  color: var(--cashier-muted);
+}
+
+.cashier-compact-checkout .ant-modal-content {
+  padding: 22px;
+}
+
+.cashier-compact-checkout-body {
+  display: grid;
+  gap: 18px;
+}
+
+.cashier-compact-due {
+  padding: 18px 20px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #b9512b, #d67538);
+}
+
+.cashier-compact-due span,
+.cashier-compact-due strong,
+.cashier-compact-due small {
+  display: block;
+}
+
+.cashier-compact-due span {
+  opacity: .85;
+  font-size: 14px;
+}
+
+.cashier-compact-due strong {
+  margin: 3px 0;
+  font-size: 36px;
+}
+
+.cashier-compact-due small {
+  opacity: .78;
+}
+
+.cashier-compact-checkout-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #82766e;
+  font-size: 12px;
+}
+
+.cashier-compact-checkout-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cashier-offline-confirm {
+  display: grid;
+  gap: 16px;
+  padding-top: 6px;
+}
+
+.cashier-offline-confirm-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 18px;
+  padding: 15px 17px;
+  border: 1px solid #eadfd7;
+  border-radius: 10px;
+  background: #fffaf6;
+}
+
+.cashier-offline-confirm-summary > span {
+  overflow: hidden;
+  color: #302823;
+  font-size: 17px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cashier-offline-confirm-summary > strong {
+  grid-row: span 2;
+  color: #d6493f;
+  font-size: 25px;
+}
+
+.cashier-offline-confirm-summary > small {
+  color: #8a817a;
+}
+
+.cashier-standard-detail {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f7f5f2;
+}
+
+.cashier-standard-head {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 22px;
+  border-bottom: 1px solid #e5ddd7;
+  background: #fff;
+}
+
+.cashier-standard-head > div {
+  min-width: 0;
+}
+
+.cashier-standard-head > div strong,
+.cashier-standard-head > div span {
+  display: block;
+}
+
+.cashier-standard-head > div strong {
+  font-size: 22px;
+}
+
+.cashier-standard-head > div span {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #837870;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.cashier-standard-grid {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(330px, 1.2fr) minmax(285px, .88fr) minmax(250px, .76fr);
+  overflow: hidden;
+}
+
+.cashier-standard-bill,
+.cashier-standard-payment,
+.cashier-standard-payments {
+  min-width: 0;
+  min-height: 0;
+  padding: 22px;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.cashier-standard-bill,
+.cashier-standard-payment {
+  border-right: 1px solid #e7dfd9;
+}
+
+.cashier-standard-bill {
+  display: flex;
+  flex-direction: column;
+}
+
+.cashier-standard-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eee7e2;
+}
+
+.cashier-standard-section-title strong {
+  font-size: 20px;
+}
+
+.cashier-standard-section-title span {
+  color: #887d76;
+  font-size: 12px;
+}
+
+.cashier-standard-items {
+  min-height: 180px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cashier-standard-empty {
+  min-height: 280px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #847970;
+}
+
+.cashier-standard-empty .anticon {
+  color: #c3b6ac;
+  font-size: 52px;
+}
+
+.cashier-standard-empty strong {
+  color: #4d433d;
+  font-size: 20px;
+}
+
+.cashier-standard-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  padding-top: 16px;
+  border-top: 1px solid #eee7e2;
+}
+
+.cashier-standard-actions > span,
+.cashier-standard-actions > span > .ant-btn,
+.cashier-standard-actions > .ant-btn {
+  width: 100%;
+}
+
+.cashier-standard-actions .ant-btn {
+  min-height: 46px;
+  white-space: normal;
+}
+
+.cashier-standard-payment {
+  background: #fffdfb;
+}
+
+.cashier-standard-amount {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #ecd8ca;
+  border-radius: 12px;
+  background: #fff6ef;
+}
+
+.cashier-standard-amount span,
+.cashier-standard-amount strong,
+.cashier-standard-amount small {
+  display: block;
+}
+
+.cashier-standard-amount span {
+  color: #74675f;
+}
+
+.cashier-standard-amount strong {
+  margin: 3px 0;
+  color: #d84a37;
+  font-size: 38px;
+}
+
+.cashier-standard-amount small {
+  color: #b0643e;
+}
+
+.cashier-standard-payment .ant-alert {
+  margin-top: 16px;
+}
+
+.cashier-payment-record-list {
+  display: grid;
+  gap: 11px;
+  margin-top: 16px;
+}
+
+.cashier-payment-record-list article {
+  padding: 14px;
+  border: 1px solid #e8e1dc;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.cashier-payment-record-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cashier-payment-record-list article .ant-tag {
+  margin: 0;
+}
+
+.cashier-payment-record-list article b,
+.cashier-payment-record-list article span,
+.cashier-payment-record-list article small {
+  display: block;
+}
+
+.cashier-payment-record-list article b {
+  margin-top: 9px;
+  color: #cf4d36;
+  font-size: 24px;
+}
+
+.cashier-payment-record-list article span,
+.cashier-payment-record-list article small {
+  margin-top: 4px;
+  color: #8a817b;
+  font-size: 11px;
+}
+
+.cashier-payment-record-list article small {
+  overflow-wrap: anywhere;
+}
+
+.cashier-number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.cashier-number-field .ant-input-number {
+  width: 100%;
+  border-radius: 6px 0 0 6px;
+}
+
+.cashier-number-field > span {
+  display: grid;
+  place-items: center;
+  border: 1px solid #d9d9d9;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  color: #655d57;
+  background: #fafafa;
+}
+
+.cashier-checkout-drawer .ant-drawer-header {
+  min-height: 76px;
+  padding: 15px 24px;
+  border-bottom-color: #e8e1dc;
+}
+
+.cashier-checkout-drawer .ant-drawer-body {
+  padding: 0;
+  background: #f7f5f2;
+}
+
+.cashier-checkout-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.cashier-checkout-title > span {
+  color: #8a4a28;
+  font-size: 15px;
+}
+
+.cashier-checkout-title > strong {
+  color: #2c2521;
+  font-size: 24px;
+}
+
+.cashier-checkout-title > small {
+  color: #81766f;
+  font-weight: 400;
+}
+
+.cashier-checkout-layout {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.08fr) minmax(250px, .86fr) 250px;
+  background: #fff;
+}
+
+.cashier-checkout-bill,
+.cashier-checkout-payment,
+.cashier-checkout-summary {
+  min-width: 0;
+  padding: 24px;
+}
+
+.cashier-checkout-bill,
+.cashier-checkout-payment {
+  border-right: 1px solid #e8e1dc;
+}
+
+.cashier-checkout-bill {
+  display: flex;
+  flex-direction: column;
+}
+
+.cashier-checkout-bill > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #eee8e3;
+}
+
+.cashier-checkout-bill > header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-checkout-bill > header strong {
+  font-size: 21px;
+}
+
+.cashier-checkout-bill-head,
+.cashier-checkout-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 86px;
+  gap: 10px;
+  align-items: center;
+}
+
+.cashier-checkout-bill-head {
+  padding: 16px 0 9px;
+  color: #918780;
+  font-size: 12px;
+}
+
+.cashier-checkout-bill-head span:nth-child(n+2) {
+  text-align: right;
+}
+
+.cashier-checkout-items {
+  min-height: 220px;
+  max-height: calc(100vh - 300px);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cashier-checkout-item {
+  min-height: 56px;
+  border-bottom: 1px solid #f0ebe7;
+}
+
+.cashier-checkout-item > span {
+  min-width: 0;
+}
+
+.cashier-checkout-item > span strong,
+.cashier-checkout-item > span small {
+  display: block;
+}
+
+.cashier-checkout-item > span small {
+  margin-top: 3px;
+  color: #8a817b;
+}
+
+.cashier-checkout-item > b,
+.cashier-checkout-item > strong {
+  text-align: right;
+}
+
+.cashier-checkout-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.cashier-checkout-section-title {
+  margin-bottom: 18px;
+}
+
+.cashier-checkout-section-title strong,
+.cashier-checkout-section-title span {
+  display: block;
+}
+
+.cashier-checkout-section-title strong {
+  font-size: 20px;
+}
+
+.cashier-checkout-section-title span {
+  margin-top: 5px;
+  color: #81766f;
+  font-size: 12px;
+}
+
+.cashier-payment-methods {
+  display: grid;
+  gap: 12px;
+}
+
+.cashier-payment-methods > .ant-btn,
+.cashier-payment-methods > span,
+.cashier-payment-methods > span > .ant-btn {
+  width: 100%;
+}
+
+.cashier-payment-methods .ant-btn {
+  height: 82px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  column-gap: 12px;
+  padding: 12px 16px;
+  border-color: #d9c8bd;
+  color: #4c382d;
+  text-align: left;
+}
+
+.cashier-payment-methods .ant-btn > .anticon {
+  grid-row: 1 / 3;
+  color: #b66435;
+  font-size: 29px;
+}
+
+.cashier-payment-methods .ant-btn strong {
+  align-self: end;
+  font-size: 17px;
+}
+
+.cashier-payment-methods .ant-btn small {
+  align-self: start;
+  color: #887d76;
+  font-size: 11px;
+}
+
+.cashier-payment-methods .ant-btn.is-wechat:not(:disabled) {
+  border-color: #55a974;
+  color: #205f3b;
+  background: #f3fbf6;
+}
+
+.cashier-payment-methods .ant-btn.is-wechat:not(:disabled) > .anticon {
+  color: #159447;
+}
+
+.cashier-checkout-payment .ant-alert {
+  margin-top: 18px;
+}
+
+.cashier-checkout-summary {
+  display: flex;
+  flex-direction: column;
+  background: #fffaf6;
+}
+
+.cashier-checkout-summary > div:not(.cashier-checkout-due):not(.cashier-checkout-safety) {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 10px 0;
+  color: #736862;
+  border-bottom: 1px solid #eee6df;
+}
+
+.cashier-checkout-summary .is-discount strong {
+  color: #d05835;
+}
+
+.cashier-checkout-due {
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.cashier-checkout-due span,
+.cashier-checkout-due strong,
+.cashier-checkout-due small {
+  display: block;
+}
+
+.cashier-checkout-due span {
+  font-size: 17px;
+}
+
+.cashier-checkout-due strong {
+  margin-top: 5px;
+  color: #d84934;
+  font-size: 38px;
+}
+
+.cashier-checkout-due small {
+  margin-top: 8px;
+  color: #958a82;
+  line-height: 1.5;
+}
+
+.cashier-checkout-safety {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  padding: 10px;
+  border-radius: 8px;
+  color: #6e625b;
+  background: #f2ebe5;
+  font-size: 12px;
+}
+
+.cashier-wechat-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-wechat-title > .anticon {
+  color: #159447;
+  font-size: 25px;
+}
+
+.cashier-wechat-title > strong {
+  margin-left: auto;
+  color: #d84a37;
+  font-size: 24px;
+}
+
+.cashier-wechat-scan {
+  display: grid;
+  gap: 14px;
+}
+
+.cashier-camera {
+  position: relative;
+  height: 270px;
+  overflow: hidden;
+  border-radius: 13px;
+  background: #171717;
+}
+
+.cashier-camera video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.cashier-camera-frame {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(rgba(0, 0, 0, .42), transparent 28%, transparent 72%, rgba(0, 0, 0, .42));
+  pointer-events: none;
+}
+
+.cashier-camera-frame i {
+  width: min(430px, 82%);
+  height: 112px;
+  border: 3px solid #55d884;
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .23);
+}
+
+.cashier-camera-frame span {
+  position: absolute;
+  bottom: 18px;
+  font-size: 14px;
+}
+
+.cashier-scanner-fallback {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.cashier-scanner-fallback > span {
+  color: #736963;
+  font-size: 13px;
+}
+
+.cashier-wechat-status {
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px;
+  border-radius: 13px;
+  background: #f7f6f4;
+  text-align: center;
+}
+
+.cashier-wechat-status > .anticon {
+  color: #239756;
+  font-size: 64px;
+}
+
+.cashier-wechat-status > strong {
+  font-size: 23px;
+}
+
+.cashier-wechat-status > span,
+.cashier-wechat-status > small {
+  color: #756b65;
+}
+
+.cashier-wechat-status.status-failed > .anticon,
+.cashier-wechat-status.status-closed > .anticon {
+  color: #b9754e;
+}
+
+.cashier-wechat-notice {
+  margin: 0;
+  color: #8d837d;
+  font-size: 12px;
+  text-align: center;
+}
+
+.cashier-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: #6d625b;
+  background: rgba(250, 248, 246, .9);
+  backdrop-filter: blur(4px);
+}
+
+@media (max-width: 1320px) {
+  .cashier-shell {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+  .cashier-rail-item {
+    height: 108px;
+    font-size: 16px;
+  }
+  .cashier-rail-item .anticon {
+    font-size: 27px;
+  }
+  .cashier-topbar {
+    gap: 16px;
+    padding-inline: 20px;
+  }
+  .cashier-title {
+    min-width: 270px;
+  }
+  .cashier-title strong {
+    font-size: 23px;
+  }
+  .cashier-device:nth-last-of-type(2) {
+    display: none;
+  }
+  .cashier-workspace {
+    grid-template-columns: minmax(500px, 1.35fr) minmax(410px, 1fr);
+  }
+  .cashier-workspace.is-standard.is-detail-focused {
+    display: block;
+  }
+  .cashier-workspace.is-standard.is-detail-focused .cashier-board {
+    display: none;
+  }
+  .cashier-workspace.is-standard.is-detail-focused .cashier-standard-detail {
+    height: 100%;
+  }
+  .cashier-board {
+    padding-inline: 20px;
+  }
+  .cashier-table-grid {
+    grid-template-columns: repeat(3, minmax(135px, 1fr));
+  }
+  .cashier-operation {
+    padding: 16px 16px 10px;
+  }
+  .cashier-operation-title {
+    margin-bottom: 10px;
+  }
+  .cashier-order-panel {
+    min-height: 180px;
+  }
+  .cashier-primary-actions {
+    gap: 8px;
+  }
+  .cashier-primary-actions .ant-btn {
+    height: 56px;
+    font-size: 15px;
+  }
+  .cashier-primary-actions .anticon {
+    font-size: 20px;
+  }
+  .cashier-primary-actions .ant-btn.ant-btn-dangerous {
+    font-size: 17px;
+  }
+  .cashier-secondary-actions {
+    display: none;
+  }
+  .cashier-more-actions {
+    display: block;
+  }
+}
+
+@media (max-width: 1040px) {
+  .cashier-shell {
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
+  .cashier-rail-brand {
+    height: 78px;
+  }
+  .cashier-rail-brand img {
+    width: 42px;
+    height: 42px;
+  }
+  .cashier-rail-item {
+    height: 90px;
+    gap: 7px;
+    font-size: 13px;
+  }
+  .cashier-rail-item .anticon {
+    font-size: 23px;
+  }
+  .cashier-title {
+    min-width: 220px;
+  }
+  .cashier-title span,
+  .cashier-operator,
+  .cashier-device {
+    display: none;
+  }
+  .cashier-workspace {
+    grid-template-columns: minmax(340px, 1fr) minmax(350px, .92fr);
+  }
+  .cashier-standard-grid {
+    grid-template-columns: minmax(270px, 1.08fr) minmax(220px, .9fr) minmax(190px, .72fr);
+  }
+  .cashier-standard-bill,
+  .cashier-standard-payment,
+  .cashier-standard-payments {
+    padding: 16px;
+  }
+  .cashier-standard-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn {
+    height: 72px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    padding-inline: 11px;
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn > .anticon {
+    font-size: 24px;
+  }
+  .cashier-standard-payment .cashier-payment-methods .ant-btn strong {
+    font-size: 15px;
+  }
+  .cashier-mode-row {
+    display: block;
+  }
+  .cashier-mode-tabs {
+    height: 86px;
+  }
+  .cashier-mode-tabs button {
+    gap: 9px;
+    font-size: 17px;
+  }
+  .cashier-mode-tabs button .anticon {
+    font-size: 29px;
+  }
+  .cashier-create-actions {
+    width: auto;
+    height: 56px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    margin-top: 10px;
+  }
+  .cashier-area-tabs {
+    gap: 8px;
+  }
+  .cashier-area-tabs button {
+    min-width: 74px;
+  }
+  .cashier-alerts {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .cashier-alerts button {
+    height: 45px;
+  }
+  .cashier-table-grid {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+    gap: 11px;
+  }
+  .cashier-operation {
+    padding-inline: 14px;
+    overflow: hidden;
+  }
+  .cashier-order-panel {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .cashier-primary-actions,
+  .cashier-status-actions {
+    flex: 0 0 auto;
+  }
+  .cashier-order-hero {
+    flex-wrap: wrap;
+  }
+  .cashier-primary-actions .ant-btn {
+    height: 62px;
+    font-size: 15px;
+  }
+  .cashier-ordering {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .cashier-product-grid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+  .cashier-takeout-grid {
+    grid-template-columns: repeat(2, minmax(170px, 1fr));
+  }
+  .cashier-checkout-layout {
+    grid-template-columns: minmax(330px, 1.15fr) minmax(280px, .85fr);
+  }
+  .cashier-checkout-payment {
+    border-right: 0;
+  }
+  .cashier-checkout-summary {
+    min-height: 240px;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 22px;
+    border-top: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-due {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    margin: 0;
+    padding: 0 0 0 20px;
+    border-left: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-safety {
+    grid-column: 1 / 3;
+  }
+}
+
+@media (max-height: 800px) and (min-width: 721px) {
+  .cashier-stage {
+    grid-template-rows: 68px minmax(0, 1fr) 68px;
+  }
+  .cashier-topbar {
+    padding-inline: 18px;
+  }
+  .cashier-title strong {
+    font-size: 23px;
+  }
+  .cashier-handover {
+    height: 42px;
+    padding-inline: 18px;
+  }
+  .cashier-board {
+    padding-top: 16px;
+  }
+  .cashier-mode-tabs {
+    height: 86px;
+  }
+  .cashier-area-tabs {
+    height: 54px;
+    margin-top: 14px;
+  }
+  .cashier-alerts {
+    margin-top: 12px;
+  }
+  .cashier-alerts button {
+    height: 48px;
+  }
+  .cashier-table-grid {
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .cashier-table-card {
+    min-height: 126px;
+    padding: 18px 16px 12px;
+  }
+  .cashier-table-card > strong {
+    font-size: 23px;
+  }
+  .cashier-table-meta {
+    margin-top: 10px;
+  }
+  .cashier-operation {
+    padding-top: 12px;
+  }
+  .cashier-operation-title {
+    margin-bottom: 8px;
+  }
+  .cashier-operation-title > strong {
+    font-size: 21px;
+  }
+  .cashier-action-dock {
+    padding-top: 8px;
+  }
+  .cashier-primary-actions {
+    gap: 7px;
+  }
+  .cashier-primary-actions .ant-btn {
+    height: 49px;
+  }
+  .cashier-more-actions {
+    height: 40px;
+    margin-top: 7px;
+  }
+  .cashier-status-actions {
+    margin-top: 7px;
+  }
+  .cashier-status-actions .ant-btn {
+    height: 40px;
+  }
+  .cashier-summary > div {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  .cashier-shell {
+    position: relative;
+    min-height: 100vh;
+    grid-template-columns: 1fr;
+  }
+  .cashier-rail {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 20;
+    height: 64px;
+    flex-direction: row;
+  }
+  .cashier-rail-brand,
+  .cashier-rail-logout {
+    display: none;
+  }
+  .cashier-rail-item {
+    height: 64px;
+    flex: 1;
+  }
+  .cashier-stage {
+    padding-bottom: 64px;
+    grid-template-rows: 66px auto auto;
+  }
+  .cashier-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .cashier-title strong {
+    font-size: 20px;
+  }
+  .cashier-shift-tag,
+  .cashier-clock,
+  .cashier-handover {
+    display: none;
+  }
+  .cashier-workspace {
+    display: block;
+    overflow: visible;
+  }
+  .cashier-workspace.is-standard.is-detail-focused,
+  .cashier-standard-detail,
+  .cashier-standard-grid {
+    overflow: visible;
+  }
+  .cashier-standard-head {
+    position: sticky;
+    top: 66px;
+    z-index: 8;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .cashier-standard-head > .ant-tag {
+    display: none;
+  }
+  .cashier-standard-head > .ant-btn:last-child {
+    padding-inline: 8px;
+  }
+  .cashier-standard-grid {
+    display: block;
+  }
+  .cashier-standard-bill,
+  .cashier-standard-payment {
+    border-right: 0;
+    border-bottom: 1px solid #e7dfd9;
+  }
+  .cashier-standard-items {
+    max-height: 55vh;
+  }
+  .cashier-standard-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cashier-board,
+  .cashier-operation {
+    overflow: visible;
+  }
+  .cashier-operation {
+    border-top: 1px solid var(--cashier-line);
+    border-left: 0;
+  }
+  .cashier-summary {
+    min-height: 120px;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cashier-summary > div {
+    min-height: 58px;
+  }
+  .cashier-ordering {
+    display: block;
+  }
+  .cashier-cart {
+    border-top: 1px solid var(--cashier-line);
+    border-left: 0;
+  }
+  .cashier-product-grid {
+    grid-template-columns: 1fr;
+  }
+  .cashier-cart-footer {
+    flex-wrap: wrap;
+  }
+  .cashier-handover-summary {
+    grid-template-columns: 1fr;
+  }
+  .cashier-checkout-layout {
+    display: block;
+  }
+  .cashier-checkout-bill,
+  .cashier-checkout-payment {
+    border-right: 0;
+    border-bottom: 1px solid #e8e1dc;
+  }
+  .cashier-checkout-summary {
+    display: flex;
+    min-height: 320px;
+  }
+  .cashier-checkout-due {
+    margin-top: 18px;
+    padding: 18px 0 0;
+    border-top: 1px solid #e8e1dc;
+    border-left: 0;
+  }
+  .cashier-scanner-fallback {
+    grid-template-columns: 1fr auto;
+  }
+  .cashier-scanner-fallback > span {
+    grid-column: 1 / -1;
+  }
+}

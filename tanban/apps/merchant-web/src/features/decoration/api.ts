@@ -1,0 +1,457 @@
+import { api } from '../../api/client';
+import { BUILTIN_TEMPLATES, cloneDecoration, DEFAULT_DECORATION } from './defaults';
+import type {
+  DecorationConfig,
+  DecorationDraft,
+  DecorationTemplate,
+  DecorationVersion,
+  DecorationWorkspace,
+  HomeModuleConfig,
+  HomeModuleType,
+  ImageHotspot,
+  MediaAsset,
+  PublishedDecoration,
+} from './model';
+
+type UnknownRecord = Record<string, unknown>;
+
+interface ApiDecorationModule {
+  id: string;
+  type: HomeModuleType;
+  enabled: boolean;
+  sortOrder: number;
+  config: UnknownRecord;
+}
+
+interface ApiDecorationConfig {
+  schemaVersion: 1;
+  templateKey: string;
+  theme: {
+    primaryColor: string;
+    accentColor: string;
+    backgroundColor: string;
+    surfaceColor: string;
+    textColor: string;
+    mutedColor: string;
+    navBackgroundColor: string;
+    navTextColor: string;
+    navSelectedColor: string;
+    radius: 'SM' | 'MD' | 'LG';
+    fontScale: 'COMPACT' | 'STANDARD' | 'LARGE';
+    surfaceStyle: 'FLAT' | 'BORDERED' | 'ELEVATED';
+    buttonShape: 'SQUARE' | 'ROUNDED' | 'PILL';
+  };
+  home: { modules: ApiDecorationModule[] };
+  menu: {
+    categoryLayout: 'LEFT' | 'TOP';
+    productLayout: 'LIST' | 'GRID';
+    showDescription: boolean;
+    showStock: boolean;
+    showSales: boolean;
+    showSoldOut: boolean;
+    loadMode: 'BY_CATEGORY' | 'ALL';
+    productActionMode: 'SKU_SHEET' | 'DIRECT_ADD';
+    density: 'COMFORTABLE' | 'COMPACT';
+    cartTemplate: 'CLASSIC' | 'COUNT_ACTION' | 'PROMO_CAPSULE';
+  };
+  navigation: {
+    items: Array<{ key: string; text: string; visible: boolean; sortOrder: number }>;
+    templateKey: 'classic' | 'soft' | 'warm' | 'dark';
+    backgroundColor: string;
+    textColor: string;
+    selectedColor: string;
+  };
+  splash: {
+    enabled: boolean;
+    displayMode: 'FULLSCREEN' | 'POPUP';
+    imageUrl: string;
+    title: string;
+    subtitle: string;
+    autoCloseSeconds: number;
+    action: { type: 'NONE' };
+    frequency: 'EVERY_VISIT' | 'DAILY' | 'ONCE_PER_VERSION';
+  };
+}
+
+function record(value: unknown): UnknownRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
+}
+
+function stringValue(...values: unknown[]): string {
+  const value = values.find((item) => typeof item === 'string');
+  return typeof value === 'string' ? value : '';
+}
+
+function numberValue(fallback: number, ...values: unknown[]): number {
+  const value = values.find((item) => item !== undefined && item !== null && Number.isFinite(Number(item)));
+  return value === undefined ? fallback : Number(value);
+}
+
+function booleanValue(fallback: boolean, ...values: unknown[]): boolean {
+  const value = values.find((item) => typeof item === 'boolean');
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function actionView(payload: unknown): ImageHotspot['action'] {
+  const value = record(payload);
+  const rawType = stringValue(value.type).toUpperCase();
+  const type = ['NONE', 'OPEN_MENU', 'OPEN_DINE_IN', 'OPEN_TAKEOUT', 'OPEN_DELIVERY', 'OPEN_ORDERS', 'OPEN_PROFILE', 'OPEN_RECHARGE', 'OPEN_MY_COUPONS', 'OPEN_COUPON_CENTER', 'CALL_PHONE'].includes(rawType)
+    ? rawType as ImageHotspot['action']['type']
+    : 'NONE';
+  return type === 'CALL_PHONE' ? { type, phone: stringValue(value.phone).slice(0, 20) } : { type };
+}
+
+function clampPercent(value: unknown, fallback: number, minimum = 0): number {
+  return Math.min(100, Math.max(minimum, numberValue(fallback, value)));
+}
+
+function hotspotView(payload: unknown, index: number): ImageHotspot {
+  const value = record(payload);
+  const x = Math.min(99.999, clampPercent(value.x, 0));
+  const y = Math.min(99.999, clampPercent(value.y, 0));
+  const width = Math.min(100 - x, clampPercent(value.width, 20, 1));
+  const height = Math.min(100 - y, clampPercent(value.height, 12, 1));
+  return {
+    id: stringValue(value.id).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 64) || `hotspot-${index + 1}`,
+    x,
+    y,
+    width,
+    height,
+    label: stringValue(value.label).slice(0, 30) || `热区 ${index + 1}`,
+    action: actionView(value.action),
+  };
+}
+
+function arrayPayload(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  const value = record(payload);
+  const items = value.items ?? value.list ?? value.records ?? value.versions ?? value.templates ?? value.assets;
+  return Array.isArray(items) ? items : [];
+}
+
+function moduleView(payload: unknown, index: number): HomeModuleConfig {
+  const value = record(payload);
+  const moduleConfig = record(value.config);
+  const items = Array.isArray(moduleConfig.items) ? moduleConfig.items.map(record) : [];
+  const first = items[0] ?? {};
+  const type = stringValue(value.type) as HomeModuleType;
+  const fallback: HomeModuleConfig = {
+    id: stringValue(value.id) || `module-${index}`,
+    type: type || 'TEXT',
+    enabled: booleanValue(true, value.enabled),
+    sortOrder: numberValue((index + 1) * 10, value.sortOrder, value.sort_order),
+    title: '',
+    subtitle: '',
+    imageUrl: '',
+    hotspots: [],
+  };
+  if (type === 'HERO_BANNER') {
+    return { ...fallback, title: stringValue(first.title), subtitle: stringValue(first.subtitle), imageUrl: stringValue(first.imageUrl, first.image_url) };
+  }
+  if (type === 'STORE_HEADER') return { ...fallback, title: '营业中', subtitle: '展示门店 Logo、状态和地址' };
+  if (type === 'ANNOUNCEMENT') return { ...fallback, title: stringValue(moduleConfig.prefix) || '公告', subtitle: '门店公告正文来自门店设置' };
+  if (type === 'QUICK_ACTIONS') return { ...fallback, title: stringValue(first.title) || '堂食 / 自提点单', subtitle: stringValue(first.subtitle) || '选好口味，在线下单' };
+  if (type === 'IMAGE') return { ...fallback, title: stringValue(moduleConfig.alt), imageUrl: stringValue(moduleConfig.imageUrl, moduleConfig.image_url) };
+  if (type === 'HOTSPOT_IMAGE') {
+    const hotspots = Array.isArray(moduleConfig.hotspots) ? moduleConfig.hotspots.slice(0, 20).map(hotspotView) : [];
+    return { ...fallback, title: stringValue(moduleConfig.alt) || '热区图片', imageUrl: stringValue(moduleConfig.imageUrl, moduleConfig.image_url), hotspots };
+  }
+  if (type === 'TEXT') return { ...fallback, title: stringValue(moduleConfig.title), subtitle: stringValue(moduleConfig.body) };
+  if (type === 'CUSTOMER_SERVICE') return { ...fallback, title: stringValue(moduleConfig.title) || '微信咨询', subtitle: stringValue(moduleConfig.body) || '点击二维码，长按识别添加客服' };
+  if (type === 'SPACER') return { ...fallback, title: '留白', subtitle: `${numberValue(24, moduleConfig.height)}px` };
+  return fallback;
+}
+
+export function normalizeConfig(payload: unknown): DecorationConfig {
+  const value = record(payload);
+  const base = cloneDecoration(DEFAULT_DECORATION);
+  const rawTheme = record(value.theme);
+  const rawHome = record(value.home);
+  const rawMenu = record(value.menu);
+  const rawNavigation = record(value.navigation);
+  const rawSplash = record(value.splash);
+  const modules = Array.isArray(rawHome.modules) ? rawHome.modules : [];
+  const navItems = Array.isArray(rawNavigation.items) ? rawNavigation.items : [];
+  return {
+    ...base,
+    schemaVersion: 1,
+    templateKey: stringValue(value.templateKey, value.template_key) || base.templateKey,
+    theme: {
+      primaryColor: stringValue(rawTheme.primaryColor) || base.theme.primaryColor,
+      accentColor: stringValue(rawTheme.accentColor) || base.theme.accentColor,
+      backgroundColor: stringValue(rawTheme.backgroundColor) || base.theme.backgroundColor,
+      surfaceColor: stringValue(rawTheme.surfaceColor) || base.theme.surfaceColor,
+      textColor: stringValue(rawTheme.textColor) || base.theme.textColor,
+      mutedColor: stringValue(rawTheme.mutedColor) || base.theme.mutedColor,
+      navBackgroundColor: stringValue(rawTheme.navBackgroundColor) || base.theme.navBackgroundColor,
+      navTextColor: stringValue(rawTheme.navTextColor) || base.theme.navTextColor,
+      navSelectedColor: stringValue(rawTheme.navSelectedColor) || base.theme.navSelectedColor,
+      radius: (stringValue(rawTheme.radius) || base.theme.radius) as DecorationConfig['theme']['radius'],
+      fontScale: ['COMPACT', 'LARGE'].includes(stringValue(rawTheme.fontScale))
+        ? stringValue(rawTheme.fontScale) as DecorationConfig['theme']['fontScale']
+        : 'STANDARD',
+      surfaceStyle: ['FLAT', 'BORDERED'].includes(stringValue(rawTheme.surfaceStyle))
+        ? stringValue(rawTheme.surfaceStyle) as DecorationConfig['theme']['surfaceStyle']
+        : 'ELEVATED',
+      buttonShape: ['SQUARE', 'PILL'].includes(stringValue(rawTheme.buttonShape))
+        ? stringValue(rawTheme.buttonShape) as DecorationConfig['theme']['buttonShape']
+        : 'ROUNDED',
+    },
+    homeModules: modules.length ? modules.map(moduleView).sort((a, b) => a.sortOrder - b.sortOrder) : base.homeModules,
+    ordering: {
+      layout: stringValue(rawMenu.categoryLayout) === 'TOP' ? 'CATEGORY_TOP' : 'CATEGORY_LEFT',
+      productLayout: stringValue(rawMenu.productLayout) === 'GRID' ? 'GRID' : 'LIST',
+      density: stringValue(rawMenu.density) === 'COMPACT' ? 'COMPACT' : 'COMFORTABLE',
+      showDescription: booleanValue(base.ordering.showDescription, rawMenu.showDescription),
+      showSoldOut: booleanValue(base.ordering.showSoldOut, rawMenu.showSoldOut),
+      showStock: booleanValue(base.ordering.showStock, rawMenu.showStock),
+      showSales: booleanValue(base.ordering.showSales, rawMenu.showSales),
+      loadMode: stringValue(rawMenu.loadMode) === 'ALL' ? 'ALL' : 'BY_CATEGORY',
+      productActionMode: stringValue(rawMenu.productActionMode) === 'DIRECT_ADD' ? 'DIRECT_ADD' : 'SKU_SHEET',
+      cartTemplate: ['COUNT_ACTION', 'PROMO_CAPSULE'].includes(stringValue(rawMenu.cartTemplate))
+        ? stringValue(rawMenu.cartTemplate) as DecorationConfig['ordering']['cartTemplate']
+        : 'CLASSIC',
+    },
+    navigation: navItems.length ? navItems.map((item, index) => {
+      const nav = record(item);
+      const key = stringValue(nav.key).toUpperCase() as DecorationConfig['navigation'][number]['key'];
+      return {
+        id: stringValue(nav.key) || `navigation-${index}`,
+        key,
+        label: stringValue(nav.text) || base.navigation[index % base.navigation.length].label,
+        enabled: booleanValue(true, nav.visible),
+      };
+    }) : base.navigation,
+    navigationTemplate: ['soft', 'warm', 'dark'].includes(stringValue(rawNavigation.templateKey))
+      ? stringValue(rawNavigation.templateKey) as DecorationConfig['navigationTemplate']
+      : 'classic',
+    splash: {
+      enabled: booleanValue(false, rawSplash.enabled),
+      imageUrl: stringValue(rawSplash.imageUrl),
+      title: stringValue(rawSplash.title),
+      subtitle: stringValue(rawSplash.subtitle),
+      displayMode: stringValue(rawSplash.displayMode) === 'FULLSCREEN' ? 'FULLSCREEN' : 'POPUP',
+      autoCloseSeconds: numberValue(5, rawSplash.autoCloseSeconds),
+      frequency: (stringValue(rawSplash.frequency) || 'ONCE_PER_VERSION') as DecorationConfig['splash']['frequency'],
+    },
+  };
+}
+
+function modulePayload(module: HomeModuleConfig, index: number): ApiDecorationModule {
+  let config: UnknownRecord;
+  switch (module.type) {
+    case 'HERO_BANNER':
+      config = {
+        items: module.imageUrl ? [{ imageUrl: module.imageUrl.trim(), title: module.title, subtitle: module.subtitle, action: { type: 'OPEN_MENU' } }] : [],
+      };
+      break;
+    case 'STORE_HEADER':
+      config = { showLogo: true, showStatus: true, showAddress: true };
+      break;
+    case 'ANNOUNCEMENT':
+      config = { prefix: module.title.slice(0, 16) };
+      break;
+    case 'QUICK_ACTIONS':
+      config = { items: [
+        { title: module.title, subtitle: module.subtitle, action: { type: 'OPEN_MENU' } },
+        { title: '查看我的订单', subtitle: '支付与制作进度', action: { type: 'OPEN_ORDERS' } },
+      ] };
+      break;
+    case 'IMAGE':
+      config = { imageUrl: module.imageUrl ?? '', alt: module.title, action: { type: 'NONE' } };
+      break;
+    case 'HOTSPOT_IMAGE':
+      config = {
+        imageUrl: module.imageUrl?.trim() ?? '',
+        alt: module.title,
+        hotspots: (module.hotspots ?? []).slice(0, 20).map((hotspot) => ({
+          id: hotspot.id,
+          x: Number(hotspot.x.toFixed(3)),
+          y: Number(hotspot.y.toFixed(3)),
+          width: Number(Math.min(100 - hotspot.x, hotspot.width).toFixed(3)),
+          height: Number(Math.min(100 - hotspot.y, hotspot.height).toFixed(3)),
+          label: hotspot.label,
+          action: hotspot.action.type === 'CALL_PHONE'
+            ? { type: hotspot.action.type, phone: hotspot.action.phone?.trim() ?? '' }
+            : { type: hotspot.action.type },
+        })),
+      };
+      break;
+    case 'SPACER':
+      config = { height: Math.min(160, Math.max(4, Number.parseInt(module.subtitle, 10) || 24)) };
+      break;
+    case 'CUSTOMER_SERVICE':
+      config = { title: module.title, body: module.subtitle };
+      break;
+    case 'TEXT':
+    default:
+      config = { title: module.title, body: module.subtitle, align: 'LEFT' };
+      break;
+  }
+  return { id: module.id, type: module.type, enabled: module.enabled, sortOrder: (index + 1) * 10, config };
+}
+
+export function toApiConfig(config: DecorationConfig): ApiDecorationConfig {
+  return {
+    schemaVersion: 1,
+    templateKey: config.templateKey,
+    theme: { ...config.theme },
+    home: { modules: config.homeModules.map(modulePayload) },
+    menu: {
+      categoryLayout: config.ordering.layout === 'CATEGORY_TOP' ? 'TOP' : 'LEFT',
+      productLayout: config.ordering.productLayout,
+      showDescription: config.ordering.showDescription,
+      showStock: config.ordering.showStock,
+      showSales: config.ordering.showSales,
+      showSoldOut: config.ordering.showSoldOut,
+      loadMode: config.ordering.loadMode,
+      productActionMode: config.ordering.productActionMode,
+      density: config.ordering.density,
+      cartTemplate: config.ordering.cartTemplate,
+    },
+    navigation: {
+      items: config.navigation.map((item, index) => ({ key: item.key.toLowerCase(), text: item.label, visible: item.enabled, sortOrder: (index + 1) * 10 })),
+      templateKey: config.navigationTemplate,
+      backgroundColor: config.theme.navBackgroundColor,
+      textColor: config.theme.navTextColor,
+      selectedColor: config.theme.navSelectedColor,
+    },
+    splash: {
+      enabled: config.splash.enabled,
+      displayMode: config.splash.displayMode,
+      imageUrl: config.splash.imageUrl,
+      title: config.splash.title,
+      subtitle: config.splash.subtitle,
+      autoCloseSeconds: config.splash.autoCloseSeconds,
+      action: { type: 'NONE' },
+      frequency: config.splash.frequency,
+    },
+  };
+}
+
+function normalizeDraft(payload: unknown): DecorationDraft {
+  const value = record(payload);
+  return {
+    revision: numberValue(0, value.revision),
+    config: normalizeConfig(value.config),
+    updatedAt: stringValue(value.updatedAt, value.updated_at),
+  };
+}
+
+function normalizePublished(payload: unknown): PublishedDecoration | null {
+  if (!payload) return null;
+  const value = record(payload);
+  if (!Object.keys(value).length) return null;
+  return {
+    id: (value.id as string | number | undefined) ?? '',
+    versionNo: numberValue(0, value.versionNo, value.version_no),
+    config: normalizeConfig(value.config),
+    note: stringValue(value.note),
+    publishedAt: stringValue(value.publishedAt, value.published_at),
+  };
+}
+
+export function normalizeWorkspace(payload: unknown): DecorationWorkspace {
+  const value = record(payload);
+  const draft = normalizeDraft(value.draft);
+  const storeName = stringValue(value.storeName, value.store_name);
+  if (storeName) draft.config.storeName = storeName;
+  const published = normalizePublished(value.published);
+  if (published && storeName) published.config.storeName = storeName;
+  return { draft, published };
+}
+
+function normalizeVersion(payload: unknown): DecorationVersion {
+  const value = record(payload);
+  return {
+    id: (value.id as string | number | undefined) ?? '',
+    versionNo: numberValue(0, value.versionNo, value.version_no),
+    note: stringValue(value.note),
+    publishedAt: stringValue(value.publishedAt, value.published_at),
+    publishedBy: stringValue(value.publishedBy, value.published_by),
+    config: value.config ? normalizeConfig(value.config) : undefined,
+  };
+}
+
+function normalizeTemplate(payload: unknown, index: number): DecorationTemplate {
+  const value = record(payload);
+  const config = normalizeConfig(value.config);
+  const fallback = BUILTIN_TEMPLATES.find((item) => item.key === stringValue(value.key));
+  const genericKey = stringValue(value.key, value.code) || `template-${index + 1}`;
+  return {
+    id: (value.id as string | number | undefined) ?? (genericKey || fallback?.id || index + 1),
+    key: genericKey,
+    name: stringValue(value.name) || fallback?.name || '整套装修模板',
+    description: stringValue(value.description) || fallback?.description || '整套视觉和首页结构预设，套用后仍可逐项调整。',
+    tone: stringValue(value.tone, value.previewColor, value.preview_color) || `linear-gradient(135deg, ${config.theme.primaryColor}, ${config.theme.accentColor})`,
+    scene: stringValue(value.scene) || fallback?.scene || '通用门店',
+    highlights: Array.isArray(value.highlights)
+      ? value.highlights.filter((item): item is string => typeof item === 'string').slice(0, 4)
+      : fallback?.highlights ?? ['配色', '首页结构', '点单风格'],
+    config,
+  };
+}
+
+function normalizeAsset(payload: unknown): MediaAsset {
+  const value = record(payload);
+  return {
+    id: (value.id as string | number | undefined) ?? '',
+    name: stringValue(value.name) || '未命名素材',
+    url: stringValue(value.url),
+    type: stringValue(value.kind, value.type).toUpperCase() === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+    groupId: (value.group_id ?? value.groupId) as string | number | undefined,
+    groupName: stringValue(value.group_name, value.groupName),
+    storageKey: stringValue(value.storageKey, value.storage_key),
+    mimeType: stringValue(value.mimeType, value.mime_type),
+    width: numberValue(0, value.width),
+    height: numberValue(0, value.height),
+    sizeBytes: numberValue(0, value.sizeBytes, value.size_bytes),
+    createdAt: stringValue(value.createdAt, value.created_at),
+  };
+}
+
+function assetPayload(input: Pick<MediaAsset, 'name' | 'url' | 'type'> & Partial<MediaAsset>) {
+  return { name: input.name, url: input.url, storageKey: input.storageKey || '', mimeType: input.mimeType || '', width: input.width || 0, height: input.height || 0, sizeBytes: input.sizeBytes || 0, group_id: input.groupId ? Number(input.groupId) : 0 };
+}
+
+export const decorationApi = {
+  async loadWorkspace(): Promise<DecorationWorkspace> {
+    return normalizeWorkspace(await api.get('/merchant/decoration'));
+  },
+  async saveDraft(expectedRevision: number, config: DecorationConfig): Promise<DecorationDraft> {
+    return normalizeDraft(await api.put('/merchant/decoration/draft', { expectedRevision, config: toApiConfig(config) }));
+  },
+  async publish(expectedRevision: number, note: string): Promise<PublishedDecoration> {
+    return normalizePublished(await api.post('/merchant/decoration/publish', { expectedRevision, note })) as PublishedDecoration;
+  },
+  async listTemplates(): Promise<DecorationTemplate[]> {
+    return arrayPayload(await api.get('/merchant/decoration/templates')).map(normalizeTemplate);
+  },
+  async listVersions(): Promise<DecorationVersion[]> {
+    return arrayPayload(await api.get('/merchant/decoration/versions')).map(normalizeVersion);
+  },
+  async getVersion(id: string | number): Promise<DecorationVersion> {
+    return normalizeVersion(await api.get(`/merchant/decoration/versions/${encodeURIComponent(String(id))}`));
+  },
+  async rollback(id: string | number, expectedRevision: number, note: string): Promise<PublishedDecoration> {
+    return normalizePublished(await api.post(`/merchant/decoration/versions/${encodeURIComponent(String(id))}/rollback`, { expectedRevision, note })) as PublishedDecoration;
+  },
+  async listAssets(): Promise<MediaAsset[]> {
+    return arrayPayload(await api.get('/merchant/media-assets')).map(normalizeAsset);
+  },
+  async createAsset(input: Pick<MediaAsset, 'name' | 'url' | 'type'>): Promise<MediaAsset> {
+    return normalizeAsset(await api.post('/merchant/media-assets', assetPayload(input)));
+  },
+  async uploadAsset(file: File, name = file.name): Promise<MediaAsset> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('name', name);
+    return normalizeAsset(await api.postForm('/merchant/media-assets/upload', form));
+  },
+  async updateAsset(id: string | number, input: MediaAsset): Promise<MediaAsset> {
+    return normalizeAsset(await api.put(`/merchant/media-assets/${encodeURIComponent(String(id))}`, assetPayload(input)));
+  },
+  deleteAsset(id: string | number): Promise<unknown> {
+    return api.delete(`/merchant/media-assets/${encodeURIComponent(String(id))}`);
+  },
+};

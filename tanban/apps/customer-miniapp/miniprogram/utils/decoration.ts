@@ -1,0 +1,458 @@
+import type {
+  DecorationAction,
+  DecorationConfig,
+  DecorationModule,
+  DecorationModuleConfig,
+  DecorationModuleType,
+  DecorationNavigationItem,
+  Store,
+} from "../types/domain";
+import type { TanbanAppOption } from "../app";
+import { clearFastFoodContext } from "./fast-food-context";
+import { clearTableOrderingContext, tableContextForStore } from "./table-context";
+import { beijingDateKey, beijingEpoch } from "./datetime";
+import { showUnavailableFeature } from "./availability";
+import { scanAndBindTableCode } from "./table-scanner";
+
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+const MODULE_TYPES: DecorationModuleType[] = [
+  "HERO_BANNER",
+  "STORE_HEADER",
+  "ANNOUNCEMENT",
+  "QUICK_ACTIONS",
+  "IMAGE",
+  "HOTSPOT_IMAGE",
+  "TEXT",
+  "CUSTOMER_SERVICE",
+  "SPACER",
+];
+const NAV_KEYS: DecorationNavigationItem["key"][] = ["home", "menu", "orders", "profile"];
+const ACTIONS: DecorationAction["type"][] = ["NONE", "OPEN_MENU", "OPEN_DINE_IN", "OPEN_TAKEOUT", "OPEN_DELIVERY", "OPEN_ORDERS", "OPEN_PROFILE", "OPEN_RECHARGE", "OPEN_MY_COUPONS", "OPEN_COUPON_CENTER", "CALL_PHONE"];
+
+export type SplashImageMode = "aspectFill" | "aspectFit";
+
+/**
+ * Only treat a sufficiently large, phone-shaped portrait as a full splash
+ * background. Logos, square assets and small images stay fully visible and
+ * centered instead of being enlarged and cropped.
+ */
+export function splashImageMode(width: number, height: number): SplashImageMode {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "aspectFit";
+  const portraitRatio = height / width;
+  return width >= 600 && height >= 900 && portraitRatio >= 1.5 && portraitRatio <= 2.5
+    ? "aspectFill"
+    : "aspectFit";
+}
+
+function color(value: unknown, fallback: string): string {
+  return typeof value === "string" && COLOR.test(value) ? value : fallback;
+}
+
+function bool(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function text(value: unknown, fallback = "", max = 160): string {
+  return typeof value === "string" ? value.slice(0, max) : fallback;
+}
+
+function numberIn(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+function safeAction(value: unknown): DecorationAction {
+  if (!value || typeof value !== "object") return { type: "NONE" };
+  const raw = value as Partial<DecorationAction>;
+  const type = ACTIONS.includes(raw.type as DecorationAction["type"]) ? raw.type as DecorationAction["type"] : "NONE";
+  return type === "CALL_PHONE" ? { type, phone: text(raw.phone, "", 20) } : { type };
+}
+
+function legacyBanner(store?: Store): string {
+  const candidate = store?.theme?.bannerUrl;
+  return typeof candidate === "string" && candidate.startsWith("https://") ? candidate : "";
+}
+
+export function defaultDecoration(store?: Store): DecorationConfig {
+  const banner = legacyBanner(store);
+  return {
+    schemaVersion: 1,
+    templateKey: "coffee-light",
+    theme: {
+      primaryColor: "#214d3f",
+      accentColor: "#dff06d",
+      backgroundColor: "#f6f5f0",
+      surfaceColor: "#fffefa",
+      textColor: "#17201b",
+      mutedColor: "#747b75",
+      navBackgroundColor: "#fffefa",
+      navTextColor: "#7b807a",
+      navSelectedColor: "#214d3f",
+      radius: "LG",
+      fontScale: "STANDARD",
+      surfaceStyle: "ELEVATED",
+      buttonShape: "ROUNDED",
+    },
+    home: {
+      modules: [
+        { id: "hero", type: "HERO_BANNER", enabled: true, sortOrder: 10, config: { items: banner ? [{ imageUrl: banner, action: { type: "OPEN_MENU" } }] : [] } },
+        { id: "store", type: "STORE_HEADER", enabled: true, sortOrder: 20, config: { showLogo: true, showStatus: true, showAddress: true } },
+        { id: "notice", type: "ANNOUNCEMENT", enabled: true, sortOrder: 30, config: { prefix: "公告" } },
+        {
+          id: "quick-actions", type: "QUICK_ACTIONS", enabled: true, sortOrder: 40,
+          config: { items: [
+            { title: "堂食 / 自提点单", subtitle: "选好口味，在线下单", action: { type: "OPEN_MENU" } },
+            { title: "查看我的订单", subtitle: "支付与制作进度", action: { type: "OPEN_ORDERS" } },
+          ] },
+        },
+      ],
+    },
+    menu: {
+      categoryLayout: "LEFT",
+      productLayout: "LIST",
+      cartTemplate: "CLASSIC",
+      showDescription: true,
+      showStock: false,
+      showSales: false,
+      showSoldOut: true,
+      loadMode: "BY_CATEGORY",
+      productActionMode: "SKU_SHEET",
+      density: "COMFORTABLE",
+    },
+    navigation: {
+      templateKey: "classic",
+      backgroundColor: "#fffefa",
+      textColor: "#7b807a",
+      selectedColor: "#214d3f",
+      items: [
+        { key: "home", text: "首页", visible: true, sortOrder: 10 },
+        { key: "menu", text: "点单", visible: true, sortOrder: 20 },
+        { key: "orders", text: "订单", visible: true, sortOrder: 30 },
+        { key: "profile", text: "我的", visible: true, sortOrder: 40 },
+      ],
+    },
+    splash: {
+      enabled: false,
+      displayMode: "POPUP",
+      imageUrl: "",
+      title: "",
+      subtitle: "",
+      autoCloseSeconds: 5,
+      action: { type: "NONE" },
+      frequency: "ONCE_PER_VERSION",
+    },
+  };
+}
+
+function safeModules(value: unknown, fallback: DecorationModule[]): DecorationModule[] {
+  if (!Array.isArray(value)) return fallback;
+  const ids = new Set<string>();
+  return value.slice(0, 30).flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Partial<DecorationModule>;
+    const type = MODULE_TYPES.includes(raw.type as DecorationModuleType) ? raw.type as DecorationModuleType : undefined;
+    const id = text(raw.id, `module-${index}`, 64).replace(/[^a-zA-Z0-9_-]/g, "-");
+    if (!type || !id || ids.has(id)) return [];
+    ids.add(id);
+    const source = raw.config && typeof raw.config === "object" ? raw.config : {};
+    const align: DecorationModuleConfig["align"] = source.align === "CENTER" || source.align === "RIGHT" ? source.align : "LEFT";
+    const textAlign: DecorationModuleConfig["textAlign"] = align === "CENTER" ? "center" : align === "RIGHT" ? "right" : "left";
+    const items = Array.isArray(source.items) ? source.items.slice(0, type === "HERO_BANNER" ? 8 : 4).map((item) => {
+      const row = item && typeof item === "object" ? item : {};
+      return {
+        imageUrl: text(row.imageUrl, "", 1024),
+        title: text(row.title, "", 60),
+        subtitle: text(row.subtitle, "", 160),
+        action: safeAction(row.action),
+      };
+    }) : [];
+    const hotspots = Array.isArray(source.hotspots) ? source.hotspots.slice(0, 20).map((item, hotspotIndex) => {
+      const row = item && typeof item === "object" ? item as unknown as Record<string, unknown> : {};
+      const x = numberIn(row.x, 0, 0, 99);
+      const y = numberIn(row.y, 0, 0, 99);
+      return {
+        id: text(row.id, `hotspot-${hotspotIndex + 1}`, 64).replace(/[^a-zA-Z0-9_-]/g, "-"),
+        x,
+        y,
+        width: numberIn(row.width, 20, 1, 100 - x),
+        height: numberIn(row.height, 12, 1, 100 - y),
+        label: text(row.label, `热区 ${hotspotIndex + 1}`, 30),
+        action: safeAction(row.action),
+      };
+    }) : [];
+    return [{
+      id,
+      type,
+      enabled: bool(raw.enabled, true),
+      sortOrder: numberIn(raw.sortOrder, (index + 1) * 10, -10000, 10000),
+      config: {
+        items,
+        showLogo: bool(source.showLogo, true),
+        showStatus: bool(source.showStatus, true),
+        showAddress: bool(source.showAddress, true),
+        prefix: text(source.prefix, "公告", 16),
+        imageUrl: text(source.imageUrl, "", 1024),
+        alt: text(source.alt, "", 80),
+        action: safeAction(source.action),
+        title: text(source.title, "", 80),
+        body: text(source.body, "", 500),
+        align,
+        textAlign,
+        height: numberIn(source.height, 24, 4, 160),
+        hotspots,
+      },
+    }];
+  }).sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function safeNavigation(value: unknown, fallback: DecorationNavigationItem[]): DecorationNavigationItem[] {
+  if (!Array.isArray(value)) return fallback;
+  const seen = new Set<string>();
+  const items = value.slice(0, 4).flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Partial<DecorationNavigationItem>;
+    if (!NAV_KEYS.includes(raw.key as DecorationNavigationItem["key"]) || seen.has(String(raw.key))) return [];
+    seen.add(String(raw.key));
+    return [{
+      key: raw.key as DecorationNavigationItem["key"],
+      text: text(raw.text, String(raw.key), 8),
+      visible: bool(raw.visible, true),
+      sortOrder: numberIn(raw.sortOrder, (index + 1) * 10, -10000, 10000),
+    }];
+  });
+  return items.some((item) => item.key === "home") && items.some((item) => item.key === "menu")
+    ? items.sort((a, b) => a.sortOrder - b.sortOrder)
+    : fallback;
+}
+
+export function normalizeDecoration(value: unknown, store?: Store): DecorationConfig {
+  const fallback = defaultDecoration(store);
+  if (!value || typeof value !== "object") return fallback;
+  const raw = value as Partial<DecorationConfig>;
+  const theme = raw.theme || fallback.theme;
+  const menu = raw.menu || fallback.menu;
+  const navigation = raw.navigation || fallback.navigation;
+  const splash = raw.splash || fallback.splash;
+  const modules = safeModules(raw.home?.modules, fallback.home.modules);
+  return {
+    schemaVersion: 1,
+    templateKey: text(raw.templateKey, fallback.templateKey, 64),
+    theme: {
+      primaryColor: color(theme.primaryColor, fallback.theme.primaryColor),
+      accentColor: color(theme.accentColor, fallback.theme.accentColor),
+      backgroundColor: color(theme.backgroundColor, fallback.theme.backgroundColor),
+      surfaceColor: color(theme.surfaceColor, fallback.theme.surfaceColor),
+      textColor: color(theme.textColor, fallback.theme.textColor),
+      mutedColor: color(theme.mutedColor, fallback.theme.mutedColor),
+      navBackgroundColor: color(theme.navBackgroundColor, fallback.theme.navBackgroundColor),
+      navTextColor: color(theme.navTextColor, fallback.theme.navTextColor),
+      navSelectedColor: color(theme.navSelectedColor, fallback.theme.navSelectedColor),
+      radius: theme.radius === "SM" || theme.radius === "MD" ? theme.radius : "LG",
+      fontScale: theme.fontScale === "COMPACT" || theme.fontScale === "LARGE" ? theme.fontScale : "STANDARD",
+      surfaceStyle: theme.surfaceStyle === "FLAT" || theme.surfaceStyle === "BORDERED" ? theme.surfaceStyle : "ELEVATED",
+      buttonShape: theme.buttonShape === "SQUARE" || theme.buttonShape === "PILL" ? theme.buttonShape : "ROUNDED",
+    },
+    home: { modules },
+    menu: {
+      categoryLayout: menu.categoryLayout === "TOP" ? "TOP" : "LEFT",
+      productLayout: menu.productLayout === "GRID" ? "GRID" : "LIST",
+      cartTemplate: menu.cartTemplate === "COUNT_ACTION" || menu.cartTemplate === "PROMO_CAPSULE" ? menu.cartTemplate : "CLASSIC",
+      showDescription: bool(menu.showDescription, fallback.menu.showDescription),
+      showStock: bool(menu.showStock, fallback.menu.showStock),
+      showSales: bool(menu.showSales, fallback.menu.showSales),
+      showSoldOut: bool(menu.showSoldOut, fallback.menu.showSoldOut),
+      loadMode: menu.loadMode === "ALL" ? "ALL" : "BY_CATEGORY",
+      productActionMode: menu.productActionMode === "DIRECT_ADD" ? "DIRECT_ADD" : "SKU_SHEET",
+      density: menu.density === "COMPACT" ? "COMPACT" : "COMFORTABLE",
+    },
+    navigation: {
+      templateKey: navigation.templateKey === "soft" || navigation.templateKey === "warm" || navigation.templateKey === "dark" ? navigation.templateKey : "classic",
+      items: safeNavigation(navigation.items, fallback.navigation.items),
+      backgroundColor: color(navigation.backgroundColor, fallback.navigation.backgroundColor),
+      textColor: color(navigation.textColor, fallback.navigation.textColor),
+      selectedColor: color(navigation.selectedColor, fallback.navigation.selectedColor),
+    },
+    splash: {
+      enabled: bool(splash.enabled, false),
+      displayMode: splash.displayMode === "FULLSCREEN" ? "FULLSCREEN" : "POPUP",
+      imageUrl: text(splash.imageUrl, "", 1024),
+      title: text(splash.title, "", 60),
+      subtitle: text(splash.subtitle, "", 160),
+      autoCloseSeconds: numberIn(splash.autoCloseSeconds, 5, 0, 30),
+      action: safeAction(splash.action),
+      frequency: splash.frequency === "EVERY_VISIT" || splash.frequency === "DAILY" ? splash.frequency : "ONCE_PER_VERSION",
+      activeFrom: text(splash.activeFrom, "", 40) || undefined,
+      activeTo: text(splash.activeTo, "", 40) || undefined,
+    },
+  };
+}
+
+export function decorationStyle(config: DecorationConfig): string {
+  const radius = config.theme.radius === "SM" ? 14 : config.theme.radius === "MD" ? 20 : 28;
+  const buttonRadius = config.theme.buttonShape === "SQUARE" ? 6 : config.theme.buttonShape === "PILL" ? 999 : 18;
+  const type = config.theme.fontScale === "COMPACT"
+    ? { caption: 20, body: 24, subtitle: 28, title: 34, display: 40 }
+    : config.theme.fontScale === "LARGE"
+      ? { caption: 24, body: 28, subtitle: 32, title: 40, display: 48 }
+      : { caption: 22, body: 26, subtitle: 30, title: 36, display: 44 };
+  const surface = config.theme.surfaceStyle === "FLAT"
+    ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.08), shadow: "none" }
+    : config.theme.surfaceStyle === "BORDERED"
+      ? { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.15), shadow: "none" }
+      : { border: mixHex(config.theme.textColor, config.theme.backgroundColor, 0.08), shadow: `0 8rpx 24rpx ${withAlpha(config.theme.textColor, 0.08)}` };
+  return [
+    `--ink:${config.theme.textColor}`,
+    `--green:${config.theme.primaryColor}`,
+    `--lime:${config.theme.accentColor}`,
+    `--coffee:${config.theme.primaryColor}`,
+    `--cream:${config.theme.backgroundColor}`,
+    `--muted:${config.theme.mutedColor}`,
+    `--paper:${config.theme.backgroundColor}`,
+    `--surface:${config.theme.surfaceColor}`,
+    `--radius:${radius}rpx`,
+    `--primary:${config.theme.primaryColor}`,
+    `--accent:${config.theme.accentColor}`,
+    `--background:${config.theme.backgroundColor}`,
+    `--text:${config.theme.textColor}`,
+    `--on-primary:${onColor(config.theme.primaryColor)}`,
+    `--on-accent:${onColor(config.theme.accentColor)}`,
+    `--button-radius:${buttonRadius}rpx`,
+    `--card-border:${surface.border}`,
+    `--card-shadow:${surface.shadow}`,
+    `--line:${withAlpha(config.theme.textColor, 0.13)}`,
+    `--soft-primary:${mixHex(config.theme.primaryColor, config.theme.surfaceColor, 0.08)}`,
+    `--disabled-bg:${mixHex(config.theme.mutedColor, config.theme.surfaceColor, 0.12)}`,
+    `--disabled-border:${mixHex(config.theme.mutedColor, config.theme.surfaceColor, 0.32)}`,
+    `--disabled-text:${mixHex(config.theme.mutedColor, config.theme.textColor, 0.72)}`,
+    `--font-caption:${type.caption}rpx`,
+    `--font-body:${type.body}rpx`,
+    `--font-subtitle:${type.subtitle}rpx`,
+    `--font-title:${type.title}rpx`,
+    `--font-display:${type.display}rpx`,
+    `--page-gutter:24rpx`,
+    `--section-gap:20rpx`,
+    `background:${config.theme.backgroundColor}`,
+    `color:${config.theme.textColor}`,
+  ].join(";");
+}
+
+function rgb(value: string): [number, number, number] {
+  return [Number.parseInt(value.slice(1, 3), 16), Number.parseInt(value.slice(3, 5), 16), Number.parseInt(value.slice(5, 7), 16)];
+}
+
+function onColor(value: string): "#FFFFFF" | "#111111" {
+  const [red, green, blue] = rgb(value).map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.42 ? "#111111" : "#FFFFFF";
+}
+
+function withAlpha(value: string, alpha: number): string {
+  const [red, green, blue] = rgb(value);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+function mixHex(foreground: string, background: string, weight: number): string {
+  const first = rgb(foreground);
+  const second = rgb(background);
+  const mixed = first.map((channel, index) => Math.round(channel * weight + second[index] * (1 - weight)));
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function applyDecorationChrome(config: DecorationConfig): void {
+  wx.setNavigationBarColor({
+    frontColor: isDark(config.theme.backgroundColor) ? "#ffffff" : "#000000",
+    backgroundColor: config.theme.backgroundColor,
+    animation: { duration: 160, timingFunc: "easeIn" },
+  });
+  wx.setTabBarStyle({
+    color: config.navigation.textColor,
+    selectedColor: config.navigation.selectedColor,
+    backgroundColor: config.navigation.backgroundColor,
+    borderStyle: "white",
+  });
+  const pathByKey: Record<DecorationNavigationItem["key"], number> = { home: 0, menu: 1, orders: 2, profile: 3 };
+  config.navigation.items.forEach((item) => {
+    const iconRoot = `/assets/tabbar/${config.navigation.templateKey}`;
+    wx.setTabBarItem({ index: pathByKey[item.key], text: item.text, iconPath: `${iconRoot}/${item.key}.png`, selectedIconPath: `${iconRoot}/${item.key}-selected.png` });
+  });
+}
+
+function isDark(value: string): boolean {
+  const red = Number.parseInt(value.slice(1, 3), 16);
+  const green = Number.parseInt(value.slice(3, 5), 16);
+  const blue = Number.parseInt(value.slice(5, 7), 16);
+  return red * 0.299 + green * 0.587 + blue * 0.114 < 145;
+}
+
+function splashStorageKey(storeCode: string): string {
+  return `tanban_splash_v1_${storeCode}`;
+}
+
+export function shouldDisplaySplash(config: DecorationConfig, storeCode: string, version: number, now = Date.now()): boolean {
+  const splash = config.splash;
+  if (!splash.enabled || !splash.imageUrl.startsWith("https://")) return false;
+  const from = beijingEpoch(splash.activeFrom);
+  const to = beijingEpoch(splash.activeTo);
+  if (!Number.isNaN(from) && now < from || !Number.isNaN(to) && now > to) return false;
+  if (splash.frequency === "EVERY_VISIT") return true;
+  const record = wx.getStorageSync<{ version?: number; date?: string }>(splashStorageKey(storeCode)) || {};
+  if (splash.frequency === "DAILY") return record.date !== beijingDateKey(now);
+  return record.version !== version;
+}
+
+export function rememberSplash(storeCode: string, version: number, now = Date.now()): void {
+  wx.setStorageSync(splashStorageKey(storeCode), { version, date: beijingDateKey(now) });
+}
+
+export function runDecorationAction(action: DecorationAction): void {
+  switch (action.type) {
+    case "OPEN_DINE_IN": {
+      const app = getApp<TanbanAppOption>();
+      if (tableContextForStore(app.globalData.storeCode)) {
+        wx.switchTab({ url: "/pages/menu/index" });
+      } else {
+        void scanAndBindTableCode().then((binding) => {
+          if (binding) wx.switchTab({ url: "/pages/menu/index" });
+        });
+      }
+      break;
+    }
+    case "OPEN_TAKEOUT": {
+      const app = getApp<TanbanAppOption>();
+      clearTableOrderingContext();
+      clearFastFoodContext();
+      app.globalData.tableContext = null;
+      app.globalData.fastFoodContext = null;
+      app.globalData.routeError = "";
+      wx.switchTab({ url: "/pages/menu/index" });
+      break;
+    }
+    case "OPEN_DELIVERY":
+      showUnavailableFeature("DELIVERY");
+      break;
+    case "OPEN_MENU":
+      wx.switchTab({ url: "/pages/menu/index" });
+      break;
+    case "OPEN_ORDERS":
+      wx.switchTab({ url: "/pages/orders/index" });
+      break;
+    case "OPEN_PROFILE":
+      wx.switchTab({ url: "/pages/profile/index" });
+      break;
+    case "OPEN_RECHARGE":
+      wx.navigateTo({ url: "/pages/recharge/index" });
+      break;
+    case "OPEN_MY_COUPONS":
+      wx.navigateTo({ url: "/pages/my-coupons/index" });
+      break;
+    case "OPEN_COUPON_CENTER":
+      wx.navigateTo({ url: "/pages/coupons/index" });
+      break;
+    case "CALL_PHONE":
+      if (action.phone) wx.makePhoneCall({ phoneNumber: action.phone });
+      break;
+    default:
+      break;
+  }
+}

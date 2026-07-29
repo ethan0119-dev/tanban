@@ -1,0 +1,1654 @@
+openapi: 3.0.3
+info:
+  title: Tanban Restaurant SaaS API
+  version: 0.1.0
+  description: 所有业务时间均按北京时间（Asia/Shanghai，UTC+8）输入、计算和展示；响应中的本地日期时间统一为 `YYYY-MM-DD HH:mm:ss`。需表达绝对时刻的请求可使用带 `+08:00` 的 RFC3339。
+servers:
+  - url: https://tbapi.666qwe.cn/api/v1
+paths:
+  /auth/login:
+    post:
+      summary: 平台或商户账号登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, portal]
+              properties:
+                username: {type: string}
+                password: {type: string, format: password}
+                portal: {type: string, enum: [platform, merchant]}
+      responses:
+        '200': {description: JWT and current user}
+  /auth/me:
+    get:
+      summary: 当前账号
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current user}
+  /platform/dashboard:
+    get:
+      summary: 平台经营概览
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Platform metrics}
+  /platform/tenants:
+    get:
+      summary: 商户列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Tenant page}}
+    post:
+      summary: 创建商户，可原子创建首店和老板账号
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: {type: string}
+                name: {type: string}
+                owner_username: {type: string}
+                owner_password: {type: string, format: password, minLength: 8}
+                owner_display_name: {type: string}
+                initial_store_code: {type: string}
+                initial_store_name: {type: string}
+      responses: {'200': {description: 'Created tenant, first store and owner account'}}
+  /platform/tenants/{tenantID}/owner:
+    parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 为尚无老板账号的商户补建首个老板账号
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, display_name]
+              properties:
+                username: {type: string, maxLength: 64}
+                password: {type: string, format: password, minLength: 8, maxLength: 72}
+                display_name: {type: string}
+      responses:
+        '201': {description: Created merchant owner account; plaintext password is never returned}
+  /platform/tenants/{tenantID}/service-expiration:
+    put:
+      summary: 设置商户服务到期日，空值表示长期有效
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at: {type: string, format: date, nullable: true}
+      responses:
+        '200': {description: Updated tenant}
+  /platform/tenants/{tenantID}/renew-one-year:
+    post:
+      summary: 商户快捷续期一年
+      description: 从当前到期日或今天（取较晚者）起顺延一年。
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Renewed tenant}
+        '409': {description: Merchant already has an owner account}
+  /platform/tenants/{tenantID}/miniapp-settings:
+    parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 查询租户的公版与独立小程序渠道
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Mini-program channel settings; AppSecret is never returned}
+    put:
+      summary: 配置租户主要小程序渠道及独立 AppID
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primaryMode, publicEnabled, dedicatedEnabled]
+              properties:
+                primaryMode: {type: string, enum: [PUBLIC, DEDICATED]}
+                publicEnabled: {type: boolean}
+                dedicatedEnabled: {type: boolean}
+                dedicatedDisplayName: {type: string, maxLength: 120}
+                dedicatedAppId: {type: string}
+                dedicatedAppSecret: {type: string, format: password, writeOnly: true}
+      responses:
+        '200': {description: Updated mini-program settings}
+        '409': {description: AppID is already bound to another tenant}
+  /merchant/dashboard:
+    get:
+      summary: 商户经营概览
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Merchant metrics}}
+  /merchant/cashier/session:
+    post:
+      summary: 签发或轮换收银终端会话
+      description: 由当前商户账号签发一年期、仅可访问收银业务接口的终端令牌；收银台每次打开时自动轮换。
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Cashier terminal access token and expiration}
+  /merchant/cashier/context:
+    get:
+      summary: 收银终端门店与操作员上下文
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current store and cashier operator}
+  /merchant/cashier/handover:
+    post:
+      summary: 完成当前收银班次交接并记录审计信息
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Handover timestamp and operator}
+  /merchant/table-board:
+    get:
+      summary: 收银台桌台状态看板
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Areas, tables and their active orders}
+  /merchant/orders/{orderID}/cashier-settle:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 收银台确认先付订单的现金或系统外收款
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: {type: string, enum: [CASH, EXTERNAL]}
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Settled order}
+        '409': {description: Order is not settleable or another payment is in progress}
+  /merchant/orders/{orderID}/settle:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 收银台确认后付订单的现金或系统外收款
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: {type: string, enum: [CASH, EXTERNAL]}
+                remark: {type: string, maxLength: 255}
+      responses:
+        '200': {description: Settled order}
+        '409': {description: Order is not settleable}
+  /merchant/orders/{orderID}/diner-count:
+    parameters:
+      - in: path
+        name: orderID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 修改堂食订单就餐人数
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diner_count]
+              properties:
+                diner_count: {type: integer, minimum: 1, maximum: 99}
+      responses:
+        '200': {description: Updated order}
+        '409': {description: Order can no longer be edited}
+  /merchant/account/password:
+    put:
+      summary: 当前商户账号修改自己的登录密码
+      description: 只能修改当前 JWT 对应账号；接口不接受目标用户 ID。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: {type: string, format: password}
+                new_password: {type: string, format: password, minLength: 8, maxLength: 72}
+      responses:
+        '200': {description: Password changed}
+        '400': {description: Current password is incorrect or new password is invalid}
+  /merchant/notifications:
+    get:
+      summary: 当前商户账号的通知收件箱
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: unread_only
+          schema: {type: boolean}
+      responses: {'200': {description: Paginated platform notifications}}
+  /merchant/notifications/unread-count:
+    get:
+      summary: 当前商户账号的未读通知数
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Unread count}}
+  /merchant/notifications/read-all:
+    post:
+      summary: 将当前商户账号的全部通知标记为已读
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Number of notifications marked as read}}
+  /merchant/notifications/{notificationID}:
+    parameters:
+      - in: path
+        name: notificationID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 查看当前商户可见的通知详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Notification detail}}
+  /merchant/notifications/{notificationID}/read:
+    parameters:
+      - in: path
+        name: notificationID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 幂等标记一条通知为已读
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Updated notification}}
+  /merchant/products:
+    get:
+      summary: 商品和 SKU 列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Products}}
+    post:
+      summary: 创建商品及 SKU
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductInput'}
+      responses: {'200': {description: Created product}}
+  /merchant/products/import-template:
+    get:
+      summary: 下载菜单批量导入 Excel 模板
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: XLSX template with product, SKU, attribute and modifier worksheets
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: {type: string, format: binary}
+  /merchant/products/import/preview:
+    post:
+      summary: 预检菜单批量导入文件
+      description: 分类按名称复用或计划新建；属性组和加料组按名称复用，缺少时要求模板中提供完整定义。不会写入数据。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '200': {description: Import preview, row issues and create/reuse summary}
+        '400': {description: Invalid, encrypted or oversized workbook}
+  /merchant/products/import:
+    post:
+      summary: 事务性批量导入菜单
+      description: 重新校验文件后一次性创建分类、配置库、商品、图片、SKU 和库存；任一错误会回滚整批导入。只新增商品，不覆盖已有商品。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201': {description: Created product and configuration counts}
+        '400': {description: Invalid, encrypted or oversized workbook}
+        '422': {description: Workbook no longer passes validation}
+  /merchant/products/{productID}:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 商品详情（含 SKU 与最多四张商品图）
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Product detail}}
+    put:
+      summary: 更新商品、SKU 与商品图片
+      description: images 缺省时兼容旧版 image_url；显式传 images 时必须最多四张且恰好一张主图。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductInput'}
+      responses: {'200': {description: Updated product}}
+    delete:
+      summary: 软删除商品、SKU 与商品图片关系
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Deleted}}
+  /merchant/products/{productID}/actions:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      summary: 商品上下架、推荐、复制与库存快捷操作
+      description: COPY 会复制 SKU、库存、商品图、规格选项、加料组和商品资源绑定；副本默认下架且不推荐。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductActionInput'}
+      responses:
+        '200': {description: 'Product after action, or copied product'}
+        '400': {description: Invalid action or stock}
+  /merchant/products/{productID}/statistics:
+    parameters:
+      - in: path
+        name: productID
+        required: true
+        schema: {type: integer, format: int64}
+      - in: query
+        name: from
+        schema: {type: string, format: date-time}
+      - in: query
+        name: to
+        schema: {type: string, format: date-time}
+    get:
+      summary: 商品销售统计
+      description: 只统计发生过成功支付的订单；毛销售额按订单商品小计计算，不扣退款，metric_scope 固定为 PAID_ORDER_GROSS_BEFORE_REFUNDS。
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Product gross sales statistics}}
+  /merchant/media-groups:
+    get:
+      summary: 当前商户门店图片分组
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Media group list}}
+    post:
+      summary: 创建图片分组
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaGroupInput'}
+      responses: {'201': {description: Created media group}}
+  /merchant/media-groups/{groupID}:
+    parameters:
+      - in: path
+        name: groupID
+        required: true
+        schema: {type: integer, format: int64}
+    put:
+      summary: 修改图片分组名称和排序
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaGroupInput'}
+      responses: {'200': {description: Updated media group}}
+    delete:
+      summary: 删除图片分组并将组内图片移至未分组
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Deleted media group}}
+  /merchant/media-assets:
+    get:
+      summary: 分页查询当前商户门店图片库
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: group_id
+          schema: {type: integer, format: int64, minimum: 0}
+          description: 0 表示未分组；不传表示全部。
+        - in: query
+          name: q
+          schema: {type: string, maxLength: 120}
+      responses: {'200': {description: Paginated media assets}}
+    post:
+      summary: 登记一个外部 HTTPS 图片素材
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaAssetInput'}
+      responses: {'201': {description: Created media asset}}
+  /merchant/media-assets/upload:
+    post:
+      summary: 上传商户装修图片
+      description: 图片按当前商户和门店隔离存储，支持 JPEG、PNG 和 GIF，单文件最大 8 MiB。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                name: {type: string, maxLength: 120}
+                group_id: {type: integer, format: int64, minimum: 0}
+      responses:
+        '201':
+          description: Created media asset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/MediaAsset'}
+        '400': {description: Invalid multipart form or name}
+        '413': {description: File exceeds 8 MiB}
+        '415': {description: Unsupported or invalid image}
+  /merchant/media-assets/{assetID}:
+    parameters:
+      - in: path
+        name: assetID
+        required: true
+        schema: {type: integer, format: int64}
+    put:
+      summary: 修改图片名称或分组
+      description: group_id=0 移至未分组；已上传图片的 URL 和文件元数据由服务端管理，不可替换。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MediaAssetInput'}
+      responses: {'200': {description: Updated media asset}}
+    delete:
+      summary: 删除未被引用的图片
+      description: 当前或历史装修、商品、营销弹窗、门店品牌、会员卡、加料或分类仍引用图片时返回 MEDIA_ASSET_IN_USE。
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Deleted media asset}
+        '409': {description: MEDIA_ASSET_IN_USE}
+  /merchant/orders:
+    get:
+      summary: 商户订单列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: order_type
+          schema: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+          description: 可使用兼容别名 orderType 或 order_scene
+        - in: query
+          name: keyword
+          schema: {type: string, maxLength: 100}
+          description: 订单号、顾客、桌台或取餐号模糊搜索
+        - in: query
+          name: startAt
+          schema: {type: string, format: date-time}
+        - in: query
+          name: endAt
+          schema: {type: string, format: date-time}
+        - in: query
+          name: cashier_active
+          schema: {type: boolean}
+          description: 收银台带走订单视图；仅返回未结束订单，以及进入“请取餐”不足 24 小时的订单
+      responses: {'200': {description: Order page}}
+  /merchant/pickup-display:
+    get:
+      summary: 当前营业日快餐取餐大屏
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Store identity and active TAKEOUT pickup codes grouped by preparing and ready
+  /merchant/table-areas:
+    get:
+      summary: 桌台区域列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Table areas}}
+    post:
+      summary: 创建桌台区域
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created table area}}
+  /merchant/table-codes:
+    get:
+      summary: 桌码列表
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Table codes with stable public scene}}
+    post:
+      summary: 创建桌码
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created table code}}
+  /merchant/table-areas/{areaID}:
+    put:
+      summary: 修改桌台区域或启停状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: areaID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Updated table area}}
+    delete:
+      summary: 删除没有桌位引用的区域
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: areaID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Deleted table area}}
+  /merchant/table-codes/{tableID}:
+    put:
+      summary: 修改桌台资料或启停状态，publicId 保持不变
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: tableID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Updated table code}}
+  /merchant/print-templates:
+    get:
+      summary: 按经营场景读取小票和标签模板
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: businessType
+          schema: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+      responses: {'200': {description: Print templates}}
+    post:
+      summary: 保存经营场景打印模板
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Created or replaced template}}
+  /merchant/refunds:
+    post:
+      summary: 部分或全额退款
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, amount_cents]
+              properties:
+                order_id: {type: integer, format: int64}
+                amount_cents: {type: integer, format: int64, minimum: 1}
+                reason: {type: string}
+      responses: {'201': {description: Refund created}}
+  /merchant/business-hours:
+    get:
+      summary: 读取门店每周营业计划与当前营业状态
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: 'Weekly schedule, timezone, override and current business state'}
+    put:
+      summary: 更新按北京时间执行的七天多时段营业计划
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timezone, weeklySchedule]
+              properties:
+                timezone: {type: string, enum: [Asia/Shanghai], example: Asia/Shanghai, description: 固定为北京时间。}
+                weeklySchedule:
+                  type: array
+                  items:
+                    type: object
+                    required: [weekday, periods]
+                    properties:
+                      weekday: {type: integer, minimum: 1, maximum: 7}
+                      periods:
+                        type: array
+                        maxItems: 6
+                        items:
+                          type: object
+                          required: [start, end]
+                          properties:
+                            start: {type: string, example: '08:00'}
+                            end: {type: string, example: '24:00'}
+      responses: {'200': {description: Updated schedule and current state}}
+  /merchant/business-status:
+    put:
+      summary: 设置或取消临时营业/闭店覆盖
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BusinessStatusInput'}
+      responses: {'200': {description: Current business state}}
+  /merchant/fast-food-plates:
+    get:
+      summary: 快餐码牌列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+      responses: {'200': {description: Fast-food pickup plate page}}
+    post:
+      summary: 创建快餐码牌及不可猜测扫码 scene
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FastFoodPlateInput'}
+      responses: {'200': {description: Created fast-food plate}}
+  /merchant/fast-food-plates/{plateID}:
+    get:
+      summary: 快餐码牌详情
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Fast-food plate}}
+    put:
+      summary: 修改快餐码牌资料或启停状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FastFoodPlateInput'}
+      responses: {'200': {description: Updated fast-food plate}}
+    delete:
+      summary: 停用并软删除快餐码牌
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: plateID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Deleted fast-food plate}}
+  /merchant/marketing/apps:
+    get:
+      summary: 已开放营销应用及活动状态汇总
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Marketing application registry}}
+  /merchant/marketing/coupons:
+    get:
+      summary: 代金券与满减券活动列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Coupon campaign page}}
+    post:
+      summary: 创建优惠券活动草稿
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingCouponInput'}
+      responses: {'201': {description: Created coupon campaign}}
+  /merchant/marketing/coupons/{couponID}:
+    parameters:
+      - in: path
+        name: couponID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 优惠券活动详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Coupon campaign}}
+    put:
+      summary: 修改未启用的优惠券活动
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingCouponInput'}
+      responses: {'200': {description: Updated coupon campaign}}
+    delete:
+      summary: 软删除未启用且未被领取或引用的优惠券活动
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Coupon campaign deleted}}
+  /merchant/marketing/coupons/{couponID}/activate:
+    post:
+      summary: 启用优惠券活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated coupon campaign}}
+  /merchant/marketing/coupons/{couponID}/pause:
+    post:
+      summary: 暂停优惠券活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused coupon campaign}}
+  /merchant/marketing/coupon-records:
+    get:
+      summary: 优惠券领取与中奖发放记录
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: campaign_id
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Coupon issuance record page}}
+  /merchant/marketing/placements:
+    get:
+      summary: 小程序弹窗广告列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Marketing placement page}}
+    post:
+      summary: 创建弹窗广告草稿
+      description: 支持首页、点单、结算、订单结果和会员中心五个投放位。
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingPlacementInput'}
+      responses: {'201': {description: Created marketing placement}}
+  /merchant/marketing/placements/{placementID}:
+    parameters:
+      - in: path
+        name: placementID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 弹窗广告详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Marketing placement}}
+    put:
+      summary: 修改未启用的弹窗广告
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingPlacementInput'}
+      responses: {'200': {description: Updated marketing placement}}
+    delete:
+      summary: 软删除未启用的弹窗广告
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Marketing placement deleted}}
+  /merchant/marketing/placements/{placementID}/activate:
+    post:
+      summary: 启用弹窗广告
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: placementID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated marketing placement}}
+  /merchant/marketing/placements/{placementID}/pause:
+    post:
+      summary: 暂停弹窗广告
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: placementID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused marketing placement}}
+  /merchant/marketing/lotteries:
+    get:
+      summary: 免费抽奖活动及奖项列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: status
+          schema: {$ref: '#/components/schemas/MarketingStatus'}
+      responses: {'200': {description: Lottery campaign page}}
+    post:
+      summary: 创建免费抽奖活动草稿
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingLotteryInput'}
+      responses: {'201': {description: Created lottery campaign}}
+  /merchant/marketing/lotteries/{lotteryID}:
+    parameters:
+      - in: path
+        name: lotteryID
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      summary: 免费抽奖活动详情
+      security: [{bearerAuth: []}]
+      responses: {'200': {description: Lottery campaign and prizes}}
+    put:
+      summary: 修改未开奖且未启用的抽奖活动
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingLotteryInput'}
+      responses: {'200': {description: Updated lottery campaign}}
+    delete:
+      summary: 软删除未开奖且未启用的抽奖活动
+      security: [{bearerAuth: []}]
+      responses: {'204': {description: Lottery campaign deleted}}
+  /merchant/marketing/lotteries/{lotteryID}/activate:
+    post:
+      summary: 启用免费抽奖活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Activated lottery campaign}}
+  /merchant/marketing/lotteries/{lotteryID}/pause:
+    post:
+      summary: 暂停免费抽奖活动
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Paused lottery campaign}}
+  /merchant/marketing/lottery-draws:
+    get:
+      summary: 免费抽奖参与与中奖记录
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - in: query
+          name: campaign_id
+          schema: {type: integer, format: int64}
+      responses: {'200': {description: Lottery draw record page}}
+  /public/stores/{storeCode}:
+    get:
+      summary: 门店装修与实时营业状态
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses: {'200': {description: 'Public store, decoration, businessStatus and nextOpenAt'}}
+  /public/stores/{storeCode}/catalog:
+    get:
+      summary: 顾客点单目录
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses: {'200': {description: 'Store, categories and products'}}
+  /public/media/{storagePath}:
+    get:
+      summary: 读取已上传的公开图片
+      description: 只读取处于 ACTIVE 状态的图片；storagePath 包含服务端生成的多段路径。
+      security: []
+      parameters:
+        - in: path
+          name: storagePath
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Raw immutable image bytes}
+        '404': {description: Media asset is unavailable}
+  /public/table-codes/{code}:
+    get:
+      summary: 解析不可猜测的桌码 publicId
+      security: []
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 32}
+      responses:
+        '200': {description: Active store and table context}
+        '404': {description: 'Code, area, store or tenant is unavailable'}
+  /public/fast-food-plates/{code}:
+    get:
+      summary: 解析不可猜测的快餐码牌 publicId
+      security: []
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: {type: string, minLength: 20, maxLength: 32}
+      responses:
+        '200': {description: Active store and fast-food pickup context}
+        '404': {description: 'Plate, store or tenant is unavailable'}
+  /public/stores/{storeCode}/marketing/popup:
+    get:
+      summary: 获取指定页面和店内渠道当前最高优先级弹窗
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: placementCode
+          schema: {type: string, enum: [HOME_POPUP, MENU_POPUP, CHECKOUT_POPUP, ORDER_RESULT_POPUP, PROFILE_POPUP]}
+        - in: query
+          name: channelScope
+          schema: {type: string, enum: [ALL, DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Active placement or null}}
+  /public/stores/{storeCode}/marketing/coupons:
+    get:
+      summary: 当前可领取优惠券列表
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Public coupon campaigns}}
+  /public/stores/{storeCode}/marketing/coupons/{couponID}/claim:
+    post:
+      summary: 以匿名主体键领取临时优惠券资产
+      description: 正式微信顾客会话上线前只返回 PROVISIONAL 记录，不参与订单核销。
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: couponID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 idempotency_key 二者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PublicMarketingSubjectInput'}
+      responses:
+        '201': {description: Provisional coupon claim created}
+        '200': {description: Idempotent replay of an existing claim}
+        '409': {description: 'Campaign unavailable, sold out or subject limit reached'}
+        '429': {description: Anonymous mutation rate limit reached}
+  /public/stores/{storeCode}/marketing/events:
+    post:
+      summary: 记录弹窗曝光、点击或关闭事件
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 event_id 或 idempotency_key 三者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MarketingEventInput'}
+      responses:
+        '201': {description: Event recorded}
+        '200': {description: Idempotent replay of an existing event}
+  /public/stores/{storeCode}/marketing/lotteries:
+    get:
+      summary: 当前可参与免费抽奖列表
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses: {'200': {description: Public lottery campaigns}}
+  /public/stores/{storeCode}/marketing/lotteries/{lotteryID}:
+    get:
+      summary: 当前可参与免费抽奖详情
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: query
+          name: channel_scope
+          schema: {type: string, enum: [DINE_IN, TAKEOUT]}
+      responses:
+        '200': {description: Active lottery and prizes}
+        '404': {description: Lottery is unavailable}
+  /public/stores/{storeCode}/marketing/lotteries/{lotteryID}/draw:
+    post:
+      summary: 以匿名主体键参与一次免费抽奖
+      description: 中奖优惠券在正式微信顾客会话上线前仅为 PROVISIONAL 记录。
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: path
+          name: lotteryID
+          required: true
+          schema: {type: integer, format: int64}
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: 与请求体 idempotency_key 二者任一提供。
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PublicMarketingSubjectInput'}
+      responses:
+        '201': {description: Lottery draw created}
+        '200': {description: Idempotent replay of an existing draw}
+        '409': {description: Lottery unavailable or anonymous subject limit reached}
+        '429': {description: Anonymous mutation rate limit reached}
+  /public/stores/{storeCode}/orders:
+    post:
+      summary: 幂等创建订单
+      security: []
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                order_scene: {type: string, enum: [DINE_IN, TAKEOUT]}
+                table_public_id: {type: string, description: DINE_IN 必填且必须属于路径中的门店}
+                fastFoodPlatePublicId: {type: string, description: TAKEOUT 可选；服务端重新校验归属与启用状态}
+                items: {type: array, minItems: 1, items: {type: object}}
+      responses:
+        '201': {description: Order created with stable business-day pickup code}
+        '409': {description: Store closed or idempotency conflict}
+  /public/customer/session:
+    post:
+      summary: 用微信小程序登录凭证创建顾客会话
+      description: 服务端通过微信 code2session 校验临时 code，并签发仅限所属商户的顾客 JWT；guestKey 仅用于关联该设备此前的匿名订单，不作为认证凭据。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, guestKey, storeCode]
+              properties:
+                code: {type: string, maxLength: 256}
+                guestKey: {type: string, minLength: 12, maxLength: 128}
+                storeCode: {type: string}
+                channelKey: {type: string, maxLength: 64, description: 构建时注入的公开小程序渠道标识；公版缺省为 tanban-public}
+      responses:
+        '200': {description: Customer bearer token}
+        '429': {description: Too many login attempts}
+        '502': {description: WeChat code exchange failed}
+        '503': {description: Mini-program AppID or secret is not configured}
+  /public/stores/{storeCode}/membership/orders:
+    post:
+      summary: 开通或升级会员等级
+      description: 支付成功后原子生效会员等级，并将等级配置金额计入本金余额。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [levelId]
+              properties:
+                levelId: {type: integer, format: int64}
+      responses:
+        '201': {description: Membership payment created or free membership activated}
+        '409': {description: Membership level is unavailable or idempotency conflict}
+  /public/stores/{storeCode}/stored-value/orders:
+    post:
+      summary: 按储值规则发起在线充值
+      description: 支付成功后原子记入本金与赠送金，重复通知不会重复到账。
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: storeCode
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ruleId]
+              properties:
+                ruleId: {type: integer, format: int64}
+      responses:
+        '201': {description: Stored-value payment created}
+        '409': {description: Rule limit or account balance limit reached}
+  /public/account-payments/{paymentID}:
+    get:
+      summary: 查询当前顾客的会员或储值支付状态
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: paymentID
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Account payment and fulfillment status}
+        '404': {description: Payment does not belong to the current customer}
+  /public/account-payments/{paymentID}/mock-confirm:
+    post:
+      summary: 开发环境确认会员或储值模拟支付
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: paymentID
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200': {description: Payment confirmed and account benefit fulfilled}
+        '404': {description: Mock confirmation disabled or payment not owned by customer}
+  /public/customer/orders:
+    get:
+      summary: 当前微信顾客在指定门店的订单列表
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: query
+          name: storeCode
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Up to 100 newest customer orders}
+  /public/orders/{orderNo}/payments:
+    post:
+      summary: 余额足够时优先使用顾客余额，否则使用商户当前支付适配器
+      security: []
+      parameters:
+        - in: path
+          name: orderNo
+          required: true
+          schema: {type: string}
+        - in: header
+          name: Authorization
+          required: false
+          description: 顾客 JWT；提供且订单属于该顾客时，若余额足够支付整单则优先扣减余额。
+          schema: {type: string}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: {type: string, enum: [mock, tianque, wechat_partner], description: 旧客户端兼容字段；建议省略，由服务端选择并校验}
+                openid: {type: string}
+                subAppId: {type: string}
+      responses:
+        '201': {description: Balance payment completed or external payment created}
+        '503': {description: Platform payment is disabled, provider mismatch, or selected adapter is not implemented/configured}
+  /payments/wechat-partner/callback:
+    post:
+      summary: 微信支付服务商支付结果通知
+      security: []
+      responses:
+        '501': {description: Fail closed until API v3 signature verification and resource decryption are implemented}
+  /payments/wechat-partner/refund-callback:
+    post:
+      summary: 微信支付服务商退款结果通知
+      security: []
+      responses:
+        '501': {description: Fail closed until API v3 refund notification verification is implemented}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      in: query
+      name: page_size
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+  schemas:
+    MarketingStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, PAUSED, ENDED]
+    BusinessStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [OPEN, CLOSED, NONE]
+          description: NONE 取消当前临时覆盖。
+        startsAt:
+          type: string
+          format: date-time
+          description: 可选；不传时从服务端当前时间开始。
+        endsAt:
+          type: string
+          format: date-time
+          description: OPEN 或 CLOSED 时必填，必须晚于 startsAt 且最长 31 天。
+        reason: {type: string, maxLength: 255}
+    FastFoodPlateInput:
+      type: object
+      required: [plateName, plateCode]
+      properties:
+        storeId:
+          type: integer
+          format: int64
+          description: 可选；不传时使用当前商户默认门店。
+        plateName: {type: string, maxLength: 80}
+        plateCode:
+          type: string
+          maxLength: 64
+          pattern: '^\S+$'
+        remark: {type: string, maxLength: 255}
+        sortOrder: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+    MarketingCouponInput:
+      type: object
+      required: [name, coupon_type, discount_cents, total_stock]
+      properties:
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        coupon_type: {type: string, enum: [CASH, FULL_REDUCTION]}
+        threshold_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: FULL_REDUCTION 时必须大于等于 discount_cents；CASH 会强制归零。
+        discount_cents: {type: integer, format: int64, minimum: 1}
+        distribution_mode:
+          type: string
+          enum: [PUBLIC_CLAIM, MANUAL_ONLY, LOTTERY_ONLY]
+          default: PUBLIC_CLAIM
+        total_stock: {type: integer, format: int64, minimum: 1, maximum: 1000000000}
+        per_subject_limit: {type: integer, minimum: 1, default: 1}
+        claim_start_at: {type: string, format: date-time, nullable: true}
+        claim_end_at: {type: string, format: date-time, nullable: true}
+        validity_mode:
+          type: string
+          enum: [FIXED_RANGE, RELATIVE_DAYS]
+          default: RELATIVE_DAYS
+        valid_from: {type: string, format: date-time, nullable: true}
+        valid_to: {type: string, format: date-time, nullable: true}
+        valid_days: {type: integer, minimum: 1, maximum: 3650, default: 30}
+        order_types:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [DINE_IN, TAKEOUT, DELIVERY]}
+          default: [DINE_IN, TAKEOUT]
+    MarketingPlacementInput:
+      type: object
+      required: [name, image_url]
+      properties:
+        name: {type: string, maxLength: 100}
+        placement_code:
+          type: string
+          enum: [HOME_POPUP, MENU_POPUP, CHECKOUT_POPUP, ORDER_RESULT_POPUP, PROFILE_POPUP]
+          default: HOME_POPUP
+        image_url: {type: string, format: uri, maxLength: 1024}
+        title: {type: string, maxLength: 80}
+        subtitle: {type: string, maxLength: 200}
+        action_type:
+          type: string
+          enum: [NONE, OPEN_MENU, OPEN_COUPONS, CLAIM_COUPON, OPEN_LOTTERY]
+          default: NONE
+        action_target_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: CLAIM_COUPON 或 OPEN_LOTTERY 时必填，其他动作禁止传入。
+        frequency:
+          type: string
+          enum: [EVERY_VISIT, DAILY, ONCE_PER_CAMPAIGN]
+          default: ONCE_PER_CAMPAIGN
+        priority: {type: integer, minimum: -10000, maximum: 10000, default: 0}
+        channel_scope:
+          type: string
+          enum: [ALL, DINE_IN, TAKEOUT, DELIVERY]
+          default: ALL
+        active_from: {type: string, format: date-time, nullable: true}
+        active_to: {type: string, format: date-time, nullable: true}
+    MarketingLotteryPrizeInput:
+      type: object
+      required: [name, prize_type, weight]
+      properties:
+        name: {type: string, maxLength: 100}
+        prize_type: {type: string, enum: [THANKS, COUPON]}
+        coupon_campaign_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: COUPON 奖项必填，且必须引用同门店已启用的 LOTTERY_ONLY 优惠券。
+        weight: {type: integer, format: int64, minimum: 1, maximum: 1000000000000}
+        total_stock:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+          description: COUPON 奖项必须大于 0，THANKS 会强制归零。
+        sort_order: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+    MarketingLotteryInput:
+      type: object
+      required: [name, active_from, active_to, daily_limit, total_limit, terms, prizes]
+      properties:
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        channel_scope:
+          type: string
+          enum: [ALL, DINE_IN, TAKEOUT, DELIVERY]
+          default: ALL
+        active_from: {type: string, format: date-time}
+        active_to: {type: string, format: date-time}
+        daily_limit: {type: integer, minimum: 1, maximum: 100}
+        total_limit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: 单一匿名主体在该活动全周期内的最大抽奖次数。
+        terms: {type: string, minLength: 1, maxLength: 5000}
+        prizes:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: '#/components/schemas/MarketingLotteryPrizeInput'}
+    PublicMarketingSubjectInput:
+      type: object
+      required: [subject_key]
+      properties:
+        subject_key:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: 仅用于一期匿名相关性，不是已验证顾客凭证。
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
+    MarketingEventInput:
+      type: object
+      required: [placement_id, event_type]
+      properties:
+        placement_id: {type: integer, format: int64, minimum: 1}
+        event_type: {type: string, enum: [IMPRESSION, CLICK, CLOSE]}
+        subject_key: {type: string, minLength: 12, maxLength: 128}
+        event_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 可替代 Idempotency-Key 请求头。
+    ProductImageInput:
+      type: object
+      required: [is_primary]
+      properties:
+        media_asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 推荐传当前门店图片库素材 ID；服务端以素材真实 URL 为准。
+        url:
+          type: string
+          format: uri
+          maxLength: 1024
+          description: 未传 media_asset_id 时可使用 HTTPS 图片 URL。
+        is_primary: {type: boolean}
+        sort_order: {type: integer, format: int32, default: 0}
+    ProductSKUInput:
+      type: object
+      required: [name, price_cents, stock]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string, maxLength: 120}
+        attributes: {type: object, additionalProperties: true}
+        price_cents: {type: integer, format: int64, minimum: 0, maximum: 10000000}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+        stock: {type: integer, minimum: 0}
+        expected_stock:
+          type: integer
+          minimum: 0
+          description: 更新已有 SKU 时必填，用于乐观库存锁。
+        auto_sold_out: {type: boolean, default: true}
+        auto_refill: {type: boolean, default: false}
+        refill_stock: {type: integer, minimum: 0}
+    ProductInput:
+      type: object
+      required: [category_id, name, skus]
+      properties:
+        store_id: {type: integer, format: int64}
+        category_id: {type: integer, format: int64, minimum: 1}
+        name: {type: string, maxLength: 120}
+        description: {type: string, maxLength: 1000}
+        image_url:
+          type: string
+          description: 旧客户端主图字段；新客户端应使用 images。
+        recommended: {type: boolean, default: false}
+        images:
+          type: array
+          maxItems: 4
+          description: 显式传入时必须恰好一项 is_primary=true。
+          items: {$ref: '#/components/schemas/ProductImageInput'}
+        sort_order: {type: integer, format: int32, default: 0}
+        status: {type: string, enum: [ACTIVE, DISABLED], default: ACTIVE}
+        skus:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ProductSKUInput'}
+    MenuImportIssue:
+      type: object
+      required: [level, sheet, code, message]
+      properties:
+        level: {type: string, enum: [ERROR, WARNING]}
+        sheet: {type: string}
+        row: {type: integer, minimum: 1}
+        field: {type: string}
+        code: {type: string}
+        message: {type: string}
+    MenuImportPreview:
+      type: object
+      required: [valid, product_count, sku_count, new_categories, new_attribute_groups, new_modifier_groups, products, issues]
+      properties:
+        valid: {type: boolean}
+        product_count: {type: integer, minimum: 0, maximum: 500}
+        sku_count: {type: integer, minimum: 0, maximum: 2000}
+        existing_category_count: {type: integer, minimum: 0}
+        new_categories: {type: array, items: {type: string}}
+        existing_attribute_groups: {type: array, items: {type: string}}
+        new_attribute_groups: {type: array, items: {type: string}}
+        existing_modifier_groups: {type: array, items: {type: string}}
+        new_modifier_groups: {type: array, items: {type: string}}
+        products: {type: array, items: {type: object}}
+        issues: {type: array, items: {$ref: '#/components/schemas/MenuImportIssue'}}
+    ProductActionInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [ACTIVATE, DEACTIVATE, RECOMMEND, UNRECOMMEND, COPY, SOLD_OUT, RESTOCK_FULL]
+        stock:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          description: 仅 RESTOCK_FULL 使用；传入后所有 SKU 置为该库存。不传则每个 SKU 按 refill_stock 补满，refill_stock=0 时保持原库存。
+    MediaGroupInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, maxLength: 80}
+        sort_order: {type: integer, format: int32, default: 0}
+    MediaAssetInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, maxLength: 120}
+        url: {type: string, format: uri, maxLength: 1024}
+        storageKey: {type: string, maxLength: 512}
+        mimeType: {type: string, maxLength: 100}
+        width: {type: integer, minimum: 0, maximum: 20000}
+        height: {type: integer, minimum: 0, maximum: 20000}
+        sizeBytes: {type: integer, format: int64, minimum: 0}
+        group_id:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 0 表示未分组；更新时缺省表示不修改分组。
+    MediaAsset:
+      type: object
+      required: [id, name, kind, url, storageKey, mimeType, width, height, sizeBytes, status, createdAt, group_name]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        kind: {type: string, enum: [IMAGE]}
+        url: {type: string, format: uri}
+        storageKey: {type: string}
+        mimeType: {type: string, enum: [image/jpeg, image/png, image/gif]}
+        width: {type: integer}
+        height: {type: integer}
+        sizeBytes: {type: integer, format: int64}
+        status: {type: string, enum: [ACTIVE]}
+        createdAt: {type: string, format: date-time}
+        group_id: {type: integer, format: int64, nullable: true}
+        group_name: {type: string}
