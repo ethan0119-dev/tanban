@@ -226,6 +226,34 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		revenueTrend = append(revenueTrend, map[string]any{"label": label, "value": float64(cents) / 100})
 	}
 	trendRows.Close()
+	// Monthly trend: daily revenue from month start to today
+	monthlyRows, err := s.DB.QueryContext(r.Context(), `SELECT DATE_FORMAT(d.day,'%m-%d'),COALESCE(SUM(o.paid_cents-o.refunded_cents),0) FROM (
+		SELECT DATE_ADD(DATE_SUB(CURDATE(),INTERVAL DAY(CURDATE())-1 DAY),INTERVAL t.n DAY) AS day FROM (
+			SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+			UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
+			UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14
+			UNION ALL SELECT 15 UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+			UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24
+			UNION ALL SELECT 25 UNION ALL SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29
+			UNION ALL SELECT 30
+		) t WHERE DATE_ADD(DATE_SUB(CURDATE(),INTERVAL DAY(CURDATE())-1 DAY),INTERVAL t.n DAY) <= CURDATE()
+	) d LEFT JOIN orders o ON DATE(o.paid_at)=d.day AND o.tenant_id=? AND o.store_id=? GROUP BY d.day ORDER BY d.day`, identity.TenantID, storeID)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	monthlyTrend := []map[string]any{}
+	for monthlyRows.Next() {
+		var label string
+		var cents int64
+		if err = monthlyRows.Scan(&label, &cents); err != nil {
+			monthlyRows.Close()
+			handleSQLError(w, err)
+			return
+		}
+		monthlyTrend = append(monthlyTrend, map[string]any{"label": label, "value": float64(cents) / 100})
+	}
+	monthlyRows.Close()
 	popularRows, err := s.DB.QueryContext(r.Context(), `SELECT oi.product_name,SUM(oi.quantity) FROM order_items oi JOIN orders o ON o.id=oi.order_id
 		WHERE o.tenant_id=? AND o.store_id=? AND o.paid_at>=DATE_SUB(CURDATE(),INTERVAL 6 DAY)
 		GROUP BY oi.product_name ORDER BY SUM(oi.quantity) DESC LIMIT 5`, identity.TenantID, storeID)
@@ -273,7 +301,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 	if paidOrders > 0 {
 		averageOrderValue = float64(todayRevenue) / 100 / float64(paidOrders)
 	}
-	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
+	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "monthlyTrend": monthlyTrend, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
 }
 
 func (s *Server) tenantStoreID(r *http.Request, tenantID int64) (int64, error) {
