@@ -33,6 +33,7 @@ function normalizeDashboard(raw: unknown): DashboardData {
     refundAmount: value.today_refunded_cents !== undefined ? Number(value.today_refunded_cents) / 100 : Number(value.refundAmount ?? value.refund_amount ?? 0),
     revenueTrend: (value.revenueTrend ?? value.revenue_trend ?? []) as DashboardData['revenueTrend'],
     monthlyTrend: (value.monthlyTrend ?? value.monthly_trend ?? []) as DashboardData['monthlyTrend'],
+    todayHourly: (value.todayHourly ?? value.today_hourly ?? []) as DashboardData['todayHourly'],
     popularProducts: (value.popularProducts ?? value.popular_products ?? []) as DashboardData['popularProducts'],
     recentOrders: (value.recentOrders ?? value.recent_orders ?? []) as Order[],
   };
@@ -44,7 +45,7 @@ const ORDER_TYPE_COLORS: Record<string, string> = { DINE_IN: '#a5683f', TAKEOUT:
 function computeOrderTypes(orders: Order[]) {
   const map: Record<string, number> = {};
   orders.forEach((o) => {
-    const t = o.fulfillmentType || 'OTHER';
+    const t = o.orderType || 'OTHER';
     map[t] = (map[t] || 0) + 1;
   });
   return Object.entries(map).map(([type, count]) => ({
@@ -54,20 +55,16 @@ function computeOrderTypes(orders: Order[]) {
   }));
 }
 
-function computeHourly(orders: Order[]) {
-  const buckets = Array.from({ length: 24 }, (_, i) => ({ hour: `${String(i).padStart(2, '0')}:00`, count: 0, amount: 0 }));
-  orders.forEach((o) => {
-    try {
-      const date = new Date(o.createdAt);
-      if (isNaN(date.getTime())) return;
-      const h = date.getHours();
-      if (h >= 0 && h < 24) {
-        buckets[h].count += 1;
-        buckets[h].amount += o.amount || 0;
-      }
-    } catch { /* ignore */ }
-  });
-  return buckets;
+function generateMonthlyFallback(): Array<{ label: string; value: number }> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const today = now.getDate();
+  const result: Array<{ label: string; value: number }> = [];
+  for (let d = 1; d <= today; d++) {
+    result.push({ label: `${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`, value: 0 });
+  }
+  return result;
 }
 
 export function DashboardPage() {
@@ -100,7 +97,11 @@ export function DashboardPage() {
     return '晚上好，夜市的高峰要来啦';
   }, []);
   const orderTypes = useMemo(() => computeOrderTypes(data?.recentOrders ?? []), [data?.recentOrders]);
-  const hourlyData = useMemo(() => computeHourly(data?.recentOrders ?? []), [data?.recentOrders]);
+  const hourlyData = useMemo(() => (data?.todayHourly ?? []).map((h) => ({ hour: h.hour, count: h.count })), [data?.todayHourly]);
+  const monthlyData = useMemo(() => {
+    const real = data?.monthlyTrend ?? [];
+    return real.length > 0 ? real : generateMonthlyFallback();
+  }, [data?.monthlyTrend]);
 
   if (loading && !data) return <div className="page-shell"><Skeleton active paragraph={{ rows: 12 }} /></div>;
 
@@ -161,25 +162,23 @@ export function DashboardPage() {
         {financialView && (
           <Col xs={24} xl={8}>
             <Card title="本月营业曲线" bordered={false} className="content-card">
-              {(data?.monthlyTrend ?? []).length > 0 ? (
-                <div className="chart-contained">
-                  <ResponsiveContainer width="100%" height={250}>
-                    <AreaChart data={(data?.monthlyTrend ?? []).map((item) => ({ name: item.label, 营业额: item.value }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="monthlyGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#d99b68" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#d99b68" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={Math.max(0, Math.floor((data?.monthlyTrend ?? []).length / 8) - 1)} />
-                      <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(v: any) => v > 999 ? `${Math.round(v / 1000)}k` : `¥${v}`} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: any) => [yuan(value as number), '营业额']} />
-                      <Area type="monotone" dataKey="营业额" stroke="#c67e4a" strokeWidth={2} fill="url(#monthlyGrad)" dot={false} activeDot={{ r: 4, fill: '#a5683f' }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无本月数据" />}
+              <div className="chart-contained">
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={monthlyData.map((item) => ({ name: item.label, 营业额: item.value }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="monthlyGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#d99b68" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#d99b68" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={Math.max(0, Math.floor(monthlyData.length / 8) - 1)} />
+                    <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => v > 999 ? `${Math.round(v / 1000)}k` : `¥${v}`} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [yuan(value), '营业额']} />
+                    <Area type="monotone" dataKey="营业额" stroke="#c67e4a" strokeWidth={2} fill="url(#monthlyGrad)" dot={false} activeDot={{ r: 4, fill: '#a5683f' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </Card>
           </Col>
         )}
@@ -215,30 +214,33 @@ export function DashboardPage() {
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: any, name: any) => [`${value} 单`, name]} />
-                    <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value: any) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number, name: string) => [`${value} 单`, name]} />
+                    <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value: string) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </Col>
-          <Col xs={24} md={14}>
-            <Card title="今日时段订单分布" bordered={false} className="content-card">
-              <div className="chart-contained">
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={hourlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
-                    <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={2} />
-                    <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: any) => [`${value} 单`, '订单数']} />
-                    <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
-                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
           </Col>
         </Row>
       )}
+
+      <Row gutter={[16, 16]} className="dashboard-grid">
+        <Col xs={24}>
+          <Card title="今日时段订单分布" bordered={false} className="content-card">
+            <div className="chart-contained">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={hourlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={2} />
+                  <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [`${value} 单`, '订单数']} />
+                  <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </Col>
+      </Row>
 
       <Card
         title="最近订单"

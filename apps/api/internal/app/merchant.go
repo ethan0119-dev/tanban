@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -226,23 +228,19 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		revenueTrend = append(revenueTrend, map[string]any{"label": label, "value": float64(cents) / 100})
 	}
 	trendRows.Close()
-	// Monthly trend: daily revenue from month start to today
-	monthlyRows, err := s.DB.QueryContext(r.Context(), `SELECT DATE_FORMAT(d.day,'%m-%d'),COALESCE(SUM(o.paid_cents-o.refunded_cents),0) FROM (
-		SELECT DATE_ADD(DATE_SUB(CURDATE(),INTERVAL DAY(CURDATE())-1 DAY),INTERVAL t.n DAY) AS day FROM (
-			SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
-			UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
-			UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14
-			UNION ALL SELECT 15 UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
-			UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24
-			UNION ALL SELECT 25 UNION ALL SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29
-			UNION ALL SELECT 30
-		) t WHERE DATE_ADD(DATE_SUB(CURDATE(),INTERVAL DAY(CURDATE())-1 DAY),INTERVAL t.n DAY) <= CURDATE()
-	) d LEFT JOIN orders o ON DATE(o.paid_at)=d.day AND o.tenant_id=? AND o.store_id=? GROUP BY d.day ORDER BY d.day`, identity.TenantID, storeID)
+	// Monthly trend: aggregate by range, fill gaps in Go
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	monthEnd := monthStart.AddDate(0, 1, 0)
+	monthlyRows, err := s.DB.QueryContext(r.Context(),
+		`SELECT DATE_FORMAT(paid_at,'%m-%d'),COALESCE(SUM(paid_cents-refunded_cents),0)
+		FROM orders WHERE tenant_id=? AND store_id=? AND paid_at>=? AND paid_at<?
+		GROUP BY DATE(paid_at) ORDER BY DATE(paid_at)`, identity.TenantID, storeID, monthStart, monthEnd)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	monthlyTrend := []map[string]any{}
+	dayMap := map[string]float64{}
 	for monthlyRows.Next() {
 		var label string
 		var cents int64
@@ -251,9 +249,15 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, err)
 			return
 		}
-		monthlyTrend = append(monthlyTrend, map[string]any{"label": label, "value": float64(cents) / 100})
+		dayMap[label] = float64(cents) / 100
 	}
 	monthlyRows.Close()
+	monthlyTrend := []map[string]any{}
+	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for d := monthStart; !d.After(todayEnd); d = d.AddDate(0, 0, 1) {
+		key := fmt.Sprintf("%02d-%02d", int(d.Month()), d.Day())
+		monthlyTrend = append(monthlyTrend, map[string]any{"label": key, "value": dayMap[key]})
+	}
 	popularRows, err := s.DB.QueryContext(r.Context(), `SELECT oi.product_name,SUM(oi.quantity) FROM order_items oi JOIN orders o ON o.id=oi.order_id
 		WHERE o.tenant_id=? AND o.store_id=? AND o.paid_at>=DATE_SUB(CURDATE(),INTERVAL 6 DAY)
 		GROUP BY oi.product_name ORDER BY SUM(oi.quantity) DESC LIMIT 5`, identity.TenantID, storeID)
@@ -297,11 +301,38 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		recentOrders = append(recentOrders, row)
 	}
 	recentRows.Close()
+	// Today hourly orders
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayEndDay := todayStart.AddDate(0, 0, 1)
+	hourlyRows, err := s.DB.QueryContext(r.Context(),
+		`SELECT HOUR(created_at),COUNT(*) FROM orders
+		WHERE tenant_id=? AND store_id=? AND created_at>=? AND created_at<?
+		GROUP BY HOUR(created_at) ORDER BY HOUR(created_at)`,
+		identity.TenantID, storeID, todayStart.Format("2006-01-02 15:04:05"), todayEndDay.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	hourMap := map[int]int{}
+	for hourlyRows.Next() {
+		var h, c int
+		if err = hourlyRows.Scan(&h, &c); err != nil {
+			hourlyRows.Close()
+			handleSQLError(w, err)
+			return
+		}
+		hourMap[h] = c
+	}
+	hourlyRows.Close()
+	todayHourly := make([]map[string]any, 24)
+	for i := 0; i < 24; i++ {
+		todayHourly[i] = map[string]any{"hour": fmt.Sprintf("%02d:00", i), "count": hourMap[i]}
+	}
 	averageOrderValue := 0.0
 	if paidOrders > 0 {
 		averageOrderValue = float64(todayRevenue) / 100 / float64(paidOrders)
 	}
-	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "monthlyTrend": monthlyTrend, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
+	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "monthlyTrend": monthlyTrend, "todayHourly": todayHourly, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
 }
 
 func (s *Server) tenantStoreID(r *http.Request, tenantID int64) (int64, error) {
