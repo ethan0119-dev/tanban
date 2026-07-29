@@ -1,0 +1,2 @@
+-- Data cleanup is intentionally irreversible. Restoring a deleted media URL
+-- would recreate the invalid reference this migration removes.

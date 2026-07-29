@@ -1,0 +1,310 @@
+.marketing-page {
+  --marketing-ink: #372d28;
+  --marketing-muted: #7e746e;
+  --marketing-border: #eee8e2;
+  --marketing-soft: #faf7f3;
+}
+
+.marketing-alert {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+.marketing-intro-card {
+  margin-bottom: 16px;
+}
+
+.marketing-intro-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+}
+
+.marketing-intro-card .ant-typography {
+  margin: 0;
+}
+
+.marketing-intro-card .ant-typography + .ant-typography {
+  margin-top: 6px;
+}
+
+.marketing-app-card {
+  height: 100%;
+  min-height: 188px;
+  border: 1px solid transparent;
+  background: #fff;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.marketing-app-card.is-available:hover {
+  transform: translateY(-3px);
+  border-color: #e9d6c3;
+  box-shadow: 0 14px 34px rgba(74, 47, 31, 0.1);
+}
+
+.marketing-app-card .ant-card-body {
+  display: flex;
+  gap: 14px;
+  height: 100%;
+  padding: 20px;
+}
+
+.marketing-app-icon {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 15px;
+  font-size: 22px;
+}
+
+.marketing-app-icon.tone-amber { color: #a85f08; background: #fff1d5; }
+.marketing-app-icon.tone-red { color: #b63f31; background: #ffe7e2; }
+.marketing-app-icon.tone-blue { color: #316ca8; background: #e5f1ff; }
+.marketing-app-icon.tone-pink { color: #a83e70; background: #ffe8f2; }
+.marketing-app-icon.tone-purple { color: #6e54a8; background: #eee9ff; }
+.marketing-app-icon.tone-green { color: #438159; background: #e5f5e9; }
+
+.marketing-app-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.marketing-app-title {
+  display: flex;
+  min-height: 30px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.marketing-app-title .ant-typography {
+  color: var(--marketing-ink);
+  font-size: 16px;
+}
+
+.marketing-app-copy > .ant-typography {
+  min-height: 44px;
+  margin: 10px 0 14px;
+  line-height: 1.6;
+}
+
+.marketing-app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.marketing-app-footer span:last-child {
+  color: #a26031;
+  font-size: 20px;
+}
+
+.marketing-summary-grid {
+  margin-bottom: 16px;
+}
+
+.marketing-summary-grid .ant-card {
+  height: 100%;
+  border: 1px solid var(--marketing-border);
+  border-radius: 14px;
+}
+
+.marketing-summary-grid .ant-card-body {
+  padding: 18px 20px;
+}
+
+.marketing-summary-grid .ant-statistic-title {
+  color: var(--marketing-muted);
+}
+
+.marketing-summary-grid .ant-statistic-content {
+  color: var(--marketing-ink);
+  font-size: 25px;
+}
+
+.marketing-table-card .ant-card-body {
+  padding: 0;
+}
+
+.marketing-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--marketing-border);
+}
+
+.marketing-table-card .ant-table-wrapper {
+  padding: 0 8px 8px;
+}
+
+.marketing-empty-card {
+  padding: 54px 0;
+}
+
+.placement-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(190px, 34%) minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px;
+}
+
+.placement-visual {
+  min-height: 210px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--marketing-soft);
+}
+
+.placement-visual .ant-image,
+.placement-visual img {
+  width: 100%;
+  height: 100%;
+}
+
+.placement-visual img {
+  object-fit: cover;
+}
+
+.placement-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.placement-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.placement-heading .ant-typography {
+  margin: 0;
+}
+
+.placement-tags {
+  margin: 18px 0;
+}
+
+.placement-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--marketing-soft);
+  color: var(--marketing-muted);
+  font-size: 12px;
+}
+
+.placement-metrics span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.placement-metrics strong {
+  color: var(--marketing-ink);
+  font-size: 15px;
+}
+
+.lottery-progress {
+  min-width: 150px;
+}
+
+.lottery-progress .ant-progress {
+  margin-bottom: 2px;
+}
+
+.lottery-prize-panel {
+  padding: 12px 28px 20px 62px;
+  background: #fcfaf7;
+}
+
+.lottery-prize-panel > .ant-typography {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.lottery-editor-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px 0 14px;
+}
+
+.lottery-editor-heading .ant-typography {
+  margin: 0;
+}
+
+.lottery-editor-heading .ant-typography + .ant-typography {
+  display: block;
+  margin-top: 4px;
+}
+
+.lottery-prize-editor {
+  display: grid;
+  gap: 12px;
+  max-height: 430px;
+  margin-bottom: 12px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.lottery-prize-card {
+  border-color: var(--marketing-border);
+  background: #fcfaf7;
+}
+
+.lottery-prize-card .ant-card-head {
+  min-height: 42px;
+}
+
+@media (max-width: 900px) {
+  .marketing-intro-card .ant-card-body,
+  .marketing-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .placement-card .ant-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .placement-visual {
+    max-height: 260px;
+  }
+}
+
+@media (max-width: 560px) {
+  .marketing-app-card {
+    min-height: 160px;
+  }
+
+  .marketing-app-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .marketing-summary-grid .ant-card-body {
+    padding: 14px;
+  }
+
+  .placement-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .lottery-prize-panel {
+    padding-left: 12px;
+  }
+}

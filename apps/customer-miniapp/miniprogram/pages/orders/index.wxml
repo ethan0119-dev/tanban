@@ -1,0 +1,14 @@
+<view class="page orders-page" style="{{appearanceStyle}}">
+  <view class="orders-title"><text>我的订单</text><text>未完成订单优先展示</text></view>
+  <scroll-view class="scene-tabs" scroll-x enhanced show-scrollbar="{{false}}"><view class="scene-tab {{sceneTab === item.key ? 'active' : ''}}" wx:for="{{sceneTabs}}" wx:key="key" data-tab="{{item.key}}" bindtap="chooseScene">{{item.text}}</view></scroll-view>
+  <view class="order-list" wx:if="{{orders.length}}">
+    <view class="order-card" wx:for="{{orders}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="openOrder">
+      <view class="order-head"><view><text class="scene-badge {{item.scene === 'DINE_IN' ? 'dine-in' : ''}}">{{item.scene === 'DINE_IN' ? '堂' : '自'}}</text><text class="store-name">{{item.sceneText}}</text></view><text class="status-text">{{item.statusText}}</text></view>
+      <view class="order-time"><text>{{item.dateText}}</text><text wx:if="{{item.pickupCode}}">取餐号 #{{item.pickupCode}}</text></view>
+      <view class="order-summary"><text>{{item.summaryText}}</text><view><text class="amount">¥{{item.amountText}}</text><text>共{{item.items ? item.items.length : 0}}种</text></view></view>
+      <view class="order-foot"><text>{{item.sceneText}}</text><text>查看详情 ›</text></view>
+    </view>
+  </view>
+  <view class="empty" wx:elif="{{loading}}">正在加载订单…</view>
+  <view class="empty empty-order" wx:else><text>这里还没有订单</text><button class="primary" bindtap="goMenu">去点单</button></view>
+</view>

@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS platform_settings;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS print_jobs;
+DROP TABLE IF EXISTS printer_devices;
+DROP TABLE IF EXISTS refunds;
+DROP TABLE IF EXISTS payment_transactions;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS inventory;
+DROP TABLE IF EXISTS skus;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS stores;
+DROP TABLE IF EXISTS tenants;
