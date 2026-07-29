@@ -19,8 +19,9 @@ const (
 )
 
 type publicAccountPaymentInput struct {
-	LevelID int64 `json:"levelId"`
-	RuleID  int64 `json:"ruleId"`
+	LevelID     int64 `json:"levelId"`
+	RuleID      int64 `json:"ruleId"`
+	AmountCents int64 `json:"amountCents"`
 }
 
 type publicAccountPaymentIntent struct {
@@ -35,8 +36,17 @@ type publicAccountPaymentIntent struct {
 type publicMembershipPaymentSnapshot struct {
 	Name         string `json:"name"`
 	AcquireType  string `json:"acquireType"`
+	RankNo       int    `json:"rankNo"`
 	ValidDays    int    `json:"validDays"`
 	BenefitsJSON string `json:"benefitsJson"`
+}
+
+func memberLevelUpgradeAllowed(currentRank sql.NullInt64, targetRank int) bool {
+	return !currentRank.Valid || int64(targetRank) > currentRank.Int64
+}
+
+func storedValueRechargeAmountAllowed(amountCents, minRechargeCents, maxRechargeCents int64) bool {
+	return amountCents >= minRechargeCents && amountCents <= maxRechargeCents
 }
 
 func (s *Server) publicCreateMembershipOrder(w http.ResponseWriter, r *http.Request) {
@@ -60,8 +70,9 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 	if businessType == accountPaymentStoredValue {
 		businessID = input.RuleID
 	}
-	if businessID <= 0 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "a membership level or stored-value rule is required")
+	if (businessType == accountPaymentMembership && businessID <= 0) ||
+		(businessType == accountPaymentStoredValue && (businessID < 0 || (businessID == 0 && input.AmountCents <= 0))) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "a membership level, stored-value rule, or valid custom amount is required")
 		return
 	}
 	store, err := s.findPublicStore(r.Context(), chi.URLParam(r, "storeCode"))
@@ -81,7 +92,11 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer tx.Rollback()
-	fingerprint := requestFingerprint(map[string]any{"customerId": customerID, "businessType": businessType, "businessId": businessID})
+	fingerprintInput := map[string]any{"customerId": customerID, "businessType": businessType, "businessId": businessID}
+	if businessType == accountPaymentStoredValue && businessID == 0 {
+		fingerprintInput["amountCents"] = input.AmountCents
+	}
+	fingerprint := requestFingerprint(fingerprintInput)
 	var existing publicAccountPaymentIntent
 	err = scanPublicAccountPayment(tx.QueryRowContext(r.Context(), publicAccountPaymentSelect+` WHERE tenant_id=? AND idempotency_key=?`, store.TenantID, key), &existing)
 	if err == nil {
@@ -119,9 +134,9 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		var snapshot publicMembershipPaymentSnapshot
-		if err = tx.QueryRowContext(r.Context(), `SELECT name,acquire_type,price_cents,valid_days,benefits_json
+		if err = tx.QueryRowContext(r.Context(), `SELECT name,acquire_type,rank_no,price_cents,valid_days,benefits_json
 			FROM member_levels WHERE tenant_id=? AND id=? AND status='ACTIVE' AND deleted_at IS NULL FOR UPDATE`,
-			store.TenantID, businessID).Scan(&snapshot.Name, &snapshot.AcquireType, &amountCents, &snapshot.ValidDays, &snapshot.BenefitsJSON); err != nil {
+			store.TenantID, businessID).Scan(&snapshot.Name, &snapshot.AcquireType, &snapshot.RankNo, &amountCents, &snapshot.ValidDays, &snapshot.BenefitsJSON); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -131,6 +146,19 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 		}
 		if (snapshot.AcquireType == "PAID" && amountCents <= 0) || (snapshot.AcquireType == "FREE" && amountCents != 0) {
 			writeError(w, http.StatusConflict, "MEMBERSHIP_LEVEL_INVALID", "membership level payment configuration is invalid")
+			return
+		}
+		var currentRank sql.NullInt64
+		currentErr := tx.QueryRowContext(r.Context(), `SELECT l.rank_no
+			FROM members m JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id
+			WHERE m.tenant_id=? AND m.customer_id=? AND m.status='ACTIVE' FOR UPDATE`,
+			store.TenantID, customerID).Scan(&currentRank)
+		if currentErr != nil && !errors.Is(currentErr, sql.ErrNoRows) {
+			handleSQLError(w, currentErr)
+			return
+		}
+		if !memberLevelUpgradeAllowed(currentRank, snapshot.RankNo) {
+			writeError(w, http.StatusConflict, "MEMBERSHIP_LEVEL_NOT_UPGRADE", "membership levels can only be upgraded")
 			return
 		}
 		body, _ := json.Marshal(snapshot)
@@ -179,20 +207,25 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusConflict, "STORED_VALUE_NOT_AVAILABLE", "stored value is not enabled for this store")
 			return
 		}
-		var name string
-		var perCustomerLimit int
-		if err = tx.QueryRowContext(r.Context(), `SELECT name,recharge_cents,gift_cents,per_customer_limit
-			FROM stored_value_rules WHERE tenant_id=? AND id=? AND status='ACTIVE' AND deleted_at IS NULL
-			AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) FOR UPDATE`,
-			store.TenantID, businessID).Scan(&name, &amountCents, &giftCents, &perCustomerLimit); err != nil {
-			handleSQLError(w, err)
-			return
+		name := "自定义充值"
+		perCustomerLimit := 0
+		if businessID > 0 {
+			if err = tx.QueryRowContext(r.Context(), `SELECT name,recharge_cents,gift_cents,per_customer_limit
+				FROM stored_value_rules WHERE tenant_id=? AND id=? AND status='ACTIVE' AND deleted_at IS NULL
+				AND (starts_at IS NULL OR starts_at<=NOW(3)) AND (ends_at IS NULL OR ends_at>=NOW(3)) FOR UPDATE`,
+				store.TenantID, businessID).Scan(&name, &amountCents, &giftCents, &perCustomerLimit); err != nil {
+				handleSQLError(w, err)
+				return
+			}
+		} else {
+			amountCents = input.AmountCents
+			giftCents = 0
 		}
-		if amountCents < minRecharge || amountCents > maxRecharge {
+		if !storedValueRechargeAmountAllowed(amountCents, minRecharge, maxRecharge) {
 			writeError(w, http.StatusConflict, "RECHARGE_AMOUNT_OUT_OF_RANGE", "the stored-value rule is outside the configured recharge range")
 			return
 		}
-		if perCustomerLimit > 0 {
+		if businessID > 0 && perCustomerLimit > 0 {
 			var used int
 			if err = tx.QueryRowContext(r.Context(), `SELECT
 				(SELECT COUNT(*) FROM stored_value_records WHERE tenant_id=? AND customer_id=? AND rule_id=? AND status='CONFIRMED')+
@@ -482,9 +515,27 @@ func (s *Server) fulfillPublicAccountPayment(ctx context.Context, id int64, prov
 			expires = paidAt.AddDate(0, 0, snapshot.ValidDays)
 		}
 		if memberID.Valid {
-			if _, err = tx.ExecContext(ctx, `UPDATE members SET current_level_id=?,status='ACTIVE',expires_at=?
-				WHERE id=? AND tenant_id=?`, intent.BusinessID, expires, memberID.Int64, intent.TenantID); err != nil {
+			var currentLevelID sql.NullInt64
+			if err = tx.QueryRowContext(ctx, `SELECT current_level_id FROM members WHERE id=? AND tenant_id=? FOR UPDATE`,
+				memberID.Int64, intent.TenantID).Scan(&currentLevelID); err != nil {
 				return err
+			}
+			currentRankValue := sql.NullInt64{}
+			if currentLevelID.Valid {
+				var currentRank int
+				if rankErr := tx.QueryRowContext(ctx, `SELECT rank_no FROM member_levels WHERE tenant_id=? AND id=?`,
+					intent.TenantID, currentLevelID.Int64).Scan(&currentRank); rankErr != nil && !errors.Is(rankErr, sql.ErrNoRows) {
+					return rankErr
+				} else if rankErr == nil {
+					currentRankValue = sql.NullInt64{Int64: int64(currentRank), Valid: true}
+				}
+			}
+			shouldUpgrade := memberLevelUpgradeAllowed(currentRankValue, snapshot.RankNo)
+			if shouldUpgrade {
+				if _, err = tx.ExecContext(ctx, `UPDATE members SET current_level_id=?,status='ACTIVE',expires_at=?
+					WHERE id=? AND tenant_id=?`, intent.BusinessID, expires, memberID.Int64, intent.TenantID); err != nil {
+					return err
+				}
 			}
 		} else {
 			result, insertErr := tx.ExecContext(ctx, `INSERT INTO members(tenant_id,customer_id,member_no,current_level_id,status,expires_at)
@@ -518,7 +569,7 @@ func (s *Server) fulfillPublicAccountPayment(ctx context.Context, id int64, prov
 		if _, err = tx.ExecContext(ctx, `INSERT INTO stored_value_records(tenant_id,record_no,customer_id,rule_id,
 			rule_snapshot_json,principal_cents,gift_cents,payment_method,status,idempotency_key,request_fingerprint,created_by,remark)
 			VALUES(?,?,?,?,?,?,?,?, 'CONFIRMED',?,?,0,'小程序储值充值')`,
-			intent.TenantID, recordNo, intent.CustomerID, intent.BusinessID, intent.SnapshotJSON, intent.AmountCents,
+			intent.TenantID, recordNo, intent.CustomerID, nullableID(intent.BusinessID), intent.SnapshotJSON, intent.AmountCents,
 			intent.GiftCents, intent.Provider, recordKey, recordFingerprint); err != nil {
 			return err
 		}

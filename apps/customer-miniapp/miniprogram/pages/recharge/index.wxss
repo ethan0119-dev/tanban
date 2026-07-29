@@ -11,6 +11,14 @@
 .rule text:first-child { font-size: 36rpx; font-weight: var(--font-weight-semibold); }
 .rule text:last-child { color: var(--green); font-size: 24rpx; }
 .rule.selected { border-color: var(--green); box-shadow: var(--card-shadow); }
+.custom-recharge { display: flex; flex-direction: column; gap: 18rpx; margin-top: 20rpx; padding: 26rpx; border: 2rpx solid var(--card-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--card-shadow); }
+.custom-recharge.selected { border-color: var(--green); }
+.custom-recharge > view:first-child { display: flex; align-items: baseline; justify-content: space-between; }
+.custom-recharge > view:first-child text:first-child { color: var(--ink); font-size: 30rpx; font-weight: var(--font-weight-semibold); }
+.custom-recharge > view:first-child text:last-child, .custom-recharge > text { color: var(--muted); font-size: 22rpx; }
+.custom-input { display: flex; align-items: center; gap: 12rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: var(--paper); }
+.custom-input > text { color: var(--ink); font-size: 36rpx; font-weight: var(--font-weight-semibold); }
+.custom-input input { flex: 1; height: 54rpx; color: var(--ink); font-size: 38rpx; font-weight: var(--font-weight-semibold); }
 .unavailable, .safety { display: flex; flex-direction: column; gap: 14rpx; padding: 28rpx; border-radius: var(--radius); background: var(--surface); }
 .unavailable text:first-child, .safety text:first-child { font-size: 32rpx; font-weight: var(--font-weight-semibold); }
 .unavailable text:last-child, .safety text:last-child { color: var(--muted); font-size: 24rpx; line-height: 1.7; }

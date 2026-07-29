@@ -1204,8 +1204,8 @@ paths:
         '503': {description: Mini-program AppID or secret is not configured}
   /public/stores/{storeCode}/membership/orders:
     post:
-      summary: 开通或升级会员等级
-      description: 支付成功后原子生效会员等级，并将等级配置金额计入本金余额。
+      summary: 开通或向上升级会员等级
+      description: 只允许从当前等级向更高 rank 的等级升级；支付成功后原子生效会员等级，并将等级配置金额计入本金余额。
       security: [{bearerAuth: []}]
       parameters:
         - in: path
@@ -1227,7 +1227,7 @@ paths:
                 levelId: {type: integer, format: int64}
       responses:
         '201': {description: Membership payment created or free membership activated}
-        '409': {description: Membership level is unavailable or idempotency conflict}
+        '409': {description: Membership level is unavailable, not higher than the current level, or idempotency conflict}
   /public/stores/{storeCode}/notification-subscriptions/templates:
     get:
       summary: 获取当前小程序渠道可申请的顾客订阅消息模板
@@ -1278,8 +1278,8 @@ paths:
         '400': {description: Template does not belong to current AppID or payload is invalid}
   /public/stores/{storeCode}/stored-value/orders:
     post:
-      summary: 按储值规则发起在线充值
-      description: 支付成功后原子记入本金与赠送金，重复通知不会重复到账。
+      summary: 按储值规则或自定义金额发起在线充值
+      description: 传 ruleId 时按优惠档位充值；ruleId 为 0 时必须传 amountCents，且自定义金额不赠送。支付成功后原子记账，重复通知不会重复到账。
       security: [{bearerAuth: []}]
       parameters:
         - in: path
@@ -1299,6 +1299,7 @@ paths:
               required: [ruleId]
               properties:
                 ruleId: {type: integer, format: int64}
+                amountCents: {type: integer, format: int64, description: ruleId 为 0 时必填，并受门店最低/最高单笔限制}
       responses:
         '201': {description: Stored-value payment created}
         '409': {description: Rule limit or account balance limit reached}

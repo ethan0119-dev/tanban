@@ -17,55 +17,9 @@ import { useAuth } from '../auth/AuthContext';
 import { canViewMerchantFinancials, isMerchantStaff } from '../auth/permissions';
 import { OrderStatusTag } from '../components/OrderStatusTag';
 import { PageHeading } from '../components/PageHeading';
+import { normalizeDashboard, orderTypeChartData } from '../features/dashboard/model';
 import type { DashboardData, Order } from '../types';
 import { beijingNowDateTime, dateTime, percentChange, yuan } from '../utils/format';
-
-function normalizeDashboard(raw: unknown): DashboardData {
-  const value = (raw ?? {}) as Record<string, unknown>;
-  return {
-    todayRevenue: value.today_revenue_cents !== undefined
-      ? Number(value.today_revenue_cents) / 100
-      : Number(value.todayRevenue ?? value.today_revenue ?? value.revenue ?? 0),
-    todayOrders: Number(value.todayOrders ?? value.today_orders ?? value.orderCount ?? 0),
-    pendingOrders: Number(value.pendingOrders ?? value.pending_orders ?? value.pendingCount ?? value.active_orders ?? 0),
-    averageOrderValue: Number(value.averageOrderValue ?? value.average_order_value ?? value.avgOrderAmount ?? 0),
-    yesterdayRevenue: Number(value.yesterdayRevenue ?? value.yesterday_revenue ?? 0),
-    refundAmount: value.today_refunded_cents !== undefined ? Number(value.today_refunded_cents) / 100 : Number(value.refundAmount ?? value.refund_amount ?? 0),
-    revenueTrend: (value.revenueTrend ?? value.revenue_trend ?? []) as DashboardData['revenueTrend'],
-    monthlyTrend: (value.monthlyTrend ?? value.monthly_trend ?? []) as DashboardData['monthlyTrend'],
-    todayHourly: (value.todayHourly ?? value.today_hourly ?? []) as DashboardData['todayHourly'],
-    popularProducts: (value.popularProducts ?? value.popular_products ?? []) as DashboardData['popularProducts'],
-    recentOrders: (value.recentOrders ?? value.recent_orders ?? []) as Order[],
-  };
-}
-
-const ORDER_TYPE_LABELS: Record<string, string> = { DINE_IN: '堂食', TAKEOUT: '外带', PICKUP: '自取', DELIVERY: '外卖' };
-const ORDER_TYPE_COLORS: Record<string, string> = { DINE_IN: '#a5683f', TAKEOUT: '#d99b68', PICKUP: '#f0b884', DELIVERY: '#7db38b' };
-
-function computeOrderTypes(orders: Order[]) {
-  const map: Record<string, number> = {};
-  orders.forEach((o) => {
-    const t = o.orderType || 'OTHER';
-    map[t] = (map[t] || 0) + 1;
-  });
-  return Object.entries(map).map(([type, count]) => ({
-    name: ORDER_TYPE_LABELS[type] || type,
-    value: count,
-    color: ORDER_TYPE_COLORS[type] || '#c0b0a0',
-  }));
-}
-
-function generateMonthlyFallback(): Array<{ label: string; value: number }> {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const today = now.getDate();
-  const result: Array<{ label: string; value: number }> = [];
-  for (let d = 1; d <= today; d++) {
-    result.push({ label: `${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`, value: 0 });
-  }
-  return result;
-}
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -96,12 +50,9 @@ export function DashboardPage() {
     if (hour < 18) return '下午好，门店正在稳定运转';
     return '晚上好，夜市的高峰要来啦';
   }, []);
-  const orderTypes = useMemo(() => computeOrderTypes(data?.recentOrders ?? []), [data?.recentOrders]);
-  const hourlyData = useMemo(() => (data?.todayHourly ?? []).map((h) => ({ hour: h.hour, count: h.count })), [data?.todayHourly]);
-  const monthlyData = useMemo(() => {
-    const real = data?.monthlyTrend ?? [];
-    return real.length > 0 ? real : generateMonthlyFallback();
-  }, [data?.monthlyTrend]);
+  const orderTypes = useMemo(() => orderTypeChartData(data?.todayOrderTypes), [data?.todayOrderTypes]);
+  const hourlyData = data?.todayHourly ?? [];
+  const monthlyData = data?.monthlyTrend ?? [];
 
   if (loading && !data) return <div className="page-shell"><Skeleton active paragraph={{ rows: 12 }} /></div>;
 
@@ -162,7 +113,7 @@ export function DashboardPage() {
         {financialView && (
           <Col xs={24} xl={8}>
             <Card title="本月营业曲线" bordered={false} className="content-card">
-              <div className="chart-contained">
+              {monthlyData.length ? <div className="chart-contained">
                 <ResponsiveContainer width="100%" height={250}>
                   <AreaChart data={monthlyData.map((item) => ({ name: item.label, 营业额: item.value }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
@@ -173,12 +124,12 @@ export function DashboardPage() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" />
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={Math.max(0, Math.floor(monthlyData.length / 8) - 1)} />
-                    <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => v > 999 ? `${Math.round(v / 1000)}k` : `¥${v}`} />
-                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [yuan(value), '营业额']} />
+                    <YAxis tick={{ fontSize: 11, fill: '#887a71' }} axisLine={false} tickLine={false} tickFormatter={(value) => Number(value) > 999 ? `${Math.round(Number(value) / 1000)}k` : `¥${value}`} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [yuan(Number(value)), '营业额']} />
                     <Area type="monotone" dataKey="营业额" stroke="#c67e4a" strokeWidth={2} fill="url(#monthlyGrad)" dot={false} activeDot={{ r: 4, fill: '#a5683f' }} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无本月数据" />}
             </Card>
           </Col>
         )}
@@ -205,7 +156,7 @@ export function DashboardPage() {
       {orderTypes.length > 0 && (
         <Row gutter={[16, 16]} className="dashboard-grid">
           <Col xs={24} md={10}>
-            <Card title="订单类型分布" bordered={false} className="content-card">
+            <Card title="今日订单类型分布" bordered={false} className="content-card">
               <div className="chart-contained">
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
@@ -214,8 +165,8 @@ export function DashboardPage() {
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number, name: string) => [`${value} 单`, name]} />
-                    <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value: string) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value, name) => [`${Number(value)} 单`, String(name)]} />
+                    <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -224,7 +175,7 @@ export function DashboardPage() {
         </Row>
       )}
 
-      <Row gutter={[16, 16]} className="dashboard-grid">
+      {hourlyData.length > 0 && <Row gutter={[16, 16]} className="dashboard-grid">
         <Col xs={24}>
           <Card title="今日时段订单分布" bordered={false} className="content-card">
             <div className="chart-contained">
@@ -233,14 +184,14 @@ export function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
                   <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={2} />
                   <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value: number) => [`${value} 单`, '订单数']} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [`${Number(value)} 单`, '订单数']} />
                   <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>
         </Col>
-      </Row>
+      </Row>}
 
       <Card
         title="最近订单"

@@ -3,10 +3,12 @@ import { customerSafeErrorMessage } from "../../utils/availability";
 import { completeCustomerAccountPayment, type CustomerAccountPayment } from "../../utils/customer-payment";
 import { idempotencyKey, request } from "../../utils/request";
 import { loadPageAppearance } from "../../utils/page-appearance";
+import { canPresentMembershipLevel } from "../../utils/membership";
 
 interface MembershipLevel {
   id: number;
   name: string;
+  rank: number;
   acquireType: string;
   rechargeCents: number;
   validDays: number;
@@ -22,7 +24,7 @@ interface MembershipLevel {
 interface PublicMembership {
   available: boolean;
   card?: { name: string; color: string; imageUrl?: string; agreementUrl?: string; showBalance: boolean };
-  member?: { memberId: number; memberNo: string; levelId: number; levelName: string; principalCents: number; bonusCents: number; balanceCents: number };
+  member?: { memberId: number; memberNo: string; levelId: number; levelName: string; levelRank: number; principalCents: number; bonusCents: number; balanceCents: number };
   levels: MembershipLevel[];
 }
 
@@ -32,6 +34,8 @@ Page({
     purchasing: false,
     membership: null as PublicMembership | null,
     levels: [] as MembershipLevel[],
+    hasCurrentLevel: false,
+    highestLevelReached: false,
     appearanceStyle: "",
   },
   onShow() { void this.loadMembership(); },
@@ -44,9 +48,13 @@ Page({
         url: `/public/stores/${encodeURIComponent(storeCode)}/membership`,
         method: "GET",
       });
-      const levels = (membership.levels || []).map((level) => ({
+      const hasCurrentLevel = Boolean(membership.member?.memberId && membership.member?.levelId);
+      const currentRank = hasCurrentLevel ? Number(membership.member?.levelRank || 0) : -1;
+      const allLevels = (membership.levels || []).map((level) => ({
         ...level,
-        rechargeText: level.acquireType === "GROWTH" ? "成长值升级" : (level.rechargeCents ? `充值 ¥${(level.rechargeCents / 100).toFixed(2)}` : "免费开通"),
+        rechargeText: level.acquireType === "GROWTH"
+          ? "成长值升级"
+          : (level.rechargeCents ? `${hasCurrentLevel ? "升级充值" : "开通充值"} ¥${(level.rechargeCents / 100).toFixed(2)}` : "免费开通"),
         discountText: level.discountPercent < 100
           ? `${(level.discountPercent / 10).toFixed(level.discountPercent % 10 ? 1 : 0)} 折`
           : "会员身份",
@@ -54,7 +62,15 @@ Page({
         current: membership.member?.levelId === level.id,
         purchasable: level.acquireType !== "GROWTH",
       }));
-      this.setData({ loading: false, membership, levels, appearanceStyle: appearance.appearanceStyle });
+      const levels = allLevels.filter((level) => canPresentMembershipLevel(hasCurrentLevel, currentRank, level.rank));
+      this.setData({
+        loading: false,
+        membership,
+        levels,
+        hasCurrentLevel,
+        highestLevelReached: hasCurrentLevel && levels.length === 0,
+        appearanceStyle: appearance.appearanceStyle,
+      });
     } catch (error) {
       this.setData({ loading: false });
       wx.showToast({ title: customerSafeErrorMessage(error, "会员信息暂时无法加载。"), icon: "none" });
@@ -67,10 +83,11 @@ Page({
       if (level?.acquireType === "GROWTH") wx.showToast({ title: "该等级需达到成长值后自动升级", icon: "none" });
       return;
     }
+    const isUpgrade = this.data.hasCurrentLevel;
     const priceText = level.rechargeCents ? `支付 ¥${(level.rechargeCents / 100).toFixed(2)}` : "免费开通";
     wx.showModal({
-      title: `开通${level.name}`,
-      content: `${priceText}，金额将全部进入账户余额；本等级享受${level.discountText}，${level.validityText}。`,
+      title: `${isUpgrade ? "升级至" : "开通"}${level.name}`,
+      content: `${priceText}，金额将全部进入本金余额；这是会员等级${isUpgrade ? "升级" : "开通"}充值，不参与储值中心的赠送活动。本等级享受${level.discountText}，${level.validityText}。`,
       confirmText: level.rechargeCents ? "确认支付" : "立即开通",
       success: (result) => {
         if (result.confirm) void this.purchaseLevel(level);

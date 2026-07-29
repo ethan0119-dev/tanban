@@ -375,6 +375,7 @@ export interface DashboardData {
   refundAmount?: number;
   revenueTrend?: Array<{ label: string; value: number }>;
   monthlyTrend?: Array<{ label: string; value: number }>;
+  todayOrderTypes?: Array<{ type: string; value: number }>;
   todayHourly?: Array<{ hour: string; count: number }>;
   popularProducts?: Array<{ name: string; count: number; amount?: number }>;
   recentOrders?: Order[];

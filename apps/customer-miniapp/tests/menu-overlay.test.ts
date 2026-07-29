@@ -31,4 +31,12 @@ describe("menu overlays", () => {
     expect(menuStyles).toMatch(/\.configuration-options \{[^}]*display: block;[^}]*font-size: 0;/);
     expect(menuStyles).toMatch(/\.configuration-option \{[^}]*display: inline-flex;[^}]*min-width: 144rpx;[^}]*margin: 0 10rpx 12rpx 0;/);
   });
+
+  it("shows member prices consistently without crowding the recommended action", () => {
+    expect(menuTemplate).toContain('class="sku-option-price" wx:if="{{item.memberPrice !== undefined && item.memberPrice < item.price}}"');
+    expect(menuTemplate).toContain("{{pickerHasMemberPrice ? '本份会员价' : '本份预计'}}");
+    expect(menuTemplate).toContain('class="configuration-original-price" wx:if="{{pickerHasMemberPrice}}"');
+    expect(menuStyles).toMatch(/\.recommended-card-footer > \.member-price-line \{[^}]*flex-direction: column;[^}]*overflow: hidden;/);
+    expect(menuStyles).toMatch(/\.sku-option-price text:last-child \{[^}]*text-decoration: line-through;/);
+  });
 });

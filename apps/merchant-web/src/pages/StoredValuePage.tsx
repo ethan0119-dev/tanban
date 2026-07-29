@@ -198,7 +198,7 @@ export function StoredValuePage() {
   return (
     <div className="page-shell">
       {contextHolder}
-      <PageHeading title="会员储值" description="管理储值档位、线下收款记录和账户资金规则" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>} />
+      <PageHeading title="会员储值" description="管理可重复购买的充值优惠与账户资金规则；自定义充值不赠送，也不会降低会员等级" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>} />
       <FeatureAvailabilityNotice className="stored-warning" type="warning" feature="ONLINE_STORED_VALUE" />
       <Row gutter={[16, 16]} className="member-summary-grid">
         <Col xs={12} lg={6}><Card className="member-summary-card"><Statistic title="累计储值本金" value={(summary?.stored_value_principal_cents ?? 0) / 100} precision={2} prefix="¥" /></Card></Col>
@@ -210,7 +210,7 @@ export function StoredValuePage() {
         <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
           {
             key: 'rules', label: '储值规则', children: <>
-              <div className="member-filter-bar"><Typography.Text type="secondary">设置固定充值和赠送档位；0 次表示不限制每位顾客参与次数</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openRule()}>新增规则</Button></div>
+              <div className="member-filter-bar"><Typography.Text type="secondary">建议配置 3–4 个固定优惠档位；顾客也可在最低/最高单笔范围内自定义充值，自定义金额不赠送</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openRule()}>新增规则</Button></div>
               <Table<StoredValueRule> rowKey="id" loading={loading} dataSource={rules} columns={[
                 { title: '规则', dataIndex: 'name' },
                 { title: '储值本金', dataIndex: 'recharge_cents', render: (value) => yuan(Number(value) / 100) },

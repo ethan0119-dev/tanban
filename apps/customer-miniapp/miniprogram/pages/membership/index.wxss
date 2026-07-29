@@ -22,6 +22,9 @@
 .level-benefits { display: flex; flex-direction: column; gap: 8rpx; margin-top: 22rpx; color: var(--muted); font-size: 23rpx; }
 .level-card button { margin-top: 24rpx; border-radius: var(--button-radius); background: var(--green); color: var(--on-primary); font-size: 27rpx; }
 .level-card button[disabled] { color: var(--green); background: var(--soft-primary); }
+.highest-level { display: flex; flex-direction: column; gap: 12rpx; padding: 30rpx; border: 2rpx solid var(--green); border-radius: var(--radius); background: var(--soft-primary); }
+.highest-level text:first-child { color: var(--ink); font-size: 32rpx; font-weight: var(--font-weight-semibold); }
+.highest-level text:last-child { color: var(--muted); font-size: 23rpx; line-height: 1.65; }
 .member-note { display: flex; flex-direction: column; gap: 12rpx; margin-top: 26rpx; padding: 26rpx; border-radius: var(--radius); background: var(--surface); }
 .member-note text:first-child { font-size: 28rpx; font-weight: var(--font-weight-semibold); }
 .member-note text:last-child { color: var(--muted); font-size: 23rpx; line-height: 1.7; }

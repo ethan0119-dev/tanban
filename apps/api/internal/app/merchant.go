@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -175,6 +176,74 @@ func requireActiveMerchantService(next http.Handler) http.Handler {
 	})
 }
 
+type dashboardRevenuePoint struct {
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
+}
+
+type dashboardOrderTypePoint struct {
+	Type  string `json:"type"`
+	Value int64  `json:"value"`
+}
+
+type dashboardHourlyPoint struct {
+	Hour  string `json:"hour"`
+	Count int64  `json:"count"`
+}
+
+type dashboardOrderBucket struct {
+	OrderType string
+	Hour      int
+	Count     int64
+}
+
+func fillMonthlyRevenueTrend(now time.Time, revenueByDay map[string]float64) []dashboardRevenuePoint {
+	now = now.In(beijingLocation)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, beijingLocation)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, beijingLocation)
+	points := make([]dashboardRevenuePoint, 0, now.Day())
+	for day := monthStart; !day.After(today); day = day.AddDate(0, 0, 1) {
+		label := day.Format("01-02")
+		points = append(points, dashboardRevenuePoint{Label: label, Value: revenueByDay[label]})
+	}
+	return points
+}
+
+func buildTodayOrderDistributions(buckets []dashboardOrderBucket) ([]dashboardOrderTypePoint, []dashboardHourlyPoint) {
+	typeCounts := map[string]int64{}
+	hourCounts := [24]int64{}
+	for _, bucket := range buckets {
+		orderType := strings.ToUpper(strings.TrimSpace(bucket.OrderType))
+		if orderType == "" || bucket.Count <= 0 || bucket.Hour < 0 || bucket.Hour > 23 {
+			continue
+		}
+		typeCounts[orderType] += bucket.Count
+		hourCounts[bucket.Hour] += bucket.Count
+	}
+
+	orderTypes := make([]dashboardOrderTypePoint, 0, len(typeCounts))
+	for _, orderType := range []string{orderTypeDineIn, orderTypeTakeout, orderTypeDelivery} {
+		if count := typeCounts[orderType]; count > 0 {
+			orderTypes = append(orderTypes, dashboardOrderTypePoint{Type: orderType, Value: count})
+			delete(typeCounts, orderType)
+		}
+	}
+	otherTypes := make([]string, 0, len(typeCounts))
+	for orderType := range typeCounts {
+		otherTypes = append(otherTypes, orderType)
+	}
+	sort.Strings(otherTypes)
+	for _, orderType := range otherTypes {
+		orderTypes = append(orderTypes, dashboardOrderTypePoint{Type: orderType, Value: typeCounts[orderType]})
+	}
+
+	hourly := make([]dashboardHourlyPoint, 0, len(hourCounts))
+	for hour, count := range hourCounts {
+		hourly = append(hourly, dashboardHourlyPoint{Hour: fmt.Sprintf("%02d:00", hour), Count: count})
+	}
+	return orderTypes, hourly
+}
+
 func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 	identity := currentIdentity(r.Context())
 	storeID, err := s.tenantStoreID(r, identity.TenantID)
@@ -228,9 +297,8 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		revenueTrend = append(revenueTrend, map[string]any{"label": label, "value": float64(cents) / 100})
 	}
 	trendRows.Close()
-	// Monthly trend: aggregate by range, fill gaps in Go
-	now := time.Now()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	now := time.Now().In(beijingLocation)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, beijingLocation)
 	monthEnd := monthStart.AddDate(0, 1, 0)
 	monthlyRows, err := s.DB.QueryContext(r.Context(),
 		`SELECT DATE_FORMAT(paid_at,'%m-%d'),COALESCE(SUM(paid_cents-refunded_cents),0)
@@ -251,13 +319,13 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		dayMap[label] = float64(cents) / 100
 	}
-	monthlyRows.Close()
-	monthlyTrend := []map[string]any{}
-	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	for d := monthStart; !d.After(todayEnd); d = d.AddDate(0, 0, 1) {
-		key := fmt.Sprintf("%02d-%02d", int(d.Month()), d.Day())
-		monthlyTrend = append(monthlyTrend, map[string]any{"label": key, "value": dayMap[key]})
+	if err = monthlyRows.Err(); err != nil {
+		monthlyRows.Close()
+		handleSQLError(w, err)
+		return
 	}
+	monthlyRows.Close()
+	monthlyTrend := fillMonthlyRevenueTrend(now, dayMap)
 	popularRows, err := s.DB.QueryContext(r.Context(), `SELECT oi.product_name,SUM(oi.quantity) FROM order_items oi JOIN orders o ON o.id=oi.order_id
 		WHERE o.tenant_id=? AND o.store_id=? AND o.paid_at>=DATE_SUB(CURDATE(),INTERVAL 6 DAY)
 		GROUP BY oi.product_name ORDER BY SUM(oi.quantity) DESC LIMIT 5`, identity.TenantID, storeID)
@@ -301,38 +369,39 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		recentOrders = append(recentOrders, row)
 	}
 	recentRows.Close()
-	// Today hourly orders
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, beijingLocation)
 	todayEndDay := todayStart.AddDate(0, 0, 1)
-	hourlyRows, err := s.DB.QueryContext(r.Context(),
-		`SELECT HOUR(created_at),COUNT(*) FROM orders
+	distributionRows, err := s.DB.QueryContext(r.Context(),
+		`SELECT order_type,HOUR(created_at),COUNT(*) FROM orders
 		WHERE tenant_id=? AND store_id=? AND created_at>=? AND created_at<?
-		GROUP BY HOUR(created_at) ORDER BY HOUR(created_at)`,
+		GROUP BY order_type,HOUR(created_at) ORDER BY HOUR(created_at),order_type`,
 		identity.TenantID, storeID, todayStart.Format("2006-01-02 15:04:05"), todayEndDay.Format("2006-01-02 15:04:05"))
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	hourMap := map[int]int{}
-	for hourlyRows.Next() {
-		var h, c int
-		if err = hourlyRows.Scan(&h, &c); err != nil {
-			hourlyRows.Close()
+	buckets := []dashboardOrderBucket{}
+	for distributionRows.Next() {
+		var bucket dashboardOrderBucket
+		if err = distributionRows.Scan(&bucket.OrderType, &bucket.Hour, &bucket.Count); err != nil {
+			distributionRows.Close()
 			handleSQLError(w, err)
 			return
 		}
-		hourMap[h] = c
+		buckets = append(buckets, bucket)
 	}
-	hourlyRows.Close()
-	todayHourly := make([]map[string]any, 24)
-	for i := 0; i < 24; i++ {
-		todayHourly[i] = map[string]any{"hour": fmt.Sprintf("%02d:00", i), "count": hourMap[i]}
+	if err = distributionRows.Err(); err != nil {
+		distributionRows.Close()
+		handleSQLError(w, err)
+		return
 	}
+	distributionRows.Close()
+	todayOrderTypes, todayHourly := buildTodayOrderDistributions(buckets)
 	averageOrderValue := 0.0
 	if paidOrders > 0 {
 		averageOrderValue = float64(todayRevenue) / 100 / float64(paidOrders)
 	}
-	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "monthlyTrend": monthlyTrend, "todayHourly": todayHourly, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
+	writeData(w, http.StatusOK, map[string]any{"store_id": storeID, "today_orders": todayOrders, "today_revenue_cents": todayRevenue, "active_orders": pendingOrders, "today_refunded_cents": refunded, "yesterdayRevenue": float64(yesterdayRevenue) / 100, "averageOrderValue": averageOrderValue, "revenueTrend": revenueTrend, "monthlyTrend": monthlyTrend, "todayOrderTypes": todayOrderTypes, "todayHourly": todayHourly, "popularProducts": popularProducts, "recentOrders": recentOrders, "financials_visible": true})
 }
 
 func (s *Server) tenantStoreID(r *http.Request, tenantID int64) (int64, error) {

@@ -219,11 +219,12 @@ export function MembershipPage() {
   return (
     <div className="page-shell">
       {contextHolder}
-      <PageHeading title="会员管理" description="配置各等级的一次充值金额与会员折扣；完成充值后余额入账，会员商品在小程序展示原价和会员价" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>} />
+      <PageHeading title="会员管理" description="配置只向上升级的会员身份与折扣；等级开通金额进入本金余额，但不参与储值赠送活动" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>} />
       <Card bordered={false} className="content-card member-tabs-card">
         <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
           {
             key: 'levels', label: '会员卡等级', children: <>
+              <Alert type="info" showIcon message="等级按排序值从低到高，只允许向上升级" description="顾客端会隐藏当前及更低等级；“充值开通”金额进入本金余额，但不会叠加会员储值中的赠送金额。" style={{ marginBottom: 16 }} />
               <div className="member-filter-bar"><Typography.Text type="secondary">共 {levels.length} 个等级，覆盖 {memberCount} 位会员</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={() => openLevel()}>新增等级</Button></div>
               <Table<MemberLevel> rowKey="id" loading={loading} dataSource={levels} columns={[
                 { title: '等级', render: (_, item) => <Space><CrownOutlined style={{ color: '#b77a3d' }} /><strong>{item.name}</strong>{item.is_default && <Tag color="gold">默认</Tag>}</Space> },

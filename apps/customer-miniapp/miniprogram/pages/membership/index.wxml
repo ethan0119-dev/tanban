@@ -5,15 +5,17 @@
     <text wx:if="{{membership.member && membership.member.memberNo}}">会员号 {{membership.member.memberNo}}</text>
     <view class="balance-row" wx:if="{{membership.card && membership.card.showBalance}}"><view><text>账户余额</text><text>¥{{(membership.member ? membership.member.balanceCents : 0) / 100}}</text></view><button bindtap="goRecharge">去充值</button></view>
   </view>
-  <view class="section-heading" wx:if="{{levels.length}}"><text>会员等级</text><text>开通金额将进入账户余额</text></view>
+  <view class="section-heading" wx:if="{{levels.length}}"><text>{{hasCurrentLevel ? '可升级等级' : '会员等级'}}</text><text>只支持向更高等级升级</text></view>
   <view class="level-list" wx:if="{{levels.length}}">
     <view class="level-card {{item.current ? 'current' : ''}}" wx:for="{{levels}}" wx:key="id">
       <view class="level-main"><view><text>{{item.name}}</text><text>{{item.current ? '当前等级' : item.discountText}}</text></view><text>{{item.rechargeText}}</text></view>
       <view class="level-benefits"><text>{{item.validityText}}</text><text wx:if="{{item.discountPercent < 100}}">参与会员折扣的商品按 {{item.discountText}} 结算</text><text wx:else>享受门店会员专属权益</text></view>
-      <button loading="{{purchasing}}" disabled="{{purchasing || item.current || !item.purchasable}}" data-id="{{item.id}}" bindtap="chooseLevel">{{item.current ? '当前等级' : (!item.purchasable ? '成长值升级' : (item.rechargeCents ? '立即开通' : '免费开通'))}}</button>
+      <button loading="{{purchasing}}" disabled="{{purchasing || !item.purchasable}}" data-id="{{item.id}}" bindtap="chooseLevel">{{!item.purchasable ? '成长值升级' : (item.rechargeCents ? (hasCurrentLevel ? '充值升级' : '充值开通') : (hasCurrentLevel ? '免费升级' : '免费开通'))}}</button>
     </view>
   </view>
+  <view class="highest-level" wx:elif="{{highestLevelReached}}"><text>已达最高等级</text><text>当前没有更高等级需要开通，低于或等于当前等级的卡片已自动隐藏。</text></view>
   <view class="empty" wx:elif="{{loading}}">正在加载会员权益…</view>
   <view class="empty" wx:else>当前门店暂未配置可开通的会员等级</view>
+  <view class="member-note"><text>会员与储值说明</text><text>会员等级只允许向上升级；等级开通金额全部进入本金余额。储值中心的充值档位可重复购买并可能赠送金额，但不会降低或切换到更低会员等级。</text></view>
   <view class="member-note"><text>结账说明</text><text>会员折扣由服务端按商品配置自动核算；余额足够支付整单时会优先使用余额，余额不足时使用门店线上支付。</text></view>
 </view>

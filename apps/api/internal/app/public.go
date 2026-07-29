@@ -88,17 +88,18 @@ func (s *Server) publicMembership(w http.ResponseWriter, r *http.Request) {
 		var memberID sql.NullInt64
 		var memberNo, levelName string
 		var levelID sql.NullInt64
+		var levelRank sql.NullInt64
 		var principal, bonus int64
-		memberErr := s.DB.QueryRowContext(r.Context(), `SELECT m.id,COALESCE(m.member_no,''),m.current_level_id,COALESCE(l.name,''),
+		memberErr := s.DB.QueryRowContext(r.Context(), `SELECT m.id,COALESCE(m.member_no,''),m.current_level_id,COALESCE(l.name,''),l.rank_no,
 			COALESCE(ba.principal_cents,0),COALESCE(ba.bonus_cents,0)
 			FROM customers c
 			LEFT JOIN members m ON m.tenant_id=c.tenant_id AND m.customer_id=c.id AND m.status='ACTIVE'
 			LEFT JOIN member_levels l ON l.tenant_id=m.tenant_id AND l.id=m.current_level_id AND l.status='ACTIVE' AND l.deleted_at IS NULL
 			LEFT JOIN balance_accounts ba ON ba.tenant_id=c.tenant_id AND ba.customer_id=c.id
 			WHERE c.tenant_id=? AND c.id=? AND c.status='ACTIVE' AND c.deleted_at IS NULL`,
-			store.TenantID, session.CustomerID).Scan(&memberID, &memberNo, &levelID, &levelName, &principal, &bonus)
+			store.TenantID, session.CustomerID).Scan(&memberID, &memberNo, &levelID, &levelName, &levelRank, &principal, &bonus)
 		if memberErr == nil {
-			view["member"] = map[string]any{"memberId": memberID.Int64, "memberNo": memberNo, "levelId": levelID.Int64, "levelName": levelName, "principalCents": principal, "bonusCents": bonus, "balanceCents": principal + bonus}
+			view["member"] = map[string]any{"memberId": memberID.Int64, "memberNo": memberNo, "levelId": levelID.Int64, "levelName": levelName, "levelRank": levelRank.Int64, "principalCents": principal, "bonusCents": bonus, "balanceCents": principal + bonus}
 		} else if !errors.Is(memberErr, sql.ErrNoRows) {
 			handleSQLError(w, memberErr)
 			return

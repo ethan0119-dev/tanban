@@ -74,6 +74,8 @@ Page({
     pickerOptionGroups: [] as ProductOptionGroup[],
     pickerModifierGroups: [] as ModifierGroup[],
     pickerPrice: 0,
+    pickerOriginalPrice: 0,
+    pickerHasMemberPrice: false,
     decoration: defaultDecoration() as DecorationConfig,
     appearanceStyle: "",
     menuLayoutClass: "category-left product-list-view density-comfortable",
@@ -275,7 +277,9 @@ Page({
     const sku = this.data.selectableSkus.find((item) => item.id === this.data.selectedSkuId);
     const optionDelta = this.data.pickerOptionGroups.reduce((sum, group) => sum + group.values.filter((value) => value.selected).reduce((valueSum, value) => valueSum + value.priceDeltaCents, 0), 0);
     const modifierDelta = this.data.pickerModifierGroups.reduce((sum, group) => sum + group.items.filter((item) => item.selected).reduce((itemSum, item) => itemSum + item.priceCents, 0), 0);
-    this.setData({ pickerPrice: memberPriceFor(product, (sku?.price ?? product.price) + optionDelta + modifierDelta) });
+    const pickerOriginalPrice = (sku?.price ?? product.price) + optionDelta + modifierDelta;
+    const pickerPrice = memberPriceFor(product, pickerOriginalPrice);
+    this.setData({ pickerPrice, pickerOriginalPrice, pickerHasMemberPrice: pickerPrice < pickerOriginalPrice });
   },
   confirmConfiguredProduct() {
     const product = this.data.selectingProduct;
@@ -326,7 +330,7 @@ Page({
   },
   closeCart() { this.setData({ cartVisible: false }); },
   closeSkuPicker() {
-    this.setData({ selectingProduct: null, selectableSkus: [], selectedSkuId: 0, pickerOptionGroups: [], pickerModifierGroups: [], pickerPrice: 0 });
+    this.setData({ selectingProduct: null, selectableSkus: [], selectedSkuId: 0, pickerOptionGroups: [], pickerModifierGroups: [], pickerPrice: 0, pickerOriginalPrice: 0, pickerHasMemberPrice: false });
   },
   showStoreInfo() { this.setData({ storeInfoVisible: true }); },
   closeStoreInfo() { this.setData({ storeInfoVisible: false }); },
