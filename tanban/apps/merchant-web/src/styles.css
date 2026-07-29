@@ -255,12 +255,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .order-work-card-head { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .order-work-card-scene { display: flex; align-items: center; gap: 18px; margin: 20px 0 16px; padding: 20px; border-radius: 18px; background: linear-gradient(135deg, #edf3f7, #f7fafc); }
 .order-work-card.takeout .order-work-card-scene { background: linear-gradient(135deg, #fff3df, #fffaf1); }
-.order-work-card-icon { width: 68px; height: 68px; flex: 0 0 68px; display: grid; place-items: center; border-radius: 20px; color: #4b7798; background: #fff; box-shadow: 0 7px 20px rgba(55, 92, 121, .11); font-size: 31px; }
+.order-work-card-icon { width: 68px; height: 68px; flex: 0 0 68px; display: grid; place-items: center; border-radius: 20px; color: #4b7798; background: #fff; box-shadow: 0 7px 20px rgba(55, 92, 121, .11); font-size: 31px; overflow: hidden; word-break: break-all; }
+.order-work-card.dine-in .order-work-card-icon { width: 82px; height: 72px; flex: 0 0 82px; color: #8b5e3c; background: linear-gradient(135deg, #f8e8d6, #f5dac0); font-size: 28px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; box-shadow: 0 7px 20px rgba(146, 100, 50, .15); }
 .order-work-card.takeout .order-work-card-icon { color: #bd7327; box-shadow: 0 7px 20px rgba(146, 90, 31, .11); }
 .order-work-card-scene small, .order-work-card-scene strong, .order-work-card-scene span { display: block; }
 .order-work-card-scene small { color: #8a817b; font-size: 11px; }
 .order-work-card-scene strong { margin: 1px 0 2px; color: #352b25; font-size: 29px; line-height: 1.25; }
-.order-work-card-table-no { display: inline !important; font-weight: 400; font-size: 22px; opacity: 0.75; }
 .order-work-card-scene span { color: #83776f; font-size: 12px; }
 .order-work-card-products { display: flex; align-items: flex-start; gap: 9px; min-height: 45px; color: #685d56; line-height: 1.65; }
 .order-work-card-products .anticon { margin-top: 4px; color: #aa6b45; }

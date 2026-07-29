@@ -101,10 +101,10 @@ function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order)
         {order.settlementMode === 'PAY_AFTER' && order.paymentStatus === 'UNPAID' ? <Tag color="error">待结账</Tag> : <OrderStatusTag status={order.status} />}
       </div>
       <div className="order-work-card-scene">
-        <span className="order-work-card-icon">{dineIn ? <TableOutlined /> : <NumberOutlined />}</span>
+        <span className="order-work-card-icon">{dineIn ? order.tableNo || <TableOutlined /> : <NumberOutlined />}</span>
         <div>
           <small>{dineIn ? '当前桌台' : '取餐号'}</small>
-          <strong>{dineIn ? <>{order.tableName || '未绑定桌台'}{order.tableNo && <span className="order-work-card-table-no">（{order.tableNo}）</span>}</> : `#${order.pickupNo || '--'}`}</strong>
+          <strong>{dineIn ? (order.tableName || '未绑定桌台') : `#${order.pickupNo || '--'}`}</strong>
           <span>{orderSceneLabel(order)}</span>
         </div>
       </div>
