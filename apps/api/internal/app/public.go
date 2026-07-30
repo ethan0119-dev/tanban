@@ -35,6 +35,8 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Post("/orders/{orderNo}/payments", s.publicPayOrder)
 	r.Post("/payments/{paymentID}/mock-confirm", s.publicMockConfirm)
 	r.Get("/customer/orders", s.publicCustomerOrders)
+	r.Get("/website-settings", s.getPublicWebsiteSettings)
+	r.Post("/leads", s.submitCustomerLead)
 	s.registerPublicMarketingRoutes(r)
 }
 
