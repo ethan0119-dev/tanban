@@ -20,7 +20,9 @@ type pendingOnboardingItem struct {
 	OperatorName      string `json:"operatorName"`
 	ContactPhone      string `json:"contactPhone"`
 	ApplicationStatus string `json:"applicationStatus"`
+	PlatformNote      string `json:"platformNote"`
 	SubmittedAt       string `json:"submittedAt"`
+	UpdatedAt         string `json:"updatedAt"`
 }
 
 type wechatOnboardingApplication struct {
@@ -276,13 +278,27 @@ func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listPendingWechatOnboarding(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT w.tenant_id, t.name, COALESCE(t.code,''),
+	status := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
+	query := `SELECT w.tenant_id, t.name, COALESCE(t.code,''),
 		w.subject_type, w.merchant_short_name, w.operator_name, w.contact_phone,
-		w.application_status, COALESCE(DATE_FORMAT(w.submitted_at,'%Y-%m-%d %H:%i:%s'),'')
+		w.application_status, COALESCE(w.platform_note,''),
+		COALESCE(DATE_FORMAT(w.submitted_at,'%Y-%m-%d %H:%i:%s'),''),
+		DATE_FORMAT(w.updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM wechat_pay_onboarding_applications w
-		JOIN tenants t ON t.id = w.tenant_id AND t.deleted_at IS NULL
-		WHERE w.application_status = 'PENDING_PLATFORM_REVIEW'
-		ORDER BY w.submitted_at ASC`)
+		JOIN tenants t ON t.id = w.tenant_id AND t.deleted_at IS NULL`
+	args := []any{}
+	if status != "" && status != "ALL" {
+		if !validStatus(status, "PENDING_PLATFORM_REVIEW", "SUBMITTED_TO_WECHAT", "NEEDS_INFO", "FINISHED") {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status filter")
+			return
+		}
+		query += " WHERE w.application_status = ?"
+		args = append(args, status)
+	} else {
+		query += " WHERE w.application_status != 'DRAFT'"
+	}
+	query += " ORDER BY w.updated_at DESC"
+	rows, err := s.DB.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -294,7 +310,7 @@ func (s *Server) listPendingWechatOnboarding(w http.ResponseWriter, r *http.Requ
 		var item pendingOnboardingItem
 		if err := rows.Scan(&item.TenantID, &item.TenantName, &item.TenantCode,
 			&item.SubjectType, &item.MerchantShortName, &item.OperatorName, &item.ContactPhone,
-			&item.ApplicationStatus, &item.SubmittedAt); err != nil {
+			&item.ApplicationStatus, &item.PlatformNote, &item.SubmittedAt, &item.UpdatedAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}

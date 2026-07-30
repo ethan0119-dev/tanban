@@ -102,6 +102,7 @@ export function TenantsPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [miniAppOpen, setMiniAppOpen] = useState(false);
   const [miniAppLoading, setMiniAppLoading] = useState(false);
+  const [reviewApproveOpen, setReviewApproveOpen] = useState(false);
   const [reviewRejectOpen, setReviewRejectOpen] = useState(false);
   const [reviewRejectNote, setReviewRejectNote] = useState('');
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -288,6 +289,7 @@ export function TenantsPage() {
     try {
       await tenantService.reviewOnboarding(selected.id, action, note);
       messageApi.success(action === 'approve' ? '已通过审核' : '已驳回');
+      setReviewApproveOpen(false);
       setReviewRejectOpen(false);
       setReviewRejectNote('');
       paymentForm.setFieldsValue(await tenantService.getPaymentSettings(selected.id));
@@ -518,8 +520,7 @@ export function TenantsPage() {
                       type="primary"
                       size="small"
                       icon={<CheckCircleOutlined />}
-                      loading={reviewSaving}
-                      onClick={() => void reviewOnboarding('approve')}
+                      onClick={() => setReviewApproveOpen(true)}
                     >通过</Button>
                     <Button
                       danger
@@ -550,6 +551,25 @@ export function TenantsPage() {
             </>}
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="确认通过审核"
+        open={reviewApproveOpen}
+        okText="确认通过"
+        onOk={() => void reviewOnboarding('approve')}
+        onCancel={() => setReviewApproveOpen(false)}
+        confirmLoading={reviewSaving}
+      >
+        {selected && paymentForm.getFieldValue('onboardingApplication') && (
+          <div>
+            <p>确认通过以下商户的微信支付进件申请？</p>
+            <p><strong>商户：</strong>{selected.name}</p>
+            <p><strong>商户简称：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'merchantShortName'])}</p>
+            <p><strong>经营者：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'operatorName'])}</p>
+            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为"微信支付审核中"。</p>
+          </div>
+        )}
       </Modal>
 
       <Modal

@@ -160,7 +160,9 @@ export interface PendingOnboardingApplication {
   operatorName: string;
   contactPhone: string;
   applicationStatus: string;
+  platformNote: string;
   submittedAt: string;
+  updatedAt: string;
 }
 
 export interface TenantMiniAppSettings {
