@@ -15,6 +15,7 @@ const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage').then(
 const PrinterProvidersPage = lazy(() => import('./pages/PrinterProvidersPage').then((module) => ({ default: module.PrinterProvidersPage })));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })));
 const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage').then((module) => ({ default: module.AnnouncementsPage })));
+const OnboardingReviewPage = lazy(() => import('./pages/OnboardingReviewPage').then((module) => ({ default: module.OnboardingReviewPage })));
 
 function RouteLoader() {
   return <div className="route-loading"><Spin size="large" /></div>;
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/users" element={<PlatformAdminOnly><UsersPage /></PlatformAdminOnly>} />
           <Route path="/tenants" element={<TenantsPage />} />
+          <Route path="/onboarding-review" element={<OnboardingReviewPage />} />
           <Route path="/announcements" element={<AnnouncementsPage />} />
           <Route path="/settings/payment" element={<PaymentSettingsPage />} />
           <Route path="/settings/system" element={<SystemSettingsPage />} />

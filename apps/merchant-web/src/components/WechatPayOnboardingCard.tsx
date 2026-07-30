@@ -133,7 +133,18 @@ export function WechatPayOnboardingCard() {
         message="当前先提交进件预审资料"
         description="身份证照片、完整身份证号和银行卡号属于高度敏感信息，当前页面不会收集或写入普通图库。平台开通小微进件权限并完成专用加密存储后，再通过安全步骤补充并提交微信支付。"
       />}
-      {application.platformNote && <Alert style={{ marginTop: 12 }} type="warning" showIcon message="平台反馈" description={application.platformNote} />}
+      {application.applicationStatus === 'NEEDS_INFO' && application.platformNote && (
+        <Alert
+          style={{ marginTop: 12 }}
+          type="error"
+          showIcon
+          message="申请被驳回"
+          description={<>驳回原因：{application.platformNote}<br />请修改上述资料后重新提交审核。</>}
+        />
+      )}
+      {application.applicationStatus !== 'NEEDS_INFO' && application.platformNote && (
+        <Alert style={{ marginTop: 12 }} type="warning" showIcon message="平台反馈" description={application.platformNote} />
+      )}
 
       <Form form={form} layout="vertical" disabled={locked} style={{ marginTop: 20 }}>
         <Typography.Title level={5}><ShopOutlined /> 主体与经营场景</Typography.Title>

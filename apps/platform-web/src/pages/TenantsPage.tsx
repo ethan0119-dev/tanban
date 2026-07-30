@@ -1,4 +1,4 @@
-import { AppstoreOutlined, BankOutlined, CalendarOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, BankOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
   Alert,
@@ -102,6 +102,9 @@ export function TenantsPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [miniAppOpen, setMiniAppOpen] = useState(false);
   const [miniAppLoading, setMiniAppLoading] = useState(false);
+  const [reviewRejectOpen, setReviewRejectOpen] = useState(false);
+  const [reviewRejectNote, setReviewRejectNote] = useState('');
+  const [reviewSaving, setReviewSaving] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
   const [ownerForm] = Form.useForm<OwnerFormValues>();
   const [expirationForm] = Form.useForm<{ expiresAt?: Dayjs }>();
@@ -276,6 +279,23 @@ export function TenantsPage() {
       messageApi.error(error instanceof Error ? error.message : '支付配置保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const reviewOnboarding = async (action: 'approve' | 'reject', note?: string) => {
+    if (!selected) return;
+    setReviewSaving(true);
+    try {
+      await tenantService.reviewOnboarding(selected.id, action, note);
+      messageApi.success(action === 'approve' ? '已通过审核' : '已驳回');
+      setReviewRejectOpen(false);
+      setReviewRejectNote('');
+      paymentForm.setFieldsValue(await tenantService.getPaymentSettings(selected.id));
+      await load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '审核操作失败');
+    } finally {
+      setReviewSaving(false);
     }
   };
 
@@ -485,13 +505,31 @@ export function TenantsPage() {
         <Form form={paymentForm} layout="vertical" requiredMark={false}>
           <Alert type="info" showIcon message="商户端无需填写支付密钥" description="服务商证书和 APIv3 密钥由平台统一保管。商户这里只绑定微信支付特约商户号，并记录进件、产品授权和退款授权状态。" style={{ marginBottom: 16 }} />
           {paymentForm.getFieldValue('onboardingApplication') && <Alert
-            type="info"
+            type={paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) === 'PENDING_PLATFORM_REVIEW' ? 'warning' : 'info'}
             showIcon
             message={`商户已提交微信支付预审：${paymentForm.getFieldValue(['onboardingApplication', 'merchantShortName']) || '未命名商户'}`}
             description={
-              <Space direction="vertical" size={2}>
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
                 <span>主体：{{ MICRO: '小微商户', INDIVIDUAL: '个体工商户', ENTERPRISE: '企业' }[paymentForm.getFieldValue(['onboardingApplication', 'subjectType']) as string] || '—'}；经营者：{paymentForm.getFieldValue(['onboardingApplication', 'operatorName']) || '—'}</span>
                 <span>申请状态：{paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) || '—'}；提交时间：{paymentForm.getFieldValue(['onboardingApplication', 'submittedAt']) || '—'}</span>
+                {paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) === 'PENDING_PLATFORM_REVIEW' && (
+                  <Space style={{ marginTop: 8 }}>
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CheckCircleOutlined />}
+                      loading={reviewSaving}
+                      onClick={() => void reviewOnboarding('approve')}
+                    >通过</Button>
+                    <Button
+                      danger
+                      size="small"
+                      icon={<CloseCircleOutlined />}
+                      loading={reviewSaving}
+                      onClick={() => { setReviewRejectNote(''); setReviewRejectOpen(true); }}
+                    >驳回</Button>
+                  </Space>
+                )}
               </Space>
             }
             style={{ marginBottom: 16 }}
@@ -512,6 +550,26 @@ export function TenantsPage() {
             </>}
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={`驳回进件申请 · ${selected?.name || ''}`}
+        open={reviewRejectOpen}
+        okText="确认驳回"
+        okButtonProps={{ danger: true, disabled: !reviewRejectNote.trim() }}
+        onOk={() => void reviewOnboarding('reject', reviewRejectNote.trim())}
+        onCancel={() => { setReviewRejectOpen(false); setReviewRejectNote(''); }}
+        confirmLoading={reviewSaving}
+      >
+        <p>请填写驳回原因，商户将看到此内容并修改后重新提交：</p>
+        <Input.TextArea
+          rows={4}
+          placeholder="例如：经营者姓名与身份证不一致，请核对后重新提交"
+          value={reviewRejectNote}
+          onChange={(event) => setReviewRejectNote(event.target.value)}
+          maxLength={500}
+          showCount
+        />
       </Modal>
 
       <Modal title={`小程序配置 · ${selected?.name || ''}`} open={miniAppOpen} width={720} okText="保存小程序配置" onCancel={() => setMiniAppOpen(false)} onOk={() => void saveMiniAppSettings()} confirmLoading={saving} okButtonProps={{ disabled: miniAppLoading }}>

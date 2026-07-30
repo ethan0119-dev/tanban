@@ -6,6 +6,23 @@ import (
 	"strings"
 )
 
+type wechatOnboardingReviewInput struct {
+	Action string `json:"action"`
+	Note   string `json:"note"`
+}
+
+type pendingOnboardingItem struct {
+	TenantID          int64  `json:"tenantId"`
+	TenantName        string `json:"tenantName"`
+	TenantCode        string `json:"tenantCode"`
+	SubjectType       string `json:"subjectType"`
+	MerchantShortName string `json:"merchantShortName"`
+	OperatorName      string `json:"operatorName"`
+	ContactPhone      string `json:"contactPhone"`
+	ApplicationStatus string `json:"applicationStatus"`
+	SubmittedAt       string `json:"submittedAt"`
+}
+
 type wechatOnboardingApplication struct {
 	SubjectType                string `json:"subjectType"`
 	BusinessScene              string `json:"businessScene"`
@@ -176,4 +193,116 @@ func (s *Server) submitMerchantWechatOnboarding(w http.ResponseWriter, r *http.R
 	s.audit(r.Context(), actor, "merchant.wechat_onboarding.submit", "tenant", int64String(actor.TenantID),
 		map[string]any{"subject_type": input.SubjectType, "business_scene": input.BusinessScene}, r)
 	s.getMerchantWechatOnboarding(w, r)
+}
+
+func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var input wechatOnboardingReviewInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
+	input.Note = strings.TrimSpace(input.Note)
+
+	if input.Action != "approve" && input.Action != "reject" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "action must be approve or reject")
+		return
+	}
+	if input.Action == "reject" && input.Note == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "驳回时必须填写驳回原因")
+		return
+	}
+
+	var currentStatus string
+	err := s.DB.QueryRowContext(r.Context(),
+		"SELECT application_status FROM wechat_pay_onboarding_applications WHERE tenant_id=?", tenantID).
+		Scan(&currentStatus)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "进件申请不存在")
+		return
+	}
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if currentStatus != "PENDING_PLATFORM_REVIEW" {
+		writeError(w, http.StatusConflict, "CONFLICT", "该申请当前不在待审核状态")
+		return
+	}
+
+	var newAppStatus, newTenantStatus string
+	if input.Action == "approve" {
+		newAppStatus = "SUBMITTED_TO_WECHAT"
+		newTenantStatus = "REVIEWING"
+	} else {
+		newAppStatus = "NEEDS_INFO"
+		newTenantStatus = "REJECTED"
+	}
+
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE wechat_pay_onboarding_applications SET application_status=?, platform_note=? WHERE tenant_id=?",
+		newAppStatus, input.Note, tenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE tenants SET payment_onboarding_status=? WHERE id=? AND deleted_at IS NULL",
+		newTenantStatus, tenantID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+
+	auditAction := "platform.wechat_onboarding.approve"
+	if input.Action == "reject" {
+		auditAction = "platform.wechat_onboarding.reject"
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), auditAction, "tenant", int64String(tenantID),
+		map[string]any{"note": input.Note}, r)
+	s.getTenantPaymentSettings(w, r)
+}
+
+func (s *Server) listPendingWechatOnboarding(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT w.tenant_id, t.name, COALESCE(t.code,''),
+		w.subject_type, w.merchant_short_name, w.operator_name, w.contact_phone,
+		w.application_status, COALESCE(DATE_FORMAT(w.submitted_at,'%Y-%m-%d %H:%i:%s'),'')
+		FROM wechat_pay_onboarding_applications w
+		JOIN tenants t ON t.id = w.tenant_id AND t.deleted_at IS NULL
+		WHERE w.application_status = 'PENDING_PLATFORM_REVIEW'
+		ORDER BY w.submitted_at ASC`)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer rows.Close()
+
+	items := []pendingOnboardingItem{}
+	for rows.Next() {
+		var item pendingOnboardingItem
+		if err := rows.Scan(&item.TenantID, &item.TenantName, &item.TenantCode,
+			&item.SubjectType, &item.MerchantShortName, &item.OperatorName, &item.ContactPhone,
+			&item.ApplicationStatus, &item.SubmittedAt); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	writeData(w, http.StatusOK, items)
 }

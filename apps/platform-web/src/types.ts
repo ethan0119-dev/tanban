@@ -151,6 +151,18 @@ export interface TenantPaymentSettings {
   };
 }
 
+export interface PendingOnboardingApplication {
+  tenantId: number;
+  tenantName: string;
+  tenantCode: string;
+  subjectType: string;
+  merchantShortName: string;
+  operatorName: string;
+  contactPhone: string;
+  applicationStatus: string;
+  submittedAt: string;
+}
+
 export interface TenantMiniAppSettings {
   primaryMode: 'PUBLIC' | 'DEDICATED';
   publicEnabled: boolean;
