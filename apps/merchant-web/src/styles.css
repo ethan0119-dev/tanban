@@ -161,7 +161,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .trend-down, .danger, .refund-amount, .stock-low { color: #c75149 !important; }
 .dashboard-grid { margin-top: 16px; }
 .dashboard-grid .content-card { height: 100%; min-height: 360px; }
-.trend-chart { height: 270px; display: flex; align-items: flex-end; justify-content: space-around; gap: 12px; padding: 20px 8px 0; }
+.trend-chart { height: 270px; display: flex; align-items: flex-end; justify-content: center; gap: 12px; padding: 20px 8px 0; }
 .chart-contained { height: 100%; display: flex; align-items: center; justify-content: center; }
 .trend-column { height: 100%; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 44px; }
 .trend-value { opacity: 0; font-size: 11px; transition: opacity .2s; }
