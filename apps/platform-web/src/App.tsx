@@ -16,8 +16,6 @@ const PrinterProvidersPage = lazy(() => import('./pages/PrinterProvidersPage').t
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })));
 const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage').then((module) => ({ default: module.AnnouncementsPage })));
 const OnboardingReviewPage = lazy(() => import('./pages/OnboardingReviewPage').then((module) => ({ default: module.OnboardingReviewPage })));
-const WebsiteSettingsPage = lazy(() => import('./pages/WebsiteSettingsPage').then((module) => ({ default: module.WebsiteSettingsPage })));
-const CustomerLeadsPage = lazy(() => import('./pages/CustomerLeadsPage').then((module) => ({ default: module.CustomerLeadsPage })));
 
 function RouteLoader() {
   return <div className="route-loading"><Spin size="large" /></div>;
@@ -47,8 +45,6 @@ export default function App() {
           <Route path="/tenants" element={<TenantsPage />} />
           <Route path="/onboarding-review" element={<OnboardingReviewPage />} />
           <Route path="/announcements" element={<AnnouncementsPage />} />
-          <Route path="/website-settings" element={<WebsiteSettingsPage />} />
-          <Route path="/customer-leads" element={<CustomerLeadsPage />} />
           <Route path="/settings/payment" element={<PaymentSettingsPage />} />
           <Route path="/settings/system" element={<SystemSettingsPage />} />
           <Route path="/settings/printers" element={<PrinterProvidersPage />} />

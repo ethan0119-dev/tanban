@@ -2,18 +2,15 @@ import {
   AuditOutlined,
   BankOutlined,
   DashboardOutlined,
-  GlobalOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   NotificationOutlined,
-  PictureOutlined,
   PrinterOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShopOutlined,
   TeamOutlined,
-  UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { Avatar, Button, Dropdown, Grid, Layout, Menu, Space, Tag, Typography } from 'antd';
@@ -32,15 +29,6 @@ const allMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/tenants', label: <Link to="/tenants">商户管理</Link>, icon: <ShopOutlined /> },
   { key: '/onboarding-review', label: <Link to="/onboarding-review">进件审核</Link>, icon: <SafetyCertificateOutlined /> },
   { key: '/announcements', label: <Link to="/announcements">通知中心</Link>, icon: <NotificationOutlined /> },
-  {
-    key: 'website',
-    label: '官网管理',
-    icon: <GlobalOutlined />,
-    children: [
-      { key: '/website-settings', label: <Link to="/website-settings">网站维护</Link>, icon: <PictureOutlined /> },
-      { key: '/customer-leads', label: <Link to="/customer-leads">客户线索</Link>, icon: <UserAddOutlined /> },
-    ],
-  },
   {
     key: 'configuration',
     label: '平台配置',
