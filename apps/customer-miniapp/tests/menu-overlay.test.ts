@@ -33,10 +33,13 @@ describe("menu overlays", () => {
   });
 
   it("shows member prices consistently without crowding the recommended action", () => {
-    expect(menuTemplate).toContain('class="sku-option-price" wx:if="{{item.memberPrice !== undefined && item.memberPrice < item.price}}"');
-    expect(menuTemplate).toContain("{{pickerHasMemberPrice ? '本份会员价' : '本份预计'}}");
-    expect(menuTemplate).toContain('class="configuration-original-price" wx:if="{{pickerHasMemberPrice}}"');
-    expect(menuStyles).toMatch(/\.recommended-card-footer > \.member-price-line \{[^}]*flex-direction: column;[^}]*overflow: hidden;/);
-    expect(menuStyles).toMatch(/\.sku-option-price text:last-child \{[^}]*text-decoration: line-through;/);
+    expect(menuTemplate).toContain('label="VIP" variant="stacked"');
+    expect(menuTemplate).toContain('label="VIP" variant="option"');
+    expect(menuTemplate).toContain('variant="summary"');
+    expect(menuTemplate).toContain("{{pickerHasMemberPrice ? '本份价格' : '本份预计'}}");
+    expect(menuTemplate).not.toContain('class="member-price-badge"');
+    expect(menuStyles).toMatch(/\.recommended-card-footer \{[^}]*position: relative;[^}]*display: block;[^}]*min-height: 88rpx;/);
+    expect(menuStyles).toMatch(/\.recommended-card-footer > member-price \{[^}]*position: absolute;[^}]*right: 14rpx;[^}]*left: 14rpx;[^}]*overflow: visible;/);
+    expect(menuStyles).toMatch(/\.recommended-card button \{[^}]*position: absolute;[^}]*right: 14rpx;[^}]*bottom: 0;/);
   });
 });

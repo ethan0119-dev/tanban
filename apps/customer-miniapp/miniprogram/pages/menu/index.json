@@ -1,1 +1,7 @@
-{ "navigationBarTitleText": "点单", "enablePullDownRefresh": true }
+{
+  "navigationBarTitleText": "点单",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "member-price": "/components/member-price/index"
+  }
+}

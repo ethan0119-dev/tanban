@@ -1,0 +1,136 @@
+:host {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.member-price {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.member-price__offer {
+  display: inline-flex;
+  min-width: 0;
+  flex: none;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1rpx solid rgba(76, 52, 44, .12);
+  border-radius: 8rpx;
+  box-shadow: 0 2rpx 8rpx rgba(76, 52, 44, .08);
+}
+
+.member-price__label,
+.member-price__amount {
+  display: flex;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.member-price__label {
+  padding: 0 9rpx;
+  background: #3f302b;
+  color: #f5dfa5;
+  font-size: 18rpx;
+  font-weight: 700;
+  letter-spacing: .5rpx;
+}
+
+.member-price__amount {
+  padding: 0 10rpx;
+  background: #f0dda6;
+  color: #3f302b;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.member-price__original {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted, #8a7d75);
+  font-size: 20rpx;
+  line-height: 1.2;
+  text-decoration: line-through;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-price--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4rpx;
+  line-height: 1.1;
+}
+
+.member-price--stacked .member-price__label {
+  padding: 0 7rpx;
+  font-size: 16rpx;
+}
+
+.member-price--stacked .member-price__amount {
+  padding: 0 8rpx;
+  font-size: 22rpx;
+}
+
+.member-price--stacked .member-price__original {
+  display: block;
+  max-width: 100%;
+  font-size: 18rpx;
+}
+
+.member-price--option {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3rpx;
+}
+
+.member-price--option .member-price__label,
+.member-price--option .member-price__amount {
+  height: 30rpx;
+}
+
+.member-price--option .member-price__label {
+  padding: 0 6rpx;
+  font-size: 15rpx;
+}
+
+.member-price--option .member-price__amount {
+  padding: 0 7rpx;
+  font-size: 20rpx;
+}
+
+.member-price--option .member-price__original {
+  font-size: 17rpx;
+}
+
+.member-price--summary .member-price__label,
+.member-price--summary .member-price__amount {
+  height: 42rpx;
+}
+
+.member-price--summary .member-price__label {
+  padding: 0 11rpx;
+  font-size: 20rpx;
+}
+
+.member-price--summary .member-price__amount {
+  padding: 0 13rpx;
+  font-size: 29rpx;
+}
+
+.member-price--summary .member-price__original {
+  font-size: 21rpx;
+}
+
+.is-selected .member-price__original {
+  color: var(--on-primary, #fff);
+  opacity: .82;
+}

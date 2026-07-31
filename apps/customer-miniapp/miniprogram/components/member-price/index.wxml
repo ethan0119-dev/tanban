@@ -1,0 +1,11 @@
+<view
+  class="member-price member-price--{{variant}} {{selected ? 'is-selected' : ''}}"
+  role="text"
+  aria-label="{{label}} ¥{{memberPrice / 100}}{{showOriginal && originalPrice > memberPrice ? '，原价 ¥' + originalPrice / 100 : ''}}"
+>
+  <view class="member-price__offer">
+    <text class="member-price__label">{{label}}</text>
+    <text class="member-price__amount">¥{{memberPrice / 100}}</text>
+  </view>
+  <text class="member-price__original" wx:if="{{showOriginal && originalPrice > memberPrice}}">¥{{originalPrice / 100}}</text>
+</view>
