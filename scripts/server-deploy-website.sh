@@ -6,6 +6,7 @@ WEBSITE_SERVICE="${WEBSITE_SERVICE:-tanban-website.service}"
 WEBSITE_READY_URL="${WEBSITE_READY_URL:-http://127.0.0.1:18100/}"
 WEBSITE_READY_TIMEOUT="${WEBSITE_READY_TIMEOUT:-60}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lock/tanban-website-deploy.lock}"
+NODE_RUNTIME_BIN_DIR="${NODE_RUNTIME_BIN_DIR:-/opt/node-v22/bin}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -25,6 +26,21 @@ read_env_value() {
   fi
   printf '%s' "$value"
 }
+
+if [[ "$NODE_RUNTIME_BIN_DIR" != /* || "$NODE_RUNTIME_BIN_DIR" == "/" || "$NODE_RUNTIME_BIN_DIR" == *".."* ]]; then
+  echo "NODE_RUNTIME_BIN_DIR must be a specific absolute path: $NODE_RUNTIME_BIN_DIR" >&2
+  exit 1
+fi
+if [[ ! -x "$NODE_RUNTIME_BIN_DIR/node" || ! -x "$NODE_RUNTIME_BIN_DIR/npm" ]]; then
+  echo "missing isolated Node.js runtime in $NODE_RUNTIME_BIN_DIR" >&2
+  exit 1
+fi
+export PATH="$NODE_RUNTIME_BIN_DIR:$PATH"
+node_major="$(node --version | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')"
+if [[ -z "$node_major" || "$node_major" -lt 22 ]]; then
+  echo "Tanban website requires Node.js 22 or newer" >&2
+  exit 1
+fi
 
 for command_name in curl flock grep npm sed systemctl; do
   require_command "$command_name"

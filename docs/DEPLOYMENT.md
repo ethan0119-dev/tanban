@@ -201,6 +201,8 @@ bash scripts/server-deploy.sh
 官网首次部署还需要安装 systemd 单元并准备证书：
 
 ```bash
+# 官网运行时独立安装到 /opt/node-v22，避免改变系统 Node.js 和同机其他应用
+/opt/node-v22/bin/node --version
 install -m 0644 infra/systemd/tanban-website.service /etc/systemd/system/tanban-website.service
 systemctl daemon-reload
 systemctl enable tanban-website.service
@@ -215,7 +217,8 @@ cd /root/works/tanban
 bash scripts/server-deploy-website.sh
 ```
 
-该脚本使用 `.env.production` 中的 `NEXT_PUBLIC_TANBAN_API_URL` 构建官网，重启
+该脚本校验 `/opt/node-v22/bin` 中的独立 Node.js 22 运行时，使用 `.env.production` 中的
+`NEXT_PUBLIC_TANBAN_API_URL` 构建官网，重启
 `tanban-website.service`，并通过 `127.0.0.1:18100` 做就绪检查。
 
 部署脚本按以下顺序执行，任一步骤失败都会停止后续发布：

@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/root/works/tanban
 Environment=NODE_ENV=production
+Environment=PATH=/opt/node-v22/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 ExecStart=/root/works/tanban/node_modules/.bin/vinext start --port 18100 --hostname 127.0.0.1
 Restart=on-failure
 RestartSec=3
