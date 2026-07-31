@@ -1,9 +1,13 @@
 package app
 
 import (
+	"context"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestFillMonthlyRevenueTrendIncludesZeroRevenueDays(t *testing.T) {
@@ -54,5 +58,64 @@ func TestBuildTodayOrderDistributionsAggregatesAllTypesAndHours(t *testing.T) {
 		if hourly[hour] != expected {
 			t.Fatalf("%s point=%#v, want %#v", expected.Hour, hourly[hour], expected)
 		}
+	}
+}
+
+func TestLoadDashboardOrderItemsBatchesAndGroupsRecentOrders(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	query := `SELECT order_id,product_name,sku_name,quantity
+		FROM order_items
+		WHERE tenant_id=? AND order_id IN (?,?,?) AND quantity>0
+		ORDER BY order_id,id`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs(int64(7), int64(31), int64(32), int64(33)).
+		WillReturnRows(sqlmock.NewRows([]string{"order_id", "product_name", "sku_name", "quantity"}).
+			AddRow(31, "经典美式", "小杯", 1).
+			AddRow(31, "可颂", "默认", 2).
+			AddRow(33, "生椰拿铁", "大杯", 1))
+
+	got, err := loadDashboardOrderItems(context.Background(), db, 7, []int64{31, 32, 33})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64][]dashboardOrderItem{
+		31: {
+			{ProductName: "经典美式", SKUName: "小杯", Quantity: 1},
+			{ProductName: "可颂", SKUName: "默认", Quantity: 2},
+		},
+		32: {},
+		33: {
+			{ProductName: "生椰拿铁", SKUName: "大杯", Quantity: 1},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("loadDashboardOrderItems()=%#v, want %#v", got, want)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadDashboardOrderItemsSkipsQueryForEmptyOrderList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	got, err := loadDashboardOrderItems(context.Background(), db, 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("loadDashboardOrderItems()=%#v, want empty map", got)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

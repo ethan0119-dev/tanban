@@ -1,5 +1,72 @@
 # 部署说明
 
+## 生产服务器迁移状态
+
+截至 2026-07-31，生产环境处于备案与迁移准备期：
+
+| 角色 | 公网 IP | 归属 | 状态 |
+| --- | --- | --- | --- |
+| 当前生产服务器 | `192.144.213.94` | 个人账户 | 在正式域名切换前继续承载现有测试/生产环境，迁移完成后退役 |
+| 新生产服务器 | `39.96.16.153` | 公司阿里云账户 | 已完成基础初始化，备案通过后承接 `tanban.com.cn` 正式流量 |
+
+新生产服务器的基线：
+
+- 主机名：`tanban-prod-01`。
+- 操作系统：Alibaba Cloud Linux 4。
+- 日常登录：`ssh deploy@39.96.16.153`，仅允许 SSH 密钥认证；root 只保留密钥应急登录。
+- 已安装并启用：Nginx 1.30、MySQL 8.0、Docker 24、Docker Compose 2、firewalld、Git、rsync、Certbot。
+- 主机防火墙只开放 SSH、HTTP 和 HTTPS；MySQL 只监听 `127.0.0.1`。
+- 已配置 2 GiB swap。API、MySQL 和 Nginx 运行在新机，前端与镜像构建应在 CI 或过渡期的 4C8G 服务器完成，避免生产运行期间抢占 2C2G 资源。
+
+### 新服务器目录
+
+```text
+/srv/tanban/
+  releases/                 按发布号保存的不可变应用版本
+  current -> releases/...   当前生效版本，首次发布时创建
+  artifacts/                待发布的镜像/静态构建产物
+  incoming/                 deploy 用户上传后的临时中转目录
+  shared/
+    media/                  迁移到 OSS 前的持久媒体文件
+    uploads/                受控上传暂存目录
+
+/etc/tanban/
+  env/
+    production.env          生产环境变量，root:root 0600
+  secrets/
+    mysql/                  MySQL 本机维护凭据，root:root 0600
+    wechat-pay/
+      apiclient_cert.pem
+      apiclient_key.pem
+      wechatpay_public_key.pem
+      api_v3.key
+
+/var/backups/tanban/
+  mysql/
+  media/
+  config/
+```
+
+微信支付文件统一使用 `root:tanban-secrets 0640`，目录使用 `0750`；私钥、APIv3 密钥和生产环境变量不得放入 `/srv/tanban`、Git 仓库、Docker 镜像或前端构建产物。发布时通过只读 bind mount 或 file-based secret 配置挂入 API 容器。
+
+### 正式域名规划
+
+备案通过后，以下记录统一指向 `39.96.16.153`：
+
+| 域名 | 用途 |
+| --- | --- |
+| `tanban.com.cn` | 摊伴官网，作为 canonical 主域名 |
+| `www.tanban.com.cn` | 301 跳转到 `tanban.com.cn` |
+| `api.tanban.com.cn` | REST API、小程序请求、微信支付/退款回调和健康检查 |
+| `admin.tanban.com.cn` | 摊伴 SaaS 平台管理端 |
+| `merchant.tanban.com.cn` | 商户运营后台 |
+
+`assets.tanban.com.cn` 预留给后续 OSS/CDN，不要在当前 ECS 上提前启用。备案通过前不签发正式证书、不切换微信合法域名和支付回调；DNS 记录可以预先规划，但应按备案所在省份和阿里云备案页面要求决定是否暂缓公网解析。
+
+现有 `tb.666qwe.cn`、`tbapi.666qwe.cn`、`tbadmin.666qwe.cn` 和 `mysales.666qwe.cn` 在迁移验证期保留，正式域名验收通过后再从小程序、支付回调和前端配置中移除。
+
+## 旧服务器部署基线
+
 一期生产环境部署在单台服务器：
 
 - 公网 IP：`192.144.213.94`（发布时必须以此地址为准，不得根据业务域名解析结果推断部署主机）。
@@ -7,6 +74,7 @@
 - 项目目录：`/root/works/tanban`。
 
 - `tanban-api`：Docker 容器，主机网络监听 `127.0.0.1:18090`。
+- `tanban-website`：Vinext Node 服务，主机网络监听 `127.0.0.1:18100`，由 systemd 维护。
 - MySQL 5.7：使用服务器现有 `tanban` 数据库。
 - 平台管理端：静态文件发布到 `/www/wwwroot/tanban-platform`。
 - 商户后台：静态文件发布到 `/www/wwwroot/tanban-merchant`。
@@ -17,6 +85,7 @@
 
 | 域名 | 服务 |
 | --- | --- |
+| `tb.666qwe.cn` | 摊伴产品介绍官网；备案迁移前临时使用 |
 | `tbapi.666qwe.cn` | REST API、支付回调、健康检查 |
 | `tbadmin.666qwe.cn` | SaaS 平台管理端 |
 | `mysales.666qwe.cn` | 商户运营后台 |
@@ -44,6 +113,7 @@ TB_SEED_DEMO=false
 ```dotenv
 TB_MEDIA_STORAGE_DIR=/var/lib/tanban/media
 TB_MEDIA_PUBLIC_BASE_URL=https://tbapi.666qwe.cn/api/v1/public/media
+NEXT_PUBLIC_TANBAN_API_URL=https://tbapi.666qwe.cn/api/v1
 ```
 
 `infra/deploy/docker-compose.prod.yml` 将该目录挂载到 `tanban_media` 命名卷，因此重建 API 容器不会丢图。数据库备份只保存素材元数据，不包含图片文件；正式营业前应把该卷与数据库备份按同一恢复点同步到对象存储，并演练“数据库 + 素材卷”一起恢复。
@@ -127,6 +197,26 @@ bash scripts/server-deploy.sh
 ```
 
 后续升级仍执行同一脚本。数据库 migration 由 API 在启动前按版本串行执行。
+
+官网首次部署还需要安装 systemd 单元并准备证书：
+
+```bash
+install -m 0644 infra/systemd/tanban-website.service /etc/systemd/system/tanban-website.service
+systemctl daemon-reload
+systemctl enable tanban-website.service
+install -d -m 0755 /www/wwwroot/tanban-website-acme
+```
+
+先用仅包含 80 端口和 ACME challenge 的临时 vhost 为 `tb.666qwe.cn` 签发证书，再安装
+`infra/nginx/tb.666qwe.cn.conf`。证书和 vhost 就绪后发布官网：
+
+```bash
+cd /root/works/tanban
+bash scripts/server-deploy-website.sh
+```
+
+该脚本使用 `.env.production` 中的 `NEXT_PUBLIC_TANBAN_API_URL` 构建官网，重启
+`tanban-website.service`，并通过 `127.0.0.1:18100` 做就绪检查。
 
 部署脚本按以下顺序执行，任一步骤失败都会停止后续发布：
 

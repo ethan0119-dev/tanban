@@ -16,6 +16,7 @@ import (
 )
 
 func (s *Server) publicRoutes(r chi.Router) {
+	s.registerPublicWebsiteRoutes(r)
 	r.Post("/customer/session", s.publicCreateCustomerSession)
 	r.Get("/table-codes/{code}", s.publicResolveTableCode)
 	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)

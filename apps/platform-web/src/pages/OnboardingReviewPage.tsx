@@ -1,4 +1,4 @@
-import { CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Card, Empty, Input, Modal, Space, Table, Tabs, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useState } from 'react';
@@ -146,7 +146,7 @@ export function OnboardingReviewPage() {
     <div>
       {contextHolder}
       <PageHeader
-        title={<Space><SafetyCertificateOutlined />进件审核</Space>}
+        title="进件审核"
         description="审核商户提交的微信支付特约商户进件申请。"
         extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}
       />
@@ -164,7 +164,7 @@ export function OnboardingReviewPage() {
                   columns={pendingColumns}
                   dataSource={pendingItems}
                   loading={loading}
-                  locale={{ empty: <Empty description="暂无待审核的进件申请" /> }}
+                  locale={{ emptyText: <Empty description="暂无待审核的进件申请" /> }}
                   pagination={false}
                   scroll={{ x: 1100 }}
                 />
@@ -179,7 +179,7 @@ export function OnboardingReviewPage() {
                   columns={historyColumns}
                   dataSource={historyItems}
                   loading={loading}
-                  locale={{ empty: <Empty description="暂无审核记录" /> }}
+                  locale={{ emptyText: <Empty description="暂无审核记录" /> }}
                   pagination={false}
                   scroll={{ x: 1200 }}
                 />
@@ -204,7 +204,7 @@ export function OnboardingReviewPage() {
             <p><strong>商户简称：</strong>{reviewing.merchantShortName}</p>
             <p><strong>主体类型：</strong>{subjectTypeText[reviewing.subjectType] || reviewing.subjectType}</p>
             <p><strong>经营者：</strong>{reviewing.operatorName}</p>
-            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为"微信支付审核中"，商户端将看到最新状态。</p>
+            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为“微信支付审核中”，商户端将看到最新状态。</p>
           </div>
         )}
       </Modal>

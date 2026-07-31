@@ -110,6 +110,7 @@ type userInput struct {
 
 func (s *Server) platformRoutes(r chi.Router) {
 	r.Use(requireRoles(RolePlatformAdmin, RolePlatformOperator))
+	s.registerWebsitePlatformRoutes(r)
 	r.Get("/dashboard", s.platformDashboard)
 	r.Get("/settings/payment", s.getPlatformPaymentSettings)
 	r.With(requireRoles(RolePlatformAdmin)).Put("/settings/payment", s.updatePlatformPaymentSettings)

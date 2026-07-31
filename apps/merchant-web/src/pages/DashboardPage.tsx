@@ -153,46 +153,44 @@ export function DashboardPage() {
         </Col>
       </Row>
 
-      {(orderTypes.length > 0 || hourlyData.length > 0) && (
-        <Row gutter={[16, 16]} className="dashboard-grid">
-          {orderTypes.length > 0 && (
-            <Col xs={24} md={hourlyData.length > 0 ? 10 : 24}>
-              <Card title="今日订单类型分布" bordered={false} className="content-card">
-                <div className="chart-contained">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie data={orderTypes} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value" stroke="none">
-                        {orderTypes.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value, name) => [`${Number(value)} 单`, String(name)]} />
-                      <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            </Col>
-          )}
-          {hourlyData.length > 0 && (
-            <Col xs={24} md={orderTypes.length > 0 ? 14 : 24}>
-              <Card title="今日时段订单分布" bordered={false} className="content-card">
-                <div className="chart-contained">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={hourlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
-                      <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={2} />
-                      <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [`${Number(value)} 单`, '订单数']} />
-                      <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            </Col>
-          )}
-        </Row>
-      )}
+      <Row gutter={[16, 16]} className="dashboard-grid">
+        <Col xs={24} md={10}>
+          <Card title="今日订单类型分布" bordered={false} className="content-card">
+            {orderTypes.length > 0 ? (
+              <div className="chart-contained">
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={orderTypes} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value" stroke="none">
+                      {orderTypes.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value, name) => [`${Number(value)} 单`, String(name)]} />
+                    <Legend verticalAlign="bottom" iconType="circle" iconSize={8} formatter={(value) => <span style={{ color: '#66584f', fontSize: 13 }}>{value}</span>} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今日暂无订单类型数据" />}
+          </Card>
+        </Col>
+        <Col xs={24} md={14}>
+          <Card title="今日时段订单分布" bordered={false} className="content-card">
+            {hourlyData.length > 0 ? (
+              <div className="chart-contained">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={hourlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe5" vertical={false} />
+                    <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#887a71' }} axisLine={{ stroke: '#f0ebe5' }} tickLine={false} interval={2} />
+                    <YAxis tick={{ fontSize: 12, fill: '#887a71' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f0ebe5', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }} formatter={(value) => [`${Number(value)} 单`, '订单数']} />
+                    <Bar dataKey="count" name="订单数" radius={[6, 6, 0, 0]} fill="#d99b68" maxBarSize={28} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今日暂无时段订单数据" />}
+          </Card>
+        </Col>
+      </Row>
 
       <Card
         title="最近订单"

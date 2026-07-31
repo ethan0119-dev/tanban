@@ -245,3 +245,64 @@ export interface AnnouncementValues {
   audienceType: AnnouncementAudience;
   tenantIds?: string[];
 }
+
+export interface WebsiteSettings {
+  brandName: string;
+  brandEnglishName: string;
+  heroEyebrow: string;
+  heroTitle: string;
+  heroHighlight: string;
+  heroSubtitle: string;
+  heroImageUrl: string;
+  scanOrderImageUrl: string;
+  cashierImageUrl: string;
+  kitchenImageUrl: string;
+  sceneBreakfastImageUrl: string;
+  sceneCoffeeTruckImageUrl: string;
+  sceneBakeryImageUrl: string;
+  sceneNightMarketImageUrl: string;
+  sceneCafeImageUrl: string;
+  supportPhone: string;
+  supportEmail: string;
+  contactWechat: string;
+  contactQrUrl: string;
+  companyName: string;
+  companyAddress: string;
+  icpNumber: string;
+  footerText: string;
+  merchantLoginUrl: string;
+  metaTitle: string;
+  metaDescription: string;
+}
+
+export type WebsiteArticleStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN';
+
+export interface WebsiteArticle {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  coverUrl: string;
+  content: string;
+  status: WebsiteArticleStatus;
+  isFeatured: boolean;
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WebsiteArticleValues = Pick<WebsiteArticle, 'slug' | 'title' | 'summary' | 'coverUrl' | 'content' | 'isFeatured'>;
+
+export interface WebsiteMedia {
+  id: string;
+  name: string;
+  altText: string;
+  url: string;
+  storageKey: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  status: string;
+  createdAt: string;
+}

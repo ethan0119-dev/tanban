@@ -65,11 +65,11 @@ go test ./...
 - AppID：在微信开发者工具导入 `apps/customer-miniapp` 后填写，生成的 `project.private.config.json` 不提交。
 - AppSecret：只写入服务器 root-only `.env.production` 的 `TB_WECHAT_MINIAPP_APP_SECRET`；AppID 同步写入 `TB_WECHAT_MINIAPP_APP_ID`。两项必须成对配置，严禁写入小程序前端或 Git。
 - API、默认演示门店和支付模式：`apps/customer-miniapp/miniprogram/config/env.ts`。
-- 正式发布前，在微信公众平台“开发管理 → 开发设置 → 服务器域名”中，把 `https://tbapi.666qwe.cn` 加入 `request`、`downloadFile` 和预留的 `uploadFile` 合法域名；“业务域名”仅用于 `<web-view>`，不能代替服务器域名。开发者工具必须保持 `urlCheck: true`，避免本机绕过校验掩盖线上问题。
+- 当前环境使用 `https://tbapi.666qwe.cn`；`tanban.com.cn` 备案并完成迁移后，在微信公众平台“开发管理 → 开发设置 → 服务器域名”中改用 `https://api.tanban.com.cn` 作为 `request`、`downloadFile` 和预留的 `uploadFile` 合法域名。“业务域名”仅用于 `<web-view>`，不能代替服务器域名。开发者工具必须保持 `urlCheck: true`，避免本机绕过校验掩盖线上问题。
 
 ## 服务器发布提醒
 
-- 当前生产服务器为 `root@192.144.213.94`，项目目录为 `/root/works/tanban`；发布目标以该固定地址为准，不根据业务域名解析结果推断。详细步骤见 [服务器部署文档](docs/DEPLOYMENT.md)。
+- 正式域名切换前，当前生产服务器仍为 `root@192.144.213.94`，项目目录为 `/root/works/tanban`；公司新生产目标机为 `deploy@39.96.16.153`，运行目录规划为 `/srv/tanban`。迁移期间必须显式选择目标机，不得根据业务域名解析结果推断。详细步骤见 [服务器部署文档](docs/DEPLOYMENT.md)。
 - `scripts/server-deploy.sh` 会在变更 API/数据库前生成并校验 MySQL 备份，发布失败时恢复静态资源、Nginx 和上一 API 镜像；成功发布后默认保留最近 5 套回滚产物。
 - 每日数据库 cron、首次 ACME 证书引导和成功发布后的人工回滚需要按 [服务器部署文档](docs/DEPLOYMENT.md) 单独配置/执行，部署脚本不会自动建立异机容灾。
 - 当前公网环境开启 Mock 支付确认，只能联调。接入真实 Provider、关闭公开 Mock 确认、配置异机备份并完成恢复演练前，不得用于真实营业收款。

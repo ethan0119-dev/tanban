@@ -92,6 +92,14 @@ func newMediaStorageKey(tenantID, storeID int64, extension string, now time.Time
 	return fmt.Sprintf("uploads/t%d/s%d/%s/%s%s", tenantID, storeID, now.UTC().Format("2006/01"), hex.EncodeToString(random), extension), nil
 }
 
+func newWebsiteMediaStorageKey(extension string, now time.Time) (string, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("website/%s/%s%s", now.UTC().Format("2006/01"), hex.EncodeToString(random), extension), nil
+}
+
 func parseLocalMediaStorageKey(value string) (tenantID, storeID int64, ok bool) {
 	if value != strings.TrimSpace(value) || strings.ContainsAny(value, "\\\x00") {
 		return 0, 0, false
@@ -124,8 +132,32 @@ func isLocalMediaStorageKey(value string) bool {
 	return ok
 }
 
+func isWebsiteMediaStorageKey(value string) bool {
+	if value != strings.TrimSpace(value) || strings.ContainsAny(value, "\\\x00") {
+		return false
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 4 || parts[0] != "website" || len(parts[1]) != 4 || len(parts[2]) != 2 {
+		return false
+	}
+	if _, err := time.Parse("2006/01", parts[1]+"/"+parts[2]); err != nil {
+		return false
+	}
+	extension := strings.ToLower(filepath.Ext(parts[3]))
+	name := strings.TrimSuffix(parts[3], extension)
+	if len(name) != 32 || (extension != ".jpg" && extension != ".png" && extension != ".gif") {
+		return false
+	}
+	_, err := hex.DecodeString(name)
+	return err == nil
+}
+
+func isManagedMediaStorageKey(value string) bool {
+	return isLocalMediaStorageKey(value) || isWebsiteMediaStorageKey(value)
+}
+
 func localMediaPath(root, storageKey string) (string, error) {
-	if !isLocalMediaStorageKey(storageKey) {
+	if !isManagedMediaStorageKey(storageKey) {
 		return "", errors.New("invalid media storage key")
 	}
 	rootPath, err := filepath.Abs(strings.TrimSpace(root))
@@ -146,7 +178,7 @@ func mediaPublicURL(baseURL, storageKey string) (string, error) {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", errors.New("media public base URL must be an absolute HTTP(S) URL without query, fragment or credentials")
 	}
-	if !isLocalMediaStorageKey(storageKey) {
+	if !isManagedMediaStorageKey(storageKey) {
 		return "", errors.New("invalid media storage key")
 	}
 	return baseURL + "/" + storageKey, nil
@@ -322,12 +354,18 @@ func (s *Server) uploadMediaAsset(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 	storageKey := strings.TrimPrefix(strings.TrimSpace(chi.URLParam(r, "*")), "/")
 	tenantID, storeID, ok := parseLocalMediaStorageKey(storageKey)
-	if !ok {
+	isWebsiteAsset := isWebsiteMediaStorageKey(storageKey)
+	if !ok && !isWebsiteAsset {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
 		return
 	}
 	var mimeType string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL LIMIT 1`, tenantID, storeID, storageKey).Scan(&mimeType)
+	var err error
+	if isWebsiteAsset {
+		err = s.DB.QueryRowContext(r.Context(), `SELECT mime_type FROM website_media_assets WHERE storage_key=? AND status='ACTIVE' AND deleted_at IS NULL LIMIT 1`, storageKey).Scan(&mimeType)
+	} else {
+		err = s.DB.QueryRowContext(r.Context(), `SELECT mime_type FROM media_assets WHERE tenant_id=? AND store_id=? AND storage_key=? AND kind IN ('IMAGE','TENANT_DOCUMENT') AND status IN ('ACTIVE','ARCHIVED') AND deleted_at IS NULL LIMIT 1`, tenantID, storeID, storageKey).Scan(&mimeType)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "media asset not found")
 		return

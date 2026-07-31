@@ -197,6 +197,49 @@ type dashboardOrderBucket struct {
 	Count     int64
 }
 
+type dashboardOrderItem struct {
+	ProductName string `json:"productName"`
+	SKUName     string `json:"skuName,omitempty"`
+	Quantity    int    `json:"quantity"`
+}
+
+func loadDashboardOrderItems(ctx context.Context, queryer sqlQueryer, tenantID int64, orderIDs []int64) (map[int64][]dashboardOrderItem, error) {
+	itemsByOrder := make(map[int64][]dashboardOrderItem, len(orderIDs))
+	if len(orderIDs) == 0 {
+		return itemsByOrder, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(orderIDs)), ",")
+	args := make([]any, 0, len(orderIDs)+1)
+	args = append(args, tenantID)
+	for _, orderID := range orderIDs {
+		itemsByOrder[orderID] = []dashboardOrderItem{}
+		args = append(args, orderID)
+	}
+
+	rows, err := queryer.QueryContext(ctx, `SELECT order_id,product_name,sku_name,quantity
+		FROM order_items
+		WHERE tenant_id=? AND order_id IN (`+placeholders+`) AND quantity>0
+		ORDER BY order_id,id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var orderID int64
+		var item dashboardOrderItem
+		if err = rows.Scan(&orderID, &item.ProductName, &item.SKUName, &item.Quantity); err != nil {
+			return nil, err
+		}
+		itemsByOrder[orderID] = append(itemsByOrder[orderID], item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return itemsByOrder, nil
+}
+
 func fillMonthlyRevenueTrend(now time.Time, revenueByDay map[string]float64) []dashboardRevenuePoint {
 	now = now.In(beijingLocation)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, beijingLocation)
@@ -352,6 +395,7 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	recentOrders := []map[string]any{}
+	recentOrderIDs := []int64{}
 	for recentRows.Next() {
 		var orderID, totalCents int64
 		var orderNo, status, orderType, pickupCode, plateName, plateCode, tableArea, tableName, tableCode, createdAt string
@@ -360,15 +404,29 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 			handleSQLError(w, err)
 			return
 		}
-		row := map[string]any{"id": orderID, "pickupNo": pickupCode, "pickupCode": pickupCode, "orderNo": orderNo, "orderType": orderType, "order_type": orderType, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []any{}}
+		row := map[string]any{"id": orderID, "pickupNo": pickupCode, "pickupCode": pickupCode, "orderNo": orderNo, "orderType": orderType, "order_type": orderType, "amount": float64(totalCents) / 100, "status": status, "createdAt": createdAt, "items": []dashboardOrderItem{}}
 		if orderType == orderTypeDineIn {
 			row["table"] = map[string]any{"areaName": tableArea, "name": tableName, "tableCode": tableCode}
 		} else if plateCode != "" {
 			row["fastFoodPlate"] = map[string]any{"plateName": plateName, "plateCode": plateCode}
 		}
+		recentOrderIDs = append(recentOrderIDs, orderID)
 		recentOrders = append(recentOrders, row)
 	}
+	if err = recentRows.Err(); err != nil {
+		recentRows.Close()
+		handleSQLError(w, err)
+		return
+	}
 	recentRows.Close()
+	recentItems, err := loadDashboardOrderItems(r.Context(), s.DB, identity.TenantID, recentOrderIDs)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	for index, orderID := range recentOrderIDs {
+		recentOrders[index]["items"] = recentItems[orderID]
+	}
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, beijingLocation)
 	todayEndDay := todayStart.AddDate(0, 0, 1)
 	distributionRows, err := s.DB.QueryContext(r.Context(),

@@ -90,7 +90,7 @@ func Load() (Config, error) {
 		RedisAddr:             os.Getenv("TB_REDIS_ADDR"),
 		AutoMigrate:           envBool("TB_AUTO_MIGRATE", true),
 		AllowMockConfirmation: envBool("TB_ALLOW_MOCK_CONFIRMATION", false),
-		CORSAllowedOrigins:    splitCSV(env("TB_CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174")),
+		CORSAllowedOrigins:    splitCSV(env("TB_CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:5174")),
 		SeedDemo:              envBool("TB_SEED_DEMO", false),
 		DemoMerchantUser:      os.Getenv("TB_DEMO_MERCHANT_USERNAME"),
 		DemoMerchantPass:      os.Getenv("TB_DEMO_MERCHANT_PASSWORD"),

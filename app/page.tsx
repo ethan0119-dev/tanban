@@ -1,5 +1,5 @@
-import { CoffeeSaaS } from "./CoffeeSaaS";
+import { OfficialWebsite } from "./OfficialWebsite";
 
 export default function Home() {
-  return <CoffeeSaaS />;
+  return <OfficialWebsite />;
 }

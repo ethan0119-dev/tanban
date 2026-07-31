@@ -567,7 +567,7 @@ export function TenantsPage() {
             <p><strong>商户：</strong>{selected.name}</p>
             <p><strong>商户简称：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'merchantShortName'])}</p>
             <p><strong>经营者：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'operatorName'])}</p>
-            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为"微信支付审核中"。</p>
+            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为“微信支付审核中”。</p>
           </div>
         )}
       </Modal>

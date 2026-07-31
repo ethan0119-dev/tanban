@@ -2,10 +2,13 @@ import {
   AuditOutlined,
   BankOutlined,
   DashboardOutlined,
+  DesktopOutlined,
+  FileTextOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   NotificationOutlined,
+  PictureOutlined,
   PrinterOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -29,6 +32,15 @@ const allMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/tenants', label: <Link to="/tenants">商户管理</Link>, icon: <ShopOutlined /> },
   { key: '/onboarding-review', label: <Link to="/onboarding-review">进件审核</Link>, icon: <SafetyCertificateOutlined /> },
   { key: '/announcements', label: <Link to="/announcements">通知中心</Link>, icon: <NotificationOutlined /> },
+  {
+    key: 'website',
+    label: '官网管理',
+    icon: <DesktopOutlined />,
+    children: [
+      { key: '/website/content', label: <Link to="/website/content">官网内容</Link>, icon: <PictureOutlined /> },
+      { key: '/website/articles', label: <Link to="/website/articles">官网动态</Link>, icon: <FileTextOutlined /> },
+    ],
+  },
   {
     key: 'configuration',
     label: '平台配置',
@@ -77,7 +89,7 @@ export function AppShell() {
           mode="inline"
           theme="dark"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={['configuration']}
+          defaultOpenKeys={['website', 'configuration']}
           items={menuItems}
           onClick={() => { if (mobile) setCollapsed(true); }}
         />

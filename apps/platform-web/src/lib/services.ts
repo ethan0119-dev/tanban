@@ -18,6 +18,10 @@ import type {
   TenantPaymentSettings,
   TenantMiniAppSettings,
   TrendPoint,
+  WebsiteArticle,
+  WebsiteArticleValues,
+  WebsiteMedia,
+  WebsiteSettings,
 } from '../types';
 
 type RawRecord = Record<string, unknown>;
@@ -147,6 +151,40 @@ function announcementPayload(values: AnnouncementValues): RawRecord {
     severity: values.severity,
     audience_type: values.audienceType,
     tenant_ids: (values.tenantIds || []).map(Number),
+  };
+}
+
+function websiteArticleFromRaw(value: unknown): WebsiteArticle {
+  const item = raw(value);
+  return {
+    id: text(item.id),
+    slug: text(item.slug),
+    title: text(item.title),
+    summary: text(item.summary),
+    coverUrl: text(item.coverUrl ?? item.cover_url),
+    content: text(item.content ?? item.content_text),
+    status: text(item.status).toUpperCase() as WebsiteArticle['status'],
+    isFeatured: Boolean(item.isFeatured ?? item.is_featured),
+    publishedAt: text(item.publishedAt ?? item.published_at) || undefined,
+    createdAt: text(item.createdAt ?? item.created_at),
+    updatedAt: text(item.updatedAt ?? item.updated_at),
+  };
+}
+
+function websiteMediaFromRaw(value: unknown): WebsiteMedia {
+  const item = raw(value);
+  return {
+    id: text(item.id),
+    name: text(item.name),
+    altText: text(item.altText ?? item.alt_text),
+    url: text(item.url),
+    storageKey: text(item.storageKey ?? item.storage_key),
+    mimeType: text(item.mimeType ?? item.mime_type),
+    width: numberValue(item.width),
+    height: numberValue(item.height),
+    sizeBytes: numberValue(item.sizeBytes ?? item.size_bytes),
+    status: text(item.status),
+    createdAt: text(item.createdAt ?? item.created_at),
   };
 }
 
@@ -329,4 +367,34 @@ export const settingsService = {
     (await http.put<PrinterProviderSettings>('/platform/settings/printer-providers/xpyun', values)).data,
   testXPYun: async () =>
     (await http.post<PrinterProviderTestResult>('/platform/settings/printer-providers/xpyun/test')).data,
+};
+
+export const websiteService = {
+  getSettings: async () => (await http.get<WebsiteSettings>('/platform/website/settings')).data,
+  updateSettings: async (values: WebsiteSettings) =>
+    (await http.put<WebsiteSettings>('/platform/website/settings', values)).data,
+  listArticles: (params?: QueryParams) => getPage<WebsiteArticle>('/platform/website/articles', params, websiteArticleFromRaw),
+  getArticle: async (id: string) => websiteArticleFromRaw((await http.get<RawRecord>(`/platform/website/articles/${id}`)).data),
+  createArticle: async (values: WebsiteArticleValues) =>
+    websiteArticleFromRaw((await http.post<RawRecord>('/platform/website/articles', values)).data),
+  updateArticle: async (id: string, values: WebsiteArticleValues) =>
+    websiteArticleFromRaw((await http.put<RawRecord>(`/platform/website/articles/${id}`, values)).data),
+  publishArticle: async (id: string) =>
+    websiteArticleFromRaw((await http.post<RawRecord>(`/platform/website/articles/${id}/publish`)).data),
+  withdrawArticle: async (id: string) =>
+    websiteArticleFromRaw((await http.post<RawRecord>(`/platform/website/articles/${id}/withdraw`)).data),
+  deleteArticle: async (id: string) => {
+    await http.delete(`/platform/website/articles/${id}`);
+  },
+  listMedia: (params?: QueryParams) => getPage<WebsiteMedia>('/platform/website/media', params, websiteMediaFromRaw),
+  uploadMedia: async (file: File, name?: string, altText?: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    if (name) body.append('name', name);
+    if (altText) body.append('alt_text', altText);
+    return websiteMediaFromRaw((await http.postForm<RawRecord>('/platform/website/media/upload', body)).data);
+  },
+  deleteMedia: async (id: string) => {
+    await http.delete(`/platform/website/media/${id}`);
+  },
 };
