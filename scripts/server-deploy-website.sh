@@ -84,7 +84,9 @@ npm run build:prototype
 
 systemctl restart "$WEBSITE_SERVICE"
 deadline=$((SECONDS + WEBSITE_READY_TIMEOUT))
-until curl --fail --silent --show-error --max-time 3 "$WEBSITE_READY_URL" | grep -q "摊伴"; do
+website_body=""
+until website_body="$(curl --fail --silent --show-error --max-time 3 "$WEBSITE_READY_URL")" \
+  && grep -q "摊伴" <<<"$website_body"; do
   if ! systemctl is-active --quiet "$WEBSITE_SERVICE"; then
     systemctl status "$WEBSITE_SERVICE" --no-pager >&2 || true
     exit 1
