@@ -4,7 +4,6 @@ import {
   CoffeeOutlined,
   DesktopOutlined,
   EyeOutlined,
-  NumberOutlined,
   PrinterOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -82,12 +81,18 @@ function orderSceneLabel(order: Order): string {
   return '外卖配送';
 }
 
-function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order) => void }) {
+export function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order) => void }) {
   const dineIn = order.orderType === 'DINE_IN';
   const products = order.items?.slice(0, 3).map((item) => `${item.productName} ×${item.quantity}`).join('、') || '等待加载商品明细';
+  const serviceTitle = dineIn ? (order.tableName || '未绑定桌台') : (order.fastFoodPlateName || '到店自取');
+  const serviceDetail = dineIn
+    ? orderSceneLabel(order)
+    : order.fastFoodPlateName
+      ? `码牌 ${order.fastFoodPlateCode || '--'} · 到店自取`
+      : '未指定码牌';
   return (
     <Card
-      bordered={false}
+      variant="borderless"
       className={`order-work-card ${dineIn ? 'dine-in' : 'takeout'}`}
       onClick={() => onOpen(order)}
       role="button"
@@ -101,11 +106,13 @@ function OrderWorkCard({ order, onOpen }: { order: Order; onOpen: (order: Order)
         {order.settlementMode === 'PAY_AFTER' && order.paymentStatus === 'UNPAID' ? <Tag color="error">待结账</Tag> : <OrderStatusTag status={order.status} />}
       </div>
       <div className="order-work-card-scene">
-        <span className="order-work-card-icon">{dineIn ? order.tableNo || <TableOutlined /> : <NumberOutlined />}</span>
-        <div>
-          <small>{dineIn ? '当前桌台' : '取餐号'}</small>
-          <strong>{dineIn ? (order.tableName || '未绑定桌台') : `#${order.pickupNo || '--'}`}</strong>
-          <span>{orderSceneLabel(order)}</span>
+        <div className="order-work-card-icon" aria-label={dineIn ? `桌号 ${order.tableNo || '未绑定'}` : `取餐号 ${order.pickupNo || '未生成'}`}>
+          {dineIn ? order.tableNo || <TableOutlined /> : <><small>取餐号</small><strong>{order.pickupNo || '--'}</strong></>}
+        </div>
+        <div className="order-work-card-service">
+          <small>{dineIn ? '当前桌台' : '放餐位置'}</small>
+          <strong>{serviceTitle}</strong>
+          <span>{serviceDetail}</span>
         </div>
       </div>
       <div className="order-work-card-products"><CoffeeOutlined /> <span>{products}</span></div>

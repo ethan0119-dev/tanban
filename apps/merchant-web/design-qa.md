@@ -86,6 +86,55 @@ No actionable P0/P1/P2 findings remain.
 
 final result: passed
 
+# 快餐订单取餐号卡片视觉验收
+
+- source visual truth path: `/var/folders/86/dyvpwsyn2t5_gptz5kjm4d0h0000gn/T/codex-clipboard-187cd980-1c4c-4191-90bb-93038fb0ca2c.png`
+- implementation screenshot path: `/Users/lxy/works/salesyyp/apps/merchant-web/design-qa-artifacts/fast-food-order-pickup-badge-final.png`
+- combined comparison path: `/Users/lxy/works/salesyyp/apps/merchant-web/design-qa-artifacts/fast-food-order-pickup-badge-comparison.png`
+- implementation URL: `http://127.0.0.1:5174/order-card-qa.html` (temporary local QA entry)
+- source pixels: `325 × 430`
+- implementation pixels and CSS viewport: `342 × 480`, device density `1`
+- density normalization: source scaled proportionally to `480px` height for the side-by-side focused comparison
+- state: 已付款、请取餐的快餐自取订单，取餐号 `0003`，码牌 `A03`
+
+## Full-view comparison evidence
+
+The supplied screenshot is the reported before-state. In the combined comparison, the left card uses a large white tile containing only a small number icon and repeats the actual pickup number in the adjacent text block. The revised card on the right uses the same footprint for a warm, high-contrast `取餐号 0003` badge and repurposes the adjacent hierarchy for the placement name and plate code. The rest of the card structure, status tags, products, remark, time, amount, and action remain aligned with the original.
+
+## Focused region comparison evidence
+
+The entire card is readable at the comparison size, so no additional crop was necessary. Browser measurements confirm the placement title has equal `clientWidth` and `scrollWidth` (`136px`), so `收银台右侧` is not truncated. The accessibility tree exposes `取餐号 0003`, and no duplicate pickup number remains in the placement description.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the pickup number uses the established strong card weight; the smaller `取餐号` label preserves hierarchy without competing with the order status.
+- Spacing and layout rhythm: the left badge reuses the dining-card `82 × 72px` service marker footprint, while the right service block flexes into the remaining width without overflow.
+- Colors and visual tokens: the badge uses the existing warm gold/brown takeout palette and remains distinct from the cyan `请取餐` status.
+- Image quality and asset fidelity: no raster assets or replacement icons were introduced; the empty number icon was removed rather than approximated.
+- Copy and content: the card now separates `取餐号` from `放餐位置`, displays the assigned plate code, and falls back to `未生成` / `未指定码牌` when data is absent.
+
+## Comparison history
+
+### Initial state — P2
+
+- [P2] The large white service tile appeared empty because it contained only a small `#` icon, while the important pickup number was duplicated in the adjacent area.
+
+Fix: moved the pickup label and number into the service tile, adopted the same numbered-marker pattern as dining orders, and changed the adjacent copy to placement and plate information.
+
+### Final pass
+
+No actionable P0/P1/P2 visual differences remain. The pickup number is immediately scannable, the placement title is not truncated, and the original card controls remain visible.
+
+## Runtime and test checks
+
+- Browser-rendered implementation checked at `342 × 480`.
+- Accessibility name `取餐号 0003` and full placement title were verified.
+- Browser console has no errors or deprecation warnings from this card.
+- The component test covers populated and missing pickup/plate data and verifies the primary `查看并处理` action.
+- Merchant-web test suite and production build pass.
+
+final result: passed
+
 # 快餐取餐大屏视觉验收
 
 - source visual truth paths:

@@ -254,12 +254,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .order-work-card-scene { display: flex; align-items: center; gap: 18px; margin: 20px 0 16px; padding: 20px; border-radius: 18px; background: linear-gradient(135deg, #f5ebe2, #faf2ea); }
 .order-work-card.takeout .order-work-card-scene { background: linear-gradient(135deg, #fff0d9, #fff7e8); }
 .order-work-card-icon { width: 68px; height: 68px; flex: 0 0 68px; display: grid; place-items: center; border-radius: 20px; color: #a5683f; background: #fff; box-shadow: 0 7px 20px rgba(165, 104, 63, .14); font-size: 31px; }
-.order-work-card.takeout .order-work-card-icon { color: #c07a2a; box-shadow: 0 7px 20px rgba(192, 122, 42, .14); }
+.order-work-card.takeout .order-work-card-icon { width: 82px; height: 72px; flex: 0 0 82px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px; color: #8d571e; background: linear-gradient(135deg, #ffe6b9, #f8dba7); box-sizing: border-box; box-shadow: 0 7px 20px rgba(192, 122, 42, .16); }
+.order-work-card.takeout .order-work-card-icon small { color: #a56a2d; font-size: 10px; font-weight: 600; line-height: 1; }
+.order-work-card.takeout .order-work-card-icon strong { max-width: 100%; margin: 0; overflow: hidden; color: #6f4218; font-size: 22px; font-weight: 800; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .order-work-card.dine-in .order-work-card-icon { width: 82px; height: 72px; flex: 0 0 82px; color: #8b5e3c; background: linear-gradient(135deg, #f8e8d6, #f5dac0); font-size: 28px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; box-shadow: 0 7px 20px rgba(146, 100, 50, .15); }
+.order-work-card-service { min-width: 0; flex: 1; }
 .order-work-card-scene small, .order-work-card-scene strong, .order-work-card-scene span { display: block; }
 .order-work-card-scene small { color: #8a817b; font-size: 11px; }
 .order-work-card-scene strong { margin: 1px 0 2px; color: #352b25; font-size: 29px; line-height: 1.25; }
 .order-work-card-scene span { color: #83776f; font-size: 12px; }
+.order-work-card.takeout .order-work-card-service strong { font-size: 25px; }
+.order-work-card-service strong, .order-work-card-service span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .order-work-card-products { display: flex; align-items: flex-start; gap: 9px; min-height: 45px; color: #685d56; line-height: 1.65; }
 .order-work-card-products .anticon { margin-top: 4px; color: #aa6b45; }
 .order-work-card-remark { margin-top: 8px; padding: 7px 10px; border-radius: 8px; color: #96591f; background: #fdf0e0; font-size: 12px; }

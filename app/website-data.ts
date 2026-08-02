@@ -70,7 +70,7 @@ export const fallbackArticles: WebsiteArticle[] = [
     slug: "tanban-official-website",
     title: "摊伴官网与内容管理能力进入开发阶段",
     summary: "品牌官网、产品介绍、动态发布和客服信息将由平台后台统一维护。",
-    coverUrl: "/og.png",
+    coverUrl: "/website/hero-devices.png",
     content:
       "摊伴正在建设新的品牌官网。\n\n本次建设会把产品能力、适用场景、品牌动态和联系方式组织成更清晰的内容，同时在平台管理端增加官网管理入口。后续运营人员可以直接维护首页图片、动态文章、客服二维码和客服电话，不需要改动代码。",
     publishedAt: "2026-07-30 10:00:00",
@@ -81,7 +81,7 @@ export const fallbackArticles: WebsiteArticle[] = [
     slug: "three-surface-product",
     title: "平台、商户、顾客三端如何协同",
     summary: "一套数据链路连接点单、履约、会员与经营分析。",
-    coverUrl: "/og.png",
+    coverUrl: "/website/cashier-counter.png",
     content:
       "顾客端负责便捷点单和会员体验，商户端承接商品、订单、营销和门店经营，平台端统一管理商户、服务配置与运营内容。\n\n三端共享一致的业务数据，减少重复录入，让门店能够更专注地服务顾客。",
     publishedAt: "2026-07-26 09:30:00",
@@ -92,7 +92,7 @@ export const fallbackArticles: WebsiteArticle[] = [
     slug: "for-small-food-business",
     title: "为小型餐饮场景设计的数字化工具",
     summary: "覆盖咖啡摊、夜市摊、快餐与轻量门店，保留灵活经营方式。",
-    coverUrl: "/og.png",
+    coverUrl: "/website/scan-ordering.png",
     content:
       "不同于重型餐饮系统，摊伴更关注小型餐饮经营中的速度、灵活与低学习成本。\n\n产品会围绕出摊、收摊、快速接单、取餐通知、会员复购和经营复盘持续优化。",
     publishedAt: "2026-07-20 16:20:00",

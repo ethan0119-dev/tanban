@@ -24,6 +24,7 @@ import {
   type WebsiteArticle,
   type WebsiteSettings,
 } from "./website-data";
+import { WebsiteFooter, WebsiteHeader } from "./WebsiteChrome";
 
 type WebsitePayload = {
   settings?: Partial<WebsiteSettings>;
@@ -65,19 +66,9 @@ const sceneData = [
   { label: "小餐馆", icon: Storefront, key: "sceneCafeImageUrl" as const },
 ];
 
-function BrandLogo() {
-  return (
-    <span className="warm-brand">
-      <strong>摊伴</strong>
-      <small>TANBAN</small>
-    </span>
-  );
-}
-
 export function OfficialWebsite() {
   const [settings, setSettings] = useState(fallbackSettings);
   const [articles, setArticles] = useState(fallbackArticles);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -95,35 +86,13 @@ export function OfficialWebsite() {
     return () => controller.abort();
   }, []);
 
-  const closeMenu = () => setMenuOpen(false);
   const heroTitle = settings.heroTitle.includes("，")
     ? settings.heroTitle.replace("，", "，\n")
     : settings.heroTitle;
 
   return (
     <main className="warm-site">
-      <header className="warm-header">
-        <a href="#top" aria-label="摊伴首页" onClick={closeMenu}><BrandLogo /></a>
-        <button
-          className="warm-menu-toggle"
-          type="button"
-          aria-label="切换导航"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((value) => !value)}
-        >
-          <span /><span />
-        </button>
-        <nav className={menuOpen ? "warm-nav is-open" : "warm-nav"}>
-          <a href="#product" onClick={closeMenu}>产品能力</a>
-          <a href="#scenes" onClick={closeMenu}>适用门店</a>
-          <a href="#news" onClick={closeMenu}>产品动态</a>
-          <a href="#about" onClick={closeMenu}>关于摊伴</a>
-        </nav>
-        <div className="warm-header__actions">
-          <a href={settings.merchantLoginUrl} target="_blank" rel="noreferrer">登录商户后台</a>
-          <a className="warm-button warm-button--small" href="#contact">免费体验</a>
-        </div>
-      </header>
+      <WebsiteHeader home merchantLoginUrl={settings.merchantLoginUrl} />
 
       <section className="warm-hero" id="top">
         <div className="warm-hero__copy">
@@ -229,10 +198,7 @@ export function OfficialWebsite() {
         <a className="warm-button warm-contact__online" href={`tel:${settings.supportPhone}`}><ChatCircleDots size={22} weight="fill" />在线咨询</a>
       </section>
 
-      <footer className="warm-footer">
-        <p>© 2026 {settings.brandName} {settings.brandEnglishName}. 保留所有权利。</p>
-        <div><a href="#about">隐私政策</a><a href="#about">服务协议</a>{settings.icpNumber && <span>{settings.icpNumber}</span>}</div>
-      </footer>
+      <WebsiteFooter settings={settings} />
 
       <a className="warm-floating-service" href="#contact" aria-label="客服咨询">
         <Headset size={25} weight="duotone" /><span>客服<br />咨询</span>

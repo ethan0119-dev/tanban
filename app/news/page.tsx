@@ -7,6 +7,7 @@ import {
   fallbackArticles,
   formatArticleDate,
 } from "../website-data";
+import { WebsiteFooter, WebsiteHeader } from "../WebsiteChrome";
 
 export default function NewsPage() {
   const [articles, setArticles] = useState(fallbackArticles);
@@ -22,27 +23,23 @@ export default function NewsPage() {
   }, []);
 
   return (
-    <main className="official-site official-inner">
-      <header className="official-header">
-        <Link className="official-brand" href="/"><span className="official-brand__mark">伴</span><span><strong>摊伴</strong><small>TANBAN</small></span></Link>
-        <nav className="official-nav"><Link href="/#product">产品能力</Link><Link href="/#scenes">适用场景</Link><Link href="/news">品牌动态</Link><Link href="/#about">关于摊伴</Link></nav>
-        <div className="official-header__actions"><Link className="official-button official-button--small" href="/#contact">预约了解</Link></div>
-      </header>
-      <section className="official-inner__hero">
+    <main className="warm-site warm-inner">
+      <WebsiteHeader />
+      <section className="warm-inner__hero">
         <p>NEWS & STORIES</p>
-        <h1>品牌动态</h1>
+        <h1>摊伴动态</h1>
         <span>记录产品迭代、经营观察与我们走过的每一步。</span>
       </section>
-      <section className="official-news-list">
+      <section className="warm-news-list">
         {articles.map((article, index) => (
           <Link href={`/news/${article.slug}`} key={article.id}>
-            <span className="official-news-list__no">{String(index + 1).padStart(2, "0")}</span>
+            <span className="warm-news-list__no">{String(index + 1).padStart(2, "0")}</span>
             <div><small>{formatArticleDate(article.publishedAt)}</small><h2>{article.title}</h2><p>{article.summary}</p></div>
             <b>→</b>
           </Link>
         ))}
       </section>
-      <footer className="official-footer official-footer--inner"><p>让小生意，也有从容经营的底气。</p><div><span>© 2026 TANBAN</span></div></footer>
+      <WebsiteFooter />
     </main>
   );
 }

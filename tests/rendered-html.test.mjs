@@ -13,7 +13,7 @@ async function render(pathname = "/") {
   );
 }
 
-test("server renders the Tanban product prototype", async () => {
+test("server renders the Tanban official website", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -21,10 +21,25 @@ test("server renders the Tanban product prototype", async () => {
   const html = await response.text();
   assert.match(html, /摊伴/);
   assert.match(html, /TANBAN/);
-  assert.match(html, /平台管理端/);
-  assert.match(html, /商户运营端/);
-  assert.match(html, /顾客点单端/);
+  assert.match(html, /小店，也值得拥有一套/);
+  assert.match(html, /顾客扫码点单/);
+  assert.match(html, /店员平板收银/);
+  assert.match(html, /tanban-icon-/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);
+});
+
+test("server renders the warm news list and article routes", async () => {
+  const listResponse = await render("/news");
+  assert.equal(listResponse.status, 200);
+  const listHtml = await listResponse.text();
+  assert.match(listHtml, /摊伴动态/);
+  assert.match(listHtml, /tanban-icon-/);
+
+  const articleResponse = await render("/news/tanban-official-website");
+  assert.equal(articleResponse.status, 200);
+  const articleHtml = await articleResponse.text();
+  assert.match(articleHtml, /摊伴官网与内容管理能力进入开发阶段/);
+  assert.match(articleHtml, /返回摊伴动态/);
 });
 
 test("server renders the mobile copyright advertisement page", async () => {
