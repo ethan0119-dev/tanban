@@ -623,7 +623,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     }
   }, [message, previewMode]);
 
-  const load = useCallback(async (quiet = false) => {
+  const load = useCallback(async (quiet = false, focusOrderID?: Order['id']) => {
     if (previewMode) return;
     if (quiet) setRefreshing(true);
     else setLoading(true);
@@ -645,11 +645,12 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         if (!current) return nextBoard.areas.flatMap((area) => area.tables).find((table) => table.orderId) ?? nextBoard.areas[0]?.tables[0] ?? null;
         return nextBoard.areas.flatMap((area) => area.tables).find((table) => String(table.id) === String(current.id)) ?? null;
       });
-      if (selectedOrder?.id) {
-        if (mode === 'TAKEOUT' && !nextTakeoutOrders.some((order) => String(order.id) === String(selectedOrder.id))) {
+      const orderIDToReload = focusOrderID ?? selectedOrder?.id;
+      if (orderIDToReload) {
+        if (mode === 'TAKEOUT' && !nextTakeoutOrders.some((order) => String(order.id) === String(orderIDToReload))) {
           setSelectedOrder(null);
         } else {
-          await loadOrder(selectedOrder.id);
+          await loadOrder(orderIDToReload);
         }
       }
     } catch (error) {
@@ -888,7 +889,10 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         ? `第 ${Math.max(Number(updated.additionCount || 1) - 1, 1)} 次加菜已提交，账单已更新`
         : '订单已创建并打印');
       setCartOpen(false);
-      await load(true);
+      // Reload the order we just created instead of the order captured by the
+      // previous render. This replaces the public create response with the
+      // authoritative merchant detail immediately, without waiting for polling.
+      await load(true, updated.id);
     } catch (error) {
       message.error(errorMessage(error));
     } finally {

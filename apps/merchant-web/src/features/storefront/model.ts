@@ -56,6 +56,14 @@ export function normalizeOrder(value: Order): Order {
   const table = record(raw.table);
   const fastFoodPlate = record(raw.fastFoodPlate ?? raw.fast_food_plate);
   const rawItems = (raw.items ?? []) as Array<Record<string, unknown>>;
+  // Public order endpoints use camelCase fields whose monetary values are still
+  // expressed in cents. Merchant endpoints use explicit *_cents fields, while
+  // an already-normalized Order uses camelCase yuan values. Item `name`/`price`
+  // makes the public response shape unambiguous and avoids dividing twice.
+  const publicOrderShape = raw.total_cents === undefined && (
+    raw.amountCents !== undefined
+    || rawItems.some((item) => item.name !== undefined || item.price !== undefined || item.priceCents !== undefined)
+  );
   const orderNo = value.orderNo ?? String(raw.order_no ?? '');
   const existingPickupNo = stringValue(value.pickupNo, raw.pickupCode, raw.pickup_code, raw.pickup_no).trim();
   const hasPersistedBusinessDate = Boolean(stringValue(raw.businessDate, raw.business_date));
@@ -64,12 +72,20 @@ export function normalizeOrder(value: Order): Order {
     id: value.id ?? String(raw.orderId ?? raw.order_id ?? value.orderNo),
     orderNo,
     pickupNo: existingPickupNo || (!hasPersistedBusinessDate ? pickupCode(value.id ?? raw.id) : ''),
-    amount: raw.total_cents !== undefined ? Number(raw.total_cents) / 100 : numberValue(value.amount, raw.totalAmount, raw.total_amount),
-    paidAmount: raw.paid_cents !== undefined ? Number(raw.paid_cents) / 100 : numberValue(value.paidAmount, raw.paid_amount, value.amount),
+    amount: raw.total_cents !== undefined
+      ? Number(raw.total_cents) / 100
+      : publicOrderShape ? numberValue(raw.amountCents, raw.amount) / 100 : numberValue(value.amount, raw.totalAmount, raw.total_amount),
+    paidAmount: raw.paid_cents !== undefined
+      ? Number(raw.paid_cents) / 100
+      : publicOrderShape ? numberValue(raw.paidAmountCents, raw.paidAmount) / 100 : numberValue(value.paidAmount, raw.paid_amount, value.amount),
     remainingAmount: raw.remaining_cents !== undefined
       ? Number(raw.remaining_cents) / 100
-      : numberValue(value.remainingAmount, raw.remaining_amount, Math.max(numberValue(value.amount, raw.total_amount) - numberValue(value.paidAmount, raw.paid_amount), 0)),
-    refundAmount: raw.refunded_cents !== undefined ? Number(raw.refunded_cents) / 100 : numberValue(value.refundAmount, raw.refund_amount),
+      : publicOrderShape
+        ? numberValue(raw.remainingAmountCents, raw.remainingAmount, Math.max(numberValue(raw.amountCents, raw.amount) - numberValue(raw.paidAmountCents, raw.paidAmount), 0)) / 100
+        : numberValue(value.remainingAmount, raw.remaining_amount, Math.max(numberValue(value.amount, raw.total_amount) - numberValue(value.paidAmount, raw.paid_amount), 0)),
+    refundAmount: raw.refunded_cents !== undefined
+      ? Number(raw.refunded_cents) / 100
+      : publicOrderShape ? numberValue(raw.refundedAmountCents, raw.refundedAmount, raw.refundAmount) / 100 : numberValue(value.refundAmount, raw.refund_amount),
     paymentStatus: stringValue(value.paymentStatus, raw.payment_status).toUpperCase() as Order['paymentStatus'],
     settlementMode: stringValue(value.settlementMode, raw.settlement_mode, raw.settlement_mode_snapshot).toUpperCase() as Order['settlementMode'],
     additionCount: numberValue(value.additionCount, raw.addition_count),
@@ -78,7 +94,9 @@ export function normalizeOrder(value: Order): Order {
       : value.canAddItems,
     dinerCount: numberValue(value.dinerCount, raw.diner_count),
     memberLevelName: stringValue(value.memberLevelName, raw.member_level_name, raw.member_level_name_snapshot) || undefined,
-    memberDiscount: raw.member_discount_cents !== undefined ? Number(raw.member_discount_cents) / 100 : numberValue(value.memberDiscount),
+    memberDiscount: raw.member_discount_cents !== undefined
+      ? Number(raw.member_discount_cents) / 100
+      : publicOrderShape ? numberValue(raw.memberDiscountCents, raw.memberDiscount) / 100 : numberValue(value.memberDiscount),
     customerName: value.customerName ?? String(raw.customer_name ?? ''),
     customerPhone: value.customerPhone ?? String(raw.customer_phone ?? ''),
     businessType: inferOrderBusinessType(value),
@@ -93,23 +111,34 @@ export function normalizeOrder(value: Order): Order {
     fastFoodPlateName: stringValue(value.fastFoodPlateName, fastFoodPlate.plateName, fastFoodPlate.plate_name, raw.fast_food_plate_name_snapshot, raw.fast_food_plate_name) || undefined,
     paidAt: value.paidAt ?? (raw.paid_at ? String(raw.paid_at) : undefined),
     createdAt: value.createdAt ?? String(raw.created_at ?? ''),
-    items: rawItems.map((item) => ({
-      id: item.id as string | number,
-      productName: stringValue(item.productName, item.product_name),
-      skuName: stringValue(item.skuName, item.sku_name),
-      quantity: numberValue(item.quantity),
-      unitPrice: item.unit_price_cents !== undefined ? Number(item.unit_price_cents) / 100 : numberValue(item.unitPrice),
-      originalUnitPrice: item.original_unit_price_cents !== undefined ? Number(item.original_unit_price_cents) / 100 : numberValue(item.originalUnitPrice),
-      memberDiscount: item.member_discount_cents !== undefined ? Number(item.member_discount_cents) / 100 : numberValue(item.memberDiscount),
-      memberLevelName: stringValue(item.memberLevelName, item.member_level_name_snapshot) || undefined,
-      additionSequence: numberValue(item.additionSequence, item.addition_sequence),
-      amount: item.subtotal_cents !== undefined ? Number(item.subtotal_cents) / 100 : numberValue(item.amount),
-      remark: item.remark ? String(item.remark) : undefined,
-      itemRemark: item.item_remark ? String(item.item_remark) : undefined,
-      configuration: item.configuration && typeof item.configuration === 'object'
-        ? item.configuration as Order['items'][number]['configuration']
-        : undefined,
-    })),
+    items: rawItems.map((item) => {
+      const publicItemShape = publicOrderShape && item.unit_price_cents === undefined;
+      return {
+        id: item.id as string | number,
+        productName: stringValue(item.productName, item.product_name, item.name),
+        skuName: stringValue(item.skuName, item.sku_name),
+        quantity: numberValue(item.quantity),
+        unitPrice: item.unit_price_cents !== undefined
+          ? Number(item.unit_price_cents) / 100
+          : publicItemShape ? numberValue(item.priceCents, item.price) / 100 : numberValue(item.unitPrice),
+        originalUnitPrice: item.original_unit_price_cents !== undefined
+          ? Number(item.original_unit_price_cents) / 100
+          : publicItemShape ? numberValue(item.originalPriceCents, item.originalPrice) / 100 : numberValue(item.originalUnitPrice),
+        memberDiscount: item.member_discount_cents !== undefined
+          ? Number(item.member_discount_cents) / 100
+          : publicItemShape ? numberValue(item.memberDiscountCents, item.memberDiscount) / 100 : numberValue(item.memberDiscount),
+        memberLevelName: stringValue(item.memberLevelName, item.member_level_name_snapshot) || undefined,
+        additionSequence: numberValue(item.additionSequence, item.addition_sequence),
+        amount: item.subtotal_cents !== undefined
+          ? Number(item.subtotal_cents) / 100
+          : publicItemShape ? numberValue(item.amountCents, item.amount) / 100 : numberValue(item.amount),
+        remark: item.remark ? String(item.remark) : undefined,
+        itemRemark: item.itemRemark || item.item_remark ? String(item.itemRemark ?? item.item_remark) : undefined,
+        configuration: item.configuration && typeof item.configuration === 'object'
+          ? item.configuration as Order['items'][number]['configuration']
+          : undefined,
+      };
+    }),
   };
 }
 

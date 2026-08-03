@@ -106,12 +106,23 @@ func TestPartialSettlementDisablesAdditionsAndExposesRemainingAmount(t *testing.
 		TotalCents:     3600,
 		PaidCents:      1200,
 		RemainingCents: 2400,
+		Items: []orderItemDTO{{
+			ID: 9, ProductName: "拿铁", UnitPriceCents: 1800, OriginalCents: 2000,
+			MemberDiscount: 200, Quantity: 2, SubtotalCents: 3600,
+		}},
 	})
 	if view["canAddItems"] != false {
 		t.Fatal("a partially settled order must not accept additional dishes")
 	}
 	if view["paidAmount"] != int64(1200) || view["remainingAmount"] != int64(2400) {
 		t.Fatalf("unexpected partial settlement view: %#v", view)
+	}
+	if view["amountCents"] != int64(3600) || view["paidAmountCents"] != int64(1200) || view["remainingAmountCents"] != int64(2400) {
+		t.Fatalf("public monetary fields must expose explicit cent aliases: %#v", view)
+	}
+	items, ok := view["items"].([]map[string]any)
+	if !ok || len(items) != 1 || items[0]["priceCents"] != int64(1800) || items[0]["amountCents"] != int64(3600) {
+		t.Fatalf("public item monetary fields must expose explicit cent aliases: %#v", view["items"])
 	}
 }
 

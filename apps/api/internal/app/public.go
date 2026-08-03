@@ -1306,13 +1306,33 @@ func (s *Server) publicCustomerOrders(w http.ResponseWriter, r *http.Request) {
 func publicOrderView(order orderDTO) map[string]any {
 	items := make([]map[string]any, 0, len(order.Items))
 	for _, item := range order.Items {
-		items = append(items, map[string]any{"id": item.ID, "productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName, "configuration": item.Configuration, "itemRemark": item.ItemRemark, "price": item.UnitPriceCents, "originalPrice": item.OriginalCents, "memberDiscount": item.MemberDiscount, "memberLevelName": item.MemberLevel, "additionSequence": item.Addition, "quantity": item.Quantity, "amount": item.SubtotalCents})
+		items = append(items, map[string]any{
+			"id": item.ID, "productId": item.ProductID, "skuId": item.SKUID, "name": item.ProductName, "skuName": item.SKUName,
+			"configuration": item.Configuration, "itemRemark": item.ItemRemark, "quantity": item.Quantity, "additionSequence": item.Addition,
+			"price": item.UnitPriceCents, "priceCents": item.UnitPriceCents,
+			"originalPrice": item.OriginalCents, "originalPriceCents": item.OriginalCents,
+			"memberDiscount": item.MemberDiscount, "memberDiscountCents": item.MemberDiscount,
+			"amount": item.SubtotalCents, "amountCents": item.SubtotalCents,
+			"memberLevelName": item.MemberLevel,
+		})
 	}
 	paymentStatus := order.PaymentStatus
 	if paymentStatus == "PAID" {
 		paymentStatus = "SUCCEEDED"
 	}
-	view := map[string]any{"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate, "status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode, "additionCount": order.AdditionCount, "dinerCount": order.DinerCount, "memberLevelName": order.MemberLevel, "memberDiscount": order.MemberDiscount, "canAddItems": canChangeDineInItems(order), "fulfillmentType": order.Fulfillment, "orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark, "amount": order.TotalCents, "paidAmount": order.PaidCents, "remainingAmount": order.RemainingCents, "refundedAmount": order.RefundedCents, "createdAt": order.CreatedAt, "items": items}
+	view := map[string]any{
+		"id": order.ID, "orderNo": order.OrderNo, "pickupCode": order.PickupCode, "businessDate": order.BusinessDate,
+		"status": order.Status, "paymentStatus": paymentStatus, "settlementMode": order.SettlementMode,
+		"additionCount": order.AdditionCount, "dinerCount": order.DinerCount,
+		"memberLevelName": order.MemberLevel, "memberDiscount": order.MemberDiscount, "memberDiscountCents": order.MemberDiscount,
+		"canAddItems": canChangeDineInItems(order), "fulfillmentType": order.Fulfillment,
+		"orderType": order.OrderType, "orderScene": order.OrderType, "order_scene": order.OrderType, "remark": order.Remark,
+		"amount": order.TotalCents, "amountCents": order.TotalCents,
+		"paidAmount": order.PaidCents, "paidAmountCents": order.PaidCents,
+		"remainingAmount": order.RemainingCents, "remainingAmountCents": order.RemainingCents,
+		"refundedAmount": order.RefundedCents, "refundedAmountCents": order.RefundedCents,
+		"createdAt": order.CreatedAt, "items": items,
+	}
 	if order.FastFoodPlate != nil {
 		view["fastFoodPlate"] = map[string]any{"publicId": order.FastFoodPlate.PublicID, "plateName": order.FastFoodPlate.Name, "plateCode": order.FastFoodPlate.PlateCode}
 		view["fastFoodPlatePublicId"] = order.FastFoodPlate.PublicID

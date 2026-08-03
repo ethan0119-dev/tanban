@@ -56,6 +56,60 @@ describe('storefront domain normalization', () => {
     expect(order.remainingAmount).toBe(24);
   });
 
+  it('converts the public order response from cents without losing product names', () => {
+    const order = normalizeOrder({
+      id: 78,
+      orderNo: 'TB20260803103517D2D85D63',
+      pickupCode: '0001',
+      businessDate: '2026-08-03',
+      status: 'PENDING_PAYMENT',
+      paymentStatus: 'UNPAID',
+      settlementMode: 'PAY_BEFORE',
+      fulfillmentType: 'PICKUP',
+      orderType: 'TAKEOUT',
+      amount: 6000,
+      paidAmount: 0,
+      remainingAmount: 6000,
+      refundedAmount: 0,
+      memberDiscount: 0,
+      createdAt: '2026-08-03 10:35:17',
+      items: [
+        { id: 112, name: '经典美式', skuName: '大杯', price: 1500, originalPrice: 1500, quantity: 1, amount: 1500 },
+        { id: 113, name: '经典拿铁', skuName: '标准杯', price: 1600, originalPrice: 1600, quantity: 2, amount: 3200 },
+        { id: 114, name: '生椰拿铁', skuName: '标准杯', price: 1800, originalPrice: 1800, quantity: 1, amount: 1800 },
+      ],
+    } as never);
+
+    expect(order.amount).toBe(60);
+    expect(order.remainingAmount).toBe(60);
+    expect(order.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productName: '经典美式', skuName: '大杯', unitPrice: 15, amount: 15 }),
+      expect.objectContaining({ productName: '经典拿铁', skuName: '标准杯', unitPrice: 16, amount: 32 }),
+      expect.objectContaining({ productName: '生椰拿铁', skuName: '标准杯', unitPrice: 18, amount: 18 }),
+    ]));
+    expect(normalizeOrder(order).amount).toBe(60);
+  });
+
+  it('prefers explicit cent fields in the hardened public order contract', () => {
+    const order = normalizeOrder({
+      id: 79,
+      orderNo: 'TB-PUBLIC-CENTS',
+      status: 'PENDING_PAYMENT',
+      amount: 999999,
+      amountCents: 2580,
+      paidAmount: 999999,
+      paidAmountCents: 300,
+      remainingAmount: 999999,
+      remainingAmountCents: 2280,
+      items: [
+        { id: 115, name: '拿铁', price: 999999, priceCents: 1290, quantity: 2, amount: 999999, amountCents: 2580 },
+      ],
+    } as never);
+
+    expect(order).toMatchObject({ amount: 25.8, paidAmount: 3, remainingAmount: 22.8 });
+    expect(order.items[0]).toMatchObject({ productName: '拿铁', unitPrice: 12.9, amount: 25.8 });
+  });
+
   it('normalizes a snake-case table-code response and defaults to a stable miniapp path', () => {
     const table = normalizeTableCode({
       id: 3,
