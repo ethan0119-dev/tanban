@@ -53,12 +53,33 @@ paths:
               properties:
                 code: {type: string}
                 name: {type: string}
+                cashier_enabled: {type: boolean, default: false}
                 owner_username: {type: string}
                 owner_password: {type: string, format: password, minLength: 8}
                 owner_display_name: {type: string}
                 initial_store_code: {type: string}
                 initial_store_name: {type: string}
       responses: {'200': {description: 'Created tenant, first store and owner account'}}
+  /platform/tenants/{tenantID}/cashier-enabled:
+    put:
+      summary: 开通或关闭指定商户的收银台
+      security: [{bearerAuth: []}]
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: {type: boolean}
+      responses:
+        '200': {description: Updated tenant with cashier_enabled state}
   /platform/tenants/{tenantID}/owner:
     parameters:
       - in: path

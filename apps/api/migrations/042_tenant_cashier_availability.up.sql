@@ -1,0 +1,2 @@
+ALTER TABLE tenants
+  ADD COLUMN cashier_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER status;

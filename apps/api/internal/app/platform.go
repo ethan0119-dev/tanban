@@ -17,6 +17,7 @@ type tenantDTO struct {
 	ContactName            string `json:"contact_name"`
 	ContactPhone           string `json:"contact_phone"`
 	Status                 string `json:"status"`
+	CashierEnabled         bool   `json:"cashier_enabled"`
 	ServiceExpiresAt       string `json:"service_expires_at"`
 	ServiceExpired         bool   `json:"service_expired"`
 	PaymentProvider        string `json:"payment_provider"`
@@ -41,6 +42,7 @@ type tenantInput struct {
 	ContactName       string `json:"contact_name"`
 	ContactPhone      string `json:"contact_phone"`
 	Status            string `json:"status"`
+	CashierEnabled    bool   `json:"cashier_enabled"`
 	ServiceExpiresAt  string `json:"service_expires_at"`
 	PaymentProvider   string `json:"payment_provider"`
 	PaymentMerchantNo string `json:"payment_merchant_no"`
@@ -51,6 +53,10 @@ type tenantInput struct {
 	OwnerAccountMode  string `json:"owner_account_mode"`
 	InitialStoreCode  string `json:"initial_store_code"`
 	InitialStoreName  string `json:"initial_store_name"`
+}
+
+type tenantCashierEnabledInput struct {
+	Enabled *bool `json:"enabled"`
 }
 
 type tenantOwnerInput struct {
@@ -132,6 +138,7 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.Get("/", s.getTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/", s.updateTenant)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/service-expiration", s.updateTenantServiceExpiration)
+		t.With(requireRoles(RolePlatformAdmin)).Put("/cashier-enabled", s.updateTenantCashierEnabled)
 		t.Get("/payment-settings", s.getTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/payment-settings", s.updateTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/review", s.reviewWechatOnboarding)
@@ -166,7 +173,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, err)
 		return
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.cashier_enabled,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT s.id FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),0),
@@ -188,7 +195,7 @@ func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
 	items := []tenantDTO{}
 	for rows.Next() {
 		var item tenantDTO
-		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.CashierEnabled, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -254,8 +261,8 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO tenants(code,name,contact_name,contact_phone,status,service_expires_at,payment_provider,payment_merchant_no,payment_sub_appid)
-		VALUES(?,?,?,?,?,NULLIF(?,''),?,?,?)`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), input.ServiceExpiresAt, strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO tenants(code,name,contact_name,contact_phone,status,cashier_enabled,service_expires_at,payment_provider,payment_merchant_no,payment_sub_appid)
+		VALUES(?,?,?,?,?,?,NULLIF(?,''),?,?,?)`, input.Code, input.Name, input.ContactName, input.ContactPhone, strings.ToUpper(input.Status), input.CashierEnabled, input.ServiceExpiresAt, strings.ToLower(input.PaymentProvider), input.PaymentMerchantNo, input.PaymentSubAppID)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -313,7 +320,8 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.create", "tenant", int64String(id), map[string]any{
 		"code": input.Code, "name": input.Name, "payment_provider": input.PaymentProvider,
-		"owner_username": input.OwnerUsername, "owner_account_mode": input.OwnerAccountMode, "initial_store_code": input.InitialStoreCode,
+		"cashier_enabled": input.CashierEnabled,
+		"owner_username":  input.OwnerUsername, "owner_account_mode": input.OwnerAccountMode, "initial_store_code": input.InitialStoreCode,
 	}, r)
 	s.getTenantByID(w, r, id)
 }
@@ -327,7 +335,7 @@ func (s *Server) getTenant(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64) {
 	var item tenantDTO
-	err := s.DB.QueryRowContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
+	err := s.DB.QueryRowContext(r.Context(), `SELECT t.id,t.code,t.name,t.contact_name,t.contact_phone,t.status,t.cashier_enabled,t.payment_provider,t.payment_merchant_no,t.payment_sub_appid,
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT a.url FROM media_assets a WHERE a.id=t.food_business_license_media_id AND a.tenant_id=t.id AND a.kind='TENANT_DOCUMENT' AND a.status='ACTIVE' AND a.deleted_at IS NULL),''),
 		COALESCE((SELECT s.id FROM stores s WHERE s.tenant_id=t.id AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1),0),
@@ -341,7 +349,7 @@ func (s *Server) getTenantByID(w http.ResponseWriter, r *http.Request, id int64)
 		DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i:%s'),COALESCE(DATE_FORMAT(t.service_expires_at,'%Y-%m-%d'),''),
 		(t.service_expires_at IS NOT NULL AND t.service_expires_at < CURRENT_DATE)
 		FROM tenants t WHERE t.id=? AND t.deleted_at IS NULL`, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, RoleMerchantOwner, id).
-		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired)
+		Scan(&item.ID, &item.Code, &item.Name, &item.ContactName, &item.ContactPhone, &item.Status, &item.CashierEnabled, &item.PaymentProvider, &item.PaymentMerchantNo, &item.PaymentSubAppID, &item.BusinessLicenseURL, &item.FoodBusinessLicenseURL, &item.StoreID, &item.StoreCode, &item.StoreName, &item.OrderCount, &item.OwnerUsername, &item.OwnerDisplayName, &item.OwnerStatus, &item.HasOwner, &item.CreatedAt, &item.ServiceExpiresAt, &item.ServiceExpired)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -385,6 +393,43 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		"code": input.Code, "name": input.Name, "status": input.Status,
 		"payment_provider": input.PaymentProvider, "payment_merchant_no_configured": input.PaymentMerchantNo != "",
 	}, r)
+	s.getTenantByID(w, r, id)
+}
+
+func (s *Server) updateTenantCashierEnabled(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var input tenantCashierEnabledInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "enabled is required")
+		return
+	}
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET cashier_enabled=? WHERE id=? AND deleted_at IS NULL`, *input.Enabled, id)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		var exists bool
+		if err = s.DB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM tenants WHERE id=? AND deleted_at IS NULL)`, id).Scan(&exists); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if !exists {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "tenant not found")
+			return
+		}
+	}
+	action := "tenant.cashier.disable"
+	if *input.Enabled {
+		action = "tenant.cashier.enable"
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), action, "tenant", int64String(id), map[string]any{"cashier_enabled": *input.Enabled}, r)
 	s.getTenantByID(w, r, id)
 }
 

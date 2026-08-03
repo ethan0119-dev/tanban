@@ -41,6 +41,7 @@ interface TenantFormValues {
   contactName: string;
   contactPhone: string;
   status: 'active' | 'pending';
+  cashierEnabled: boolean;
   paymentProvider: 'mock' | 'tianque' | 'wechat_partner';
   paymentMerchantNo?: string;
   paymentSubAppId?: string;
@@ -94,6 +95,7 @@ export function TenantsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<Tenant>();
   const [saving, setSaving] = useState(false);
+  const [cashierUpdating, setCashierUpdating] = useState<string>();
   const [documentUploading, setDocumentUploading] = useState<string>();
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult>();
   const [ownerOpen, setOwnerOpen] = useState(false);
@@ -154,7 +156,7 @@ export function TenantsPage() {
 
   const openCreateTenant = () => {
     form.resetFields();
-    form.setFieldsValue({ status: 'active', paymentProvider: 'mock', ownerAccountMode: 'CREATE', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword(), serviceExpiresAt: dayjs().add(1, 'year') });
+    form.setFieldsValue({ status: 'active', cashierEnabled: false, paymentProvider: 'mock', ownerAccountMode: 'CREATE', ownerUsernameMode: 'PHONE', ownerPassword: generateInitialPassword(), serviceExpiresAt: dayjs().add(1, 'year') });
     setCreateOpen(true);
   };
 
@@ -211,6 +213,20 @@ export function TenantsPage() {
       void load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '状态更新失败');
+    }
+  };
+
+  const toggleCashier = async (record: Tenant, enabled: boolean) => {
+    setCashierUpdating(record.id);
+    try {
+      const updated = await tenantService.updateCashierEnabled(record.id, enabled);
+      setRows((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setSelected((current) => current?.id === updated.id ? updated : current);
+      messageApi.success(enabled ? '收银台已开通' : '收银台已关闭');
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '收银台状态更新失败');
+    } finally {
+      setCashierUpdating(undefined);
     }
   };
 
@@ -375,6 +391,17 @@ export function TenantsPage() {
     { title: '老板账号', key: 'owner', width: 150, render: (_, row) => row.hasOwner ? <div>{row.ownerUsername}<small className="table-subtext">{row.ownerDisplayName || '老板'}</small></div> : <Tag color="warning">待创建</Tag> },
     { title: '累计订单', dataIndex: 'orderCount', key: 'orderCount', width: 120, align: 'right', render: (value) => Number(value || 0).toLocaleString('zh-CN') },
     { title: '支付接入', dataIndex: 'paymentStatus', key: 'paymentStatus', width: 110, render: (value = 'unbound') => <Tag color={paymentStatusColor[value] || 'default'}>{paymentStatusText[value] || value}</Tag> },
+    {
+      title: '收银台', dataIndex: 'cashierEnabled', key: 'cashierEnabled', width: 120,
+      render: (enabled, record) => <Switch
+        checked={enabled}
+        checkedChildren="已开通"
+        unCheckedChildren="未开通"
+        loading={cashierUpdating === record.id}
+        aria-label={`${record.name}收银台`}
+        onChange={(checked) => void toggleCashier(record, checked)}
+      />,
+    },
     { title: '经营证照', key: 'documents', width: 110, render: (_, row) => <Tag color={row.businessLicenseUrl && row.foodBusinessLicenseUrl ? 'success' : 'warning'}>{Number(Boolean(row.businessLicenseUrl)) + Number(Boolean(row.foodBusinessLicenseUrl))}/2</Tag> },
     { title: '服务有效期', key: 'expiration', width: 140, render: (_, row) => row.expiresAt ? <div>{formatBeijingDate(row.expiresAt)}<small className="table-subtext">{row.serviceExpired ? <Tag color="error">已到期</Tag> : '有效'}</small></div> : <Tag color="success">长期有效</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: (value) => <StatusTag status={value} /> },
@@ -411,7 +438,7 @@ export function TenantsPage() {
           columns={columns}
           dataSource={rows}
           loading={loading}
-          scroll={{ x: 1720 }}
+          scroll={{ x: 1840 }}
           pagination={{ current: meta.page, pageSize: meta.pageSize, total: meta.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 家商户`, onChange: (page, pageSize) => void load(page, pageSize) }}
         />
       </Card>
@@ -450,6 +477,14 @@ export function TenantsPage() {
             <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item></Col>
             <Col span={8}><Form.Item label="支付商户号" name="paymentMerchantNo"><Input placeholder="可创建后在支付配置中维护" /></Form.Item></Col>
           </Row>
+          <Form.Item
+            label="收银台"
+            name="cashierEnabled"
+            valuePropName="checked"
+            extra="新商户默认未开通；开通后店员才能在收银台进行点单、收款和结账。"
+          >
+            <Switch checkedChildren="创建时开通" unCheckedChildren="暂不开通" />
+          </Form.Item>
           <Form.Item label="独立子 AppID（可选）" name="paymentSubAppId" extra="微信普通服务商共用摊伴小程序时留空；只有商户使用自己的小程序时才填写 sub_appid。"><Input placeholder="wx..." /></Form.Item>
         </Form>
       </Modal>
@@ -470,6 +505,18 @@ export function TenantsPage() {
             <Descriptions.Item label="入驻时间">{formatBeijingDateTime(selected.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="服务到期">{selected.expiresAt ? formatBeijingDate(selected.expiresAt) : '未设置'}</Descriptions.Item>
             <Descriptions.Item label="服务状态">{selected.serviceExpired ? <Tag color="error">欠费暂停</Tag> : <Tag color="success">正常</Tag>}</Descriptions.Item>
+            <Descriptions.Item label="收银台">
+              <Space>
+                <Tag color={selected.cashierEnabled ? 'success' : 'default'}>{selected.cashierEnabled ? '已开通' : '未开通'}</Tag>
+                <Switch
+                  size="small"
+                  checked={selected.cashierEnabled}
+                  loading={cashierUpdating === selected.id}
+                  aria-label={`${selected.name}收银台`}
+                  onChange={(checked) => void toggleCashier(selected, checked)}
+                />
+              </Space>
+            </Descriptions.Item>
           </Descriptions>
           <Space style={{ marginTop: 16, marginBottom: 8 }}>
             <Button icon={<CalendarOutlined />} onClick={() => openExpiration(selected)}>设置有效期</Button>

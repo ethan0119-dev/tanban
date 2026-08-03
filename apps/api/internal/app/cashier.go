@@ -47,6 +47,42 @@ func cashierTokenPathAllowed(path string) bool {
 		strings.HasPrefix(path, "/api/v1/merchant/print-jobs")
 }
 
+func cashierDisabledPathAllowed(path string) bool {
+	for _, exact := range []string{
+		"/api/v1/auth/me",
+		"/api/v1/auth/workspaces",
+		"/api/v1/merchant/cashier/context",
+		"/api/v1/merchant/pickup-display",
+	} {
+		if path == exact {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) tenantCashierEnabled(ctx context.Context, tenantID int64) (bool, error) {
+	var enabled bool
+	err := s.DB.QueryRowContext(ctx, `SELECT cashier_enabled FROM tenants WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL`, tenantID).Scan(&enabled)
+	return enabled, err
+}
+
+func (s *Server) requireCashierEnabled(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actor := currentIdentity(r.Context())
+		enabled, err := s.tenantCashierEnabled(r.Context(), actor.TenantID)
+		if err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		if !enabled {
+			writeError(w, http.StatusForbidden, "CASHIER_NOT_ENABLED", "收银台未开通，请联系管理员开通")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) optionalCashierIdentity(ctx context.Context, r *http.Request, tenantID int64) (identity, bool) {
 	header := strings.TrimSpace(r.Header.Get("Authorization"))
 	if !strings.HasPrefix(header, "Bearer ") {
@@ -67,6 +103,10 @@ func (s *Server) optionalCashierIdentity(ctx context.Context, r *http.Request, t
 	workspace, workspaceErr := s.loadMerchantWorkspace(ctx, userID, tenantID)
 	if accountErr != nil || workspaceErr != nil || workspace.Role != parsed.Role ||
 		parsed.MembershipID > 0 && workspace.MembershipID != parsed.MembershipID {
+		return identity{}, false
+	}
+	enabled, enabledErr := s.tenantCashierEnabled(ctx, tenantID)
+	if enabledErr != nil || !enabled {
 		return identity{}, false
 	}
 	return workspaceIdentity(userID, username, displayName, workspace), true
@@ -111,12 +151,13 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var storeCode, storeName, logoURL, paymentProvider, merchantNo, onboardingStatus, productAuthorizationStatus string
-	err = s.DB.QueryRowContext(r.Context(), `SELECT st.code,st.name,st.logo_url,t.payment_provider,t.payment_merchant_no,
+	var cashierEnabled bool
+	err = s.DB.QueryRowContext(r.Context(), `SELECT st.code,st.name,st.logo_url,t.cashier_enabled,t.payment_provider,t.payment_merchant_no,
 		t.payment_onboarding_status,t.payment_product_authorization_status
 		FROM stores st JOIN tenants t ON t.id=st.tenant_id
 		WHERE st.id=? AND st.tenant_id=? AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		  AND t.status='ACTIVE' AND t.deleted_at IS NULL`, storeID, actor.TenantID).
-		Scan(&storeCode, &storeName, &logoURL, &paymentProvider, &merchantNo, &onboardingStatus, &productAuthorizationStatus)
+		Scan(&storeCode, &storeName, &logoURL, &cashierEnabled, &paymentProvider, &merchantNo, &onboardingStatus, &productAuthorizationStatus)
 	if err != nil {
 		handleSQLError(w, err)
 		return
@@ -151,6 +192,7 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]any{
 		"storeId": storeID, "storeCode": storeCode, "storeName": storeName, "logoUrl": logoURL,
 		"operatorName": actor.DisplayName, "role": actor.Role,
+		"cashierEnabled":           cashierEnabled,
 		"paymentProvider":          paymentProvider,
 		"wechatCodePaymentEnabled": wechatCodePaymentEnabled,
 		"wechatCodePaymentReason":  wechatCodePaymentReason,

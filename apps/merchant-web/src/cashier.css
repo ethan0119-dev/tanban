@@ -91,10 +91,43 @@
 }
 
 .cashier-stage {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: 78px minmax(0, 1fr) 87px;
+}
+
+.cashier-unavailable-notice {
+  position: absolute;
+  z-index: 30;
+  top: 94px;
+  left: clamp(18px, 3vw, 44px);
+  right: clamp(18px, 3vw, 44px);
+  border: 1px solid #f2b96e;
+  border-radius: 14px;
+  background: rgba(255, 249, 235, .98);
+  box-shadow: 0 12px 34px rgba(122, 77, 25, .18);
+}
+
+.cashier-unavailable-notice .ant-alert-message {
+  color: #8c4d0e;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.cashier-unavailable-notice .ant-alert-description {
+  color: #6f573d;
+  font-size: 14px;
+}
+
+.cashier-shell.is-unavailable .cashier-topbar,
+.cashier-shell.is-unavailable .cashier-workspace,
+.cashier-shell.is-unavailable .cashier-summary {
+  pointer-events: none;
+  user-select: none;
+  filter: saturate(.72);
+  opacity: .82;
 }
 
 .cashier-topbar {

@@ -77,6 +77,7 @@ export interface Tenant {
   contactPhone?: string;
   legalName?: string;
   status: EntityStatus;
+  cashierEnabled: boolean;
   storeId?: string;
   storeCode?: string;
   storeName?: string;

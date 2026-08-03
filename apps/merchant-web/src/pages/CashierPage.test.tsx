@@ -11,11 +11,11 @@ vi.mock('../auth/AuthContext', () => ({
   }),
 }));
 
-function renderCashier() {
+function renderCashier(previewCashierEnabled = true) {
   return render(
     <MemoryRouter>
       <AntApp>
-        <CashierPage previewMode />
+        <CashierPage previewMode previewCashierEnabled={previewCashierEnabled} />
       </AntApp>
     </MemoryRouter>,
   );
@@ -48,6 +48,15 @@ describe('cashier operations', () => {
   });
 
   afterEach(() => cleanup());
+
+  it('shows a prominent read-only preview when the cashier is not enabled', () => {
+    const view = renderCashier(false);
+
+    expect(screen.getByText('收银台未开通，请联系管理员开通')).toBeTruthy();
+    expect(screen.getByText(/以下为收银台功能预览/)).toBeTruthy();
+    expect(view.container.querySelector('.cashier-shell.is-unavailable')).toBeTruthy();
+    expect(view.container.querySelector('.cashier-stage')?.getAttribute('aria-disabled')).toBe('true');
+  });
 
   it('opens the diner count editor from the persistent action dock', async () => {
     renderCashier();

@@ -81,6 +81,7 @@ function tenantFromRaw(value: unknown): Tenant {
     contactName: text(item.contact_name ?? item.contactName) || undefined,
     contactPhone: text(item.contact_phone ?? item.contactPhone) || undefined,
     status: statusValue(item.status),
+    cashierEnabled: Boolean(item.cashier_enabled ?? item.cashierEnabled),
     storeId: text(item.store_id ?? item.storeId) || undefined,
     storeCode: text(item.store_code ?? item.storeCode) || undefined,
     storeName: text(item.store_name ?? item.storeName) || undefined,
@@ -237,6 +238,7 @@ function tenantPayload(values: TenantCreateValues): RawRecord {
     contact_name: item.contactName || '',
     contact_phone: item.contactPhone || '',
     status: toBackendStatus(item.status),
+    cashier_enabled: Boolean(item.cashierEnabled),
     service_expires_at: item.expiresAt || '',
     payment_provider: item.paymentProvider || 'mock',
     payment_merchant_no: item.paymentMerchantNo || '',
@@ -310,6 +312,8 @@ export const tenantService = {
     tenantFromRaw((await http.post<RawRecord>('/platform/tenants', tenantPayload(values))).data),
   update: async (id: string, values: Partial<Tenant>) =>
     tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/`, tenantPayload(values))).data),
+  updateCashierEnabled: async (id: string, enabled: boolean) =>
+    tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/cashier-enabled`, { enabled })).data),
   updateServiceExpiration: async (id: string, expiresAt?: string) =>
     tenantFromRaw((await http.put<RawRecord>(`/platform/tenants/${id}/service-expiration`, { expires_at: expiresAt || '' })).data),
   renewOneYear: async (id: string) =>

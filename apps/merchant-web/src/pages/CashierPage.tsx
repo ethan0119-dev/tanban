@@ -54,6 +54,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, ApiError, CASHIER_TOKEN_KEY, errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { orderStatusMap } from '../components/OrderStatusTag';
+import { FeatureAvailabilityNotice } from '../components/FeatureAvailabilityNotice';
 import {
   addItemsBlockedReason,
   canAddItemsToOrder,
@@ -83,6 +84,7 @@ interface CashierContext {
   logoUrl?: string;
   operatorName: string;
   role: string;
+  cashierEnabled: boolean;
   paymentProvider?: string;
   wechatCodePaymentEnabled?: boolean;
   wechatCodePaymentReason?: string;
@@ -482,7 +484,7 @@ export function cashierOrderStatusText(order: Pick<Order, 'status' | 'paymentSta
   return orderStatusMap[order.status]?.text || order.status;
 }
 
-export function CashierPage({ previewMode = false }: { previewMode?: boolean }) {
+export function CashierPage({ previewMode = false, previewCashierEnabled = true }: { previewMode?: boolean; previewCashierEnabled?: boolean }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { message, modal } = AntApp.useApp();
@@ -502,7 +504,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(previewMode ? previewPaymentRecords : []);
   const [context, setContext] = useState<CashierContext | null>(previewMode ? {
     storeId: 1, storeCode: 'preview-store', storeName: '川味小馆（天府店）', operatorName: '张小雨', role: 'MERCHANT_MANAGER',
-    paymentProvider: 'wechat_partner', wechatCodePaymentEnabled: true,
+    cashierEnabled: previewCashierEnabled, paymentProvider: 'wechat_partner', wechatCodePaymentEnabled: true,
   } : null);
   const [dashboard, setDashboard] = useState<DashboardData>(previewMode ? { todayRevenue: 3286.5, todayOrders: 48, pendingOrders: 7, averageOrderValue: 68.47 } : { todayRevenue: 0, todayOrders: 0, pendingOrders: 0, averageOrderValue: 0 });
   const [catalog, setCatalog] = useState<CashierCatalog>(previewMode ? previewCatalog : { categories: [], products: [] });
@@ -539,6 +541,22 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const scanControlsRef = useRef<IScannerControls | null>(null);
   const scanSubmittingRef = useRef(false);
   const [clock, setClock] = useState(new Date());
+  const cashierUnavailable = context?.cashierEnabled === false;
+
+  const showUnavailablePreview = useCallback((cashierContext: CashierContext) => {
+    localStorage.removeItem(CASHIER_TOKEN_KEY);
+    setContext(cashierContext);
+    setBoard(previewBoard);
+    setTakeoutOrders(previewTakeoutOrders);
+    setSelectedTable(previewBoard.areas[0].tables[4]);
+    setSelectedOrder(demoOrder);
+    setReturnRequests(previewReturnRequests);
+    setPaymentRecords(previewPaymentRecords);
+    setDashboard({ todayRevenue: 3286.5, todayOrders: 48, pendingOrders: 7, averageOrderValue: 68.47 });
+    setCatalog(previewCatalog);
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
 
   const currentShift = useMemo(() => {
     const hour = clock.getHours();
@@ -629,6 +647,10 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
     else setLoading(true);
     try {
       const cashierContext = await api.get<CashierContext>('/merchant/cashier/context');
+      if (cashierContext.cashierEnabled === false) {
+        showUnavailablePreview(cashierContext);
+        return;
+      }
       const [nextBoard, orderResult, rawDashboard, rawCatalog] = await Promise.all([
         api.get<TableBoardResponse>('/merchant/table-board'),
         api.getList<Order>('/merchant/orders', { order_type: 'TAKEOUT', cashier_active: true, page: 1, page_size: 100 }),
@@ -659,13 +681,20 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadOrder, message, mode, previewMode, selectedOrder]);
+  }, [loadOrder, message, mode, previewMode, selectedOrder, showUnavailablePreview]);
 
   useEffect(() => {
     if (previewMode) return;
     let active = true;
     const initialize = async () => {
       try {
+        const cashierContext = await api.get<CashierContext>('/merchant/cashier/context');
+        if (!active) return;
+        setContext(cashierContext);
+        if (cashierContext.cashierEnabled === false) {
+          showUnavailablePreview(cashierContext);
+          return;
+        }
         const session = await api.post<{ accessToken: string }>('/merchant/cashier/session');
         if (!active) return;
         localStorage.setItem(CASHIER_TOKEN_KEY, session.accessToken);
@@ -679,7 +708,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (previewMode) return;
+    if (previewMode || cashierUnavailable) return;
     const timer = window.setInterval(() => void load(true), 30_000);
     const refresh = () => void load(true);
     window.addEventListener('focus', refresh);
@@ -687,7 +716,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
       window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
     };
-  }, [load, previewMode]);
+  }, [cashierUnavailable, load, previewMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 30_000);
@@ -695,8 +724,9 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   }, []);
 
   useEffect(() => {
+    if (cashierUnavailable) return;
     if (mode === 'DINE_IN' && selectedTable?.orderId) void loadOrder(selectedTable.orderId);
-  }, [loadOrder, mode, selectedTable?.orderId]);
+  }, [cashierUnavailable, loadOrder, mode, selectedTable?.orderId]);
 
   const selectTable = (table: TableBoardTable) => {
     setSelectedTable(table);
@@ -1350,7 +1380,7 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
   const wechatPaymentPending = wechatPayment?.status === 'CREATING' || wechatPayment?.status === 'PENDING';
 
   return (
-    <div className="cashier-shell">
+    <div className={`cashier-shell ${cashierUnavailable ? 'is-unavailable' : ''}`}>
       <aside className="cashier-rail">
         <button className="cashier-rail-brand" type="button" aria-label="返回后台" onClick={leaveCashier} />
         <button className="cashier-rail-item active" type="button"><ShopOutlined /><span>收银</span></button>
@@ -1360,7 +1390,20 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
         <Tooltip title="退出当前账号" placement="right"><button className="cashier-rail-item cashier-rail-logout" type="button" onClick={signOut}><LogoutOutlined /><span>退出</span></button></Tooltip>
       </aside>
 
-      <main className="cashier-stage">
+      <main
+        className="cashier-stage"
+        aria-disabled={cashierUnavailable}
+        onClickCapture={(event) => {
+          if (!cashierUnavailable) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onKeyDownCapture={(event) => {
+          if (!cashierUnavailable || (event.key !== 'Enter' && event.key !== ' ')) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
         <header className="cashier-topbar">
           <div className="cashier-title"><strong>摊伴收银台</strong><i /><span>{context?.storeName || user?.storeName || '当前门店'}</span></div>
           <Tag bordered={false} className="cashier-shift-tag" color={currentShift.color}>{currentShift.label}</Tag>
@@ -1380,6 +1423,12 @@ export function CashierPage({ previewMode = false }: { previewMode?: boolean }) 
           <div className="cashier-device"><WifiOutlined /><span>网络<small><i />正常</small></span></div>
           <Button className="cashier-handover" onClick={startHandover}>交接班</Button>
         </header>
+
+        {cashierUnavailable && <FeatureAvailabilityNotice
+          className="cashier-unavailable-notice"
+          type="warning"
+          feature="CASHIER"
+        />}
 
         <div className={`cashier-workspace is-${layoutMode.toLowerCase()} ${detailFocused ? 'is-detail-focused' : ''}`}>
           <section className="cashier-board" ref={boardRef}>

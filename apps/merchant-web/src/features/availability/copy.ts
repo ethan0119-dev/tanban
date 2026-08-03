@@ -1,4 +1,5 @@
 export type MerchantFeatureKey =
+  | 'CASHIER'
   | 'DELIVERY'
   | 'OFFICIAL_MINIAPP_CODE'
   | 'ONLINE_STORED_VALUE'
@@ -29,6 +30,11 @@ export type MerchantFeatureAvailability = {
 };
 
 export const merchantFeatureCopy: Record<MerchantFeatureKey, MerchantFeatureAvailability> = {
+  CASHIER: {
+    title: '收银台未开通，请联系管理员开通',
+    description: '以下为收银台功能预览，当前仅供查看，暂时不能进行点单、收款、结账或交接班操作。',
+    releaseBlocker: false,
+  },
   DELIVERY: {
     title: '外卖服务暂未开通',
     description: '当前门店可使用堂食和到店自取；外卖开通后，配送订单会在这里单独展示。',

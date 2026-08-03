@@ -400,6 +400,17 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "account is unavailable")
 			return
 		}
+		if parsed.TokenKind == "cashier" && !cashierDisabledPathAllowed(r.URL.Path) {
+			enabled, enabledErr := s.tenantCashierEnabled(r.Context(), user.TenantID)
+			if enabledErr != nil {
+				handleSQLError(w, enabledErr)
+				return
+			}
+			if !enabled {
+				writeError(w, http.StatusForbidden, "CASHIER_NOT_ENABLED", "收银台未开通，请联系管理员开通")
+				return
+			}
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, user)))
 	})
 }
