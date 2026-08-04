@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'https://tbapi.666qwe.cn',
+        target: 'https://api.tanban.com.cn',
         changeOrigin: true,
         secure: false,
       },

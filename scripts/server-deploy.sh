@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/root/works/tanban}"
-PLATFORM_ROOT="${PLATFORM_ROOT:-/www/wwwroot/tanban-platform}"
-MERCHANT_ROOT="${MERCHANT_ROOT:-/www/wwwroot/tanban-merchant}"
-NGINX_VHOST_DIR="${NGINX_VHOST_DIR:-/www/server/panel/vhost/nginx}"
+PROJECT_DIR="${PROJECT_DIR:-/srv/tanban/current}"
+ENV_FILE="${ENV_FILE:-/etc/tanban/env/production.env}"
+PLATFORM_ROOT="${PLATFORM_ROOT:-/srv/tanban/shared/static/platform/current}"
+MERCHANT_ROOT="${MERCHANT_ROOT:-/srv/tanban/shared/static/merchant/current}"
+NGINX_VHOST_DIR="${NGINX_VHOST_DIR:-/etc/nginx/conf.d}"
 NGINX_BACKUP_ROOT="${NGINX_BACKUP_ROOT:-/var/backups/tanban/nginx}"
 NGINX_BIN="${NGINX_BIN:-nginx}"
 API_READY_URL="http://127.0.0.1:18090/readyz"
@@ -97,7 +98,7 @@ restore_static_releases() {
 restore_nginx_configs() {
   local name target backup missing_marker restore_path
 
-  for name in tbapi.666qwe.cn.conf tbadmin.666qwe.cn.conf mysales.666qwe.cn.conf tanban-acme-bootstrap.conf; do
+  for name in api.tanban.com.cn.conf admin.tanban.com.cn.conf b.tanban.com.cn.conf tanban.com.cn.conf tanban-acme-bootstrap.conf; do
     target="$NGINX_VHOST_DIR/$name"
     backup="$NGINX_BACKUP_DIR/$name"
     missing_marker="$NGINX_BACKUP_DIR/.missing-$name"
@@ -153,15 +154,15 @@ require_command() {
 
 validate_static_root() {
   local root="$1"
-  if [[ "$root" != /www/wwwroot/* || "$root" == "/www/wwwroot/" || "$root" == *".."* ]]; then
-    echo "static root must be a specific child of /www/wwwroot: $root" >&2
+  if [[ "$root" != /srv/tanban/shared/static/* || "$root" == "/srv/tanban/shared/static/" || "$root" == *".."* ]]; then
+    echo "static root must be a specific child of /srv/tanban/shared/static: $root" >&2
     exit 1
   fi
 }
 
 read_env_value() {
   local key="$1" value
-  value="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" .env.production | tail -n 1)"
+  value="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$ENV_FILE" | tail -n 1)"
   value="${value%$'\r'}"
   if [[ "$value" == \"*\" && "$value" == *\" ]]; then
     value="${value:1:${#value}-2}"
@@ -309,9 +310,10 @@ activate_static_release() {
 preflight_nginx_configs() {
   local include_dir="$DEPLOY_TMP_DIR/nginx-includes" test_config="$DEPLOY_TMP_DIR/nginx.conf"
   install -d -m 0700 "$include_dir"
-  install -m 0644 infra/nginx/tbapi.666qwe.cn.conf "$include_dir/tbapi.666qwe.cn.conf"
-  install -m 0644 infra/nginx/tbadmin.666qwe.cn.conf "$include_dir/tbadmin.666qwe.cn.conf"
-  install -m 0644 infra/nginx/mysales.666qwe.cn.conf "$include_dir/mysales.666qwe.cn.conf"
+  install -m 0644 infra/nginx/api.tanban.com.cn.conf "$include_dir/api.tanban.com.cn.conf"
+  install -m 0644 infra/nginx/admin.tanban.com.cn.conf "$include_dir/admin.tanban.com.cn.conf"
+  install -m 0644 infra/nginx/b.tanban.com.cn.conf "$include_dir/b.tanban.com.cn.conf"
+  install -m 0644 infra/nginx/tanban.com.cn.conf "$include_dir/tanban.com.cn.conf"
 
   printf '%s\n' \
     'worker_processes 1;' \
@@ -331,7 +333,7 @@ backup_nginx_configs() {
   local name target
   install -d -m 0700 "$NGINX_BACKUP_DIR"
 
-  for name in tbapi.666qwe.cn.conf tbadmin.666qwe.cn.conf mysales.666qwe.cn.conf tanban-acme-bootstrap.conf; do
+  for name in api.tanban.com.cn.conf admin.tanban.com.cn.conf b.tanban.com.cn.conf tanban.com.cn.conf tanban-acme-bootstrap.conf; do
     target="$NGINX_VHOST_DIR/$name"
     if [[ -e "$target" || -L "$target" ]]; then
       cp -a -- "$target" "$NGINX_BACKUP_DIR/$name"
@@ -345,7 +347,7 @@ install_nginx_configs() {
   local name staged
   NGINX_MUTATED=1
 
-  for name in tbapi.666qwe.cn.conf tbadmin.666qwe.cn.conf mysales.666qwe.cn.conf; do
+  for name in api.tanban.com.cn.conf admin.tanban.com.cn.conf b.tanban.com.cn.conf tanban.com.cn.conf; do
     staged="$NGINX_VHOST_DIR/.${name}.new-${RELEASE_ID}"
     install -m 0644 "infra/nginx/$name" "$staged"
     mv -f -- "$staged" "$NGINX_VHOST_DIR/$name"
@@ -359,8 +361,8 @@ done
 
 cd "$PROJECT_DIR"
 
-if [[ ! -f .env.production ]]; then
-  echo "missing $PROJECT_DIR/.env.production" >&2
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "missing $ENV_FILE" >&2
   exit 1
 fi
 if [[ ! "$API_READY_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
@@ -436,14 +438,19 @@ echo "building static frontends"
 # Vite/Rollup on a clean production host. Install the lockfile as a whole so
 # both static builds see the same deterministic dependency tree.
 npm ci
+export VITE_API_BASE_URL="$(read_env_value VITE_API_BASE_URL)"
+if [[ "$VITE_API_BASE_URL" != https://* ]]; then
+  echo "VITE_API_BASE_URL must be an HTTPS URL" >&2
+  exit 1
+fi
 npm run build:platform
 npm run build:merchant
 
 prepare_static_release platform apps/platform-web/dist "$PLATFORM_ROOT"
 prepare_static_release merchant apps/merchant-web/dist "$MERCHANT_ROOT"
-install -d -m 0755 /www/wwwroot/tanban-api-acme
+install -d -m 0755 /srv/tanban/shared/api-public
 install -m 0644 infra/wechat-domain-verification/YYMFacfbfJ.txt \
-  /www/wwwroot/tanban-api-acme/YYMFacfbfJ.txt
+  /srv/tanban/shared/api-public/YYMFacfbfJ.txt
 
 echo "preflighting Nginx vhosts in an isolated include directory"
 preflight_nginx_configs

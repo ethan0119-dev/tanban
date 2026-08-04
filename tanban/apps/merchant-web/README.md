@@ -10,7 +10,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-默认 API 地址为 `https://tbapi.666qwe.cn/api/v1`，可通过 `VITE_API_BASE_URL` 覆盖。
+默认 API 地址为 `https://api.tanban.com.cn/api/v1`，可通过 `VITE_API_BASE_URL` 覆盖。
 
 ## 构建与测试
 

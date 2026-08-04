@@ -13,10 +13,10 @@ import { PageHeader } from '../components/PageHeader';
 import { settingsService } from '../lib/services';
 import type { PaymentSettings } from '../types';
 
-const DEFAULT_NOTIFY_URL = 'https://tbapi.666qwe.cn/api/v1/payments/tianque/callback';
+const DEFAULT_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/tianque/callback';
 const WECHAT_API_BASE_URL = 'https://api.mch.weixin.qq.com';
-const WECHAT_NOTIFY_URL = 'https://tbapi.666qwe.cn/api/v1/payments/wechat-partner/callback';
-const WECHAT_REFUND_NOTIFY_URL = 'https://tbapi.666qwe.cn/api/v1/payments/wechat-partner/refund-callback';
+const WECHAT_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/wechat-partner/callback';
+const WECHAT_REFUND_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/wechat-partner/refund-callback';
 const providerNames: Record<string, string> = {
   mock: 'Mock 模拟支付',
   tianque: '会生活 · 随行付',

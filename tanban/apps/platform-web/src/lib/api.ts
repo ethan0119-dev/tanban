@@ -1,7 +1,7 @@
 import { AUTH_UNAUTHORIZED_EVENT, clearToken, getToken } from './auth-storage';
 import type { PageMeta, PageResult, QueryParams } from '../types';
 
-const DEFAULT_API_BASE_URL = 'https://tbapi.666qwe.cn/api/v1';
+const DEFAULT_API_BASE_URL = 'https://api.tanban.com.cn/api/v1';
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 export interface ApiEnvelope<T> {

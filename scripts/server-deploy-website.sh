@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/root/works/tanban}"
+PROJECT_DIR="${PROJECT_DIR:-/srv/tanban/current}"
+ENV_FILE="${ENV_FILE:-/etc/tanban/env/production.env}"
 WEBSITE_SERVICE="${WEBSITE_SERVICE:-tanban-website.service}"
 WEBSITE_READY_URL="${WEBSITE_READY_URL:-http://127.0.0.1:18100/}"
-WEBSITE_PUBLIC_URL="${WEBSITE_PUBLIC_URL:-https://tb.666qwe.cn}"
+WEBSITE_PUBLIC_URL="${WEBSITE_PUBLIC_URL:-https://tanban.com.cn}"
 WEBSITE_READY_TIMEOUT="${WEBSITE_READY_TIMEOUT:-60}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lock/tanban-website-deploy.lock}"
 NODE_RUNTIME_BIN_DIR="${NODE_RUNTIME_BIN_DIR:-/opt/node-v22/bin}"
@@ -42,7 +43,7 @@ require_command() {
 
 read_env_value() {
   local key="$1" value
-  value="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" .env.production | tail -n 1)"
+  value="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$ENV_FILE" | tail -n 1)"
   value="${value%$'\r'}"
   if [[ "$value" == \"*\" && "$value" == *\" ]]; then
     value="${value:1:${#value}-2}"
@@ -138,8 +139,8 @@ if ! flock -n 9; then
 fi
 
 cd "$PROJECT_DIR"
-if [[ ! -f .env.production ]]; then
-  echo "missing $PROJECT_DIR/.env.production" >&2
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "missing $ENV_FILE" >&2
   exit 1
 fi
 if ! systemctl cat "$WEBSITE_SERVICE" >/dev/null 2>&1; then

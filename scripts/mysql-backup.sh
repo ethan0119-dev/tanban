@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/root/works/tanban}"
-ENV_FILE="${ENV_FILE:-$PROJECT_DIR/.env.production}"
+PROJECT_DIR="${PROJECT_DIR:-/srv/tanban/current}"
+ENV_FILE="${ENV_FILE:-/etc/tanban/env/production.env}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/tanban/mysql}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 BACKUP_LOCK_TIMEOUT="${BACKUP_LOCK_TIMEOUT:-0}"

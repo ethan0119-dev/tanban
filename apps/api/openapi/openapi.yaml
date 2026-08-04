@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: 所有业务时间均按北京时间（Asia/Shanghai，UTC+8）输入、计算和展示；响应中的本地日期时间统一为 `YYYY-MM-DD HH:mm:ss`。需表达绝对时刻的请求可使用带 `+08:00` 的 RFC3339。
 servers:
-  - url: https://tbapi.666qwe.cn/api/v1
+  - url: https://api.tanban.com.cn/api/v1
 paths:
   /auth/login:
     post:

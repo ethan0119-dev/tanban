@@ -6,7 +6,7 @@ export const CASHIER_TOKEN_KEY = 'tanban_cashier_terminal_token';
 export const AUTH_UNAUTHORIZED_EVENT = 'tanban:merchant:unauthorized';
 export const SERVICE_EXPIRED_EVENT = 'tanban:merchant:service-expired';
 
-const baseURL = (import.meta.env.VITE_API_BASE_URL || 'https://tbapi.666qwe.cn/api/v1').replace(/\/$/, '');
+const baseURL = (import.meta.env.VITE_API_BASE_URL || 'https://api.tanban.com.cn/api/v1').replace(/\/$/, '');
 
 export interface ApiEnvelope<T> {
   data?: T;

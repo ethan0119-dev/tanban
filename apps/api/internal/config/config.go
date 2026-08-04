@@ -131,6 +131,15 @@ func Load() (Config, error) {
 			UserKey: strings.TrimSpace(os.Getenv("TB_XPYUN_USER_KEY")),
 		},
 	}
+	var secretErr error
+	cfg.WeChatPayPartner.APIV2Key, secretErr = secretEnv("TB_WECHAT_PAY_API_V2_KEY")
+	if secretErr != nil {
+		return Config{}, secretErr
+	}
+	cfg.WeChatPayPartner.APIV3Key, secretErr = secretEnv("TB_WECHAT_PAY_API_V3_KEY")
+	if secretErr != nil {
+		return Config{}, secretErr
+	}
 	if cfg.DatabaseDSN == "" {
 		return Config{}, fmt.Errorf("TB_DATABASE_DSN is required")
 	}
@@ -181,4 +190,20 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func secretEnv(key string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" || !strings.HasPrefix(value, "file:") {
+		return value, nil
+	}
+	path := strings.TrimSpace(strings.TrimPrefix(value, "file:"))
+	if path == "" {
+		return "", fmt.Errorf("%s file path is empty", key)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", key, err)
+	}
+	return strings.TrimSpace(string(content)), nil
 }

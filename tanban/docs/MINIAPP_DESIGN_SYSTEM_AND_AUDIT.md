@@ -63,6 +63,6 @@
 
 ## 6. 微信服务器域名
 
-顾客小程序当前只请求 `https://tbapi.666qwe.cn`。微信公众平台需要在“开发管理 → 开发设置 → 服务器域名”配置 request、downloadFile 和预留的 uploadFile 合法域名。“业务域名”仅用于 `<web-view>`，不能代替服务器域名。
+顾客小程序当前只请求 `https://api.tanban.com.cn`。微信公众平台需要在“开发管理 → 开发设置 → 服务器域名”配置 request、downloadFile 和预留的 uploadFile 合法域名。“业务域名”仅用于 `<web-view>`，不能代替服务器域名。
 
 仓库中的公开和私有项目配置均必须保持 `setting.urlCheck: true`。关闭它只会让开发者工具绕过白名单，不能解决真实用户的 `url is not in domain list`。

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tb.666qwe.cn"),
+  metadataBase: new URL("https://tanban.com.cn"),
   title: {
     default: "摊伴 TANBAN｜小店，也值得拥有一套好用的经营系统",
     template: "%s｜摊伴 TANBAN",

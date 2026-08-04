@@ -54,7 +54,7 @@ type PaymentProvider interface {
   "trmIp": "顾客请求IP",
   "subAppid": "统一小程序AppID",
   "userId": "顾客OpenID",
-  "notifyUrl": "https://tbapi.666qwe.cn/api/v1/payments/tianque/callback"
+  "notifyUrl": "https://api.tanban.com.cn/api/v1/payments/tianque/callback"
 }
 ```
 

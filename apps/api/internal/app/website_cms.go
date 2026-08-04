@@ -107,7 +107,7 @@ func defaultWebsiteSettings() websiteSettings {
 		CompanyName:              "摊伴科技",
 		CompanyAddress:           "中国 · 杭州",
 		FooterText:               "让小生意，也有从容经营的底气。",
-		MerchantLoginURL:         "https://mysales.666qwe.cn/",
+		MerchantLoginURL:         "https://b.tanban.com.cn/",
 		MetaTitle:                "摊伴 TANBAN｜让每一个小摊，经营成一个好品牌",
 		MetaDescription:          "面向咖啡摊、夜市餐饮与小型门店的一体化经营系统。",
 	}

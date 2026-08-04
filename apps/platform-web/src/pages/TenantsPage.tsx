@@ -70,7 +70,7 @@ interface ProvisioningResult {
   storeCode?: string;
 }
 
-const merchantPortalUrl = 'https://mysales.666qwe.cn';
+const merchantPortalUrl = 'https://b.tanban.com.cn';
 
 const paymentStatusText: Record<string, string> = {
   unbound: '未绑定',

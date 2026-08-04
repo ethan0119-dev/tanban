@@ -61,7 +61,7 @@ export const fallbackSettings: WebsiteSettings = {
   companyAddress: "中国 · 杭州",
   icpNumber: "",
   footerText: "让小生意，也有从容经营的底气。",
-  merchantLoginUrl: "https://mysales.666qwe.cn/",
+  merchantLoginUrl: "https://b.tanban.com.cn/",
 };
 
 export const fallbackArticles: WebsiteArticle[] = [
@@ -102,7 +102,7 @@ export const fallbackArticles: WebsiteArticle[] = [
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_TANBAN_API_URL?.replace(/\/$/, "") ||
-  "https://tbapi.666qwe.cn/api/v1";
+  "https://api.tanban.com.cn/api/v1";
 
 export function formatArticleDate(value: string) {
   const normalized = value.replace(" ", "T");
