@@ -110,7 +110,7 @@ func defaultWebsiteSettings() websiteSettings {
 		ICPNumber:                "京ICP备2023013917号-2",
 		FooterText:               "让小生意，也有从容经营的底气。",
 		MerchantLoginURL:         "https://b.tanban.com.cn/",
-		MetaTitle:                "北京一百六十度科技-摊伴",
+		MetaTitle:                "一百六十度科技｜摊伴系统",
 		MetaDescription:          "面向咖啡摊、夜市餐饮与小型门店的一体化经营系统。",
 	}
 }
