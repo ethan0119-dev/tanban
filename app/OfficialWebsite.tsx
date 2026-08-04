@@ -15,7 +15,7 @@ import { Receipt } from "@phosphor-icons/react/dist/ssr/Receipt";
 import { Storefront } from "@phosphor-icons/react/dist/ssr/Storefront";
 import { UsersThree } from "@phosphor-icons/react/dist/ssr/UsersThree";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import {
   API_BASE_URL,
   fallbackArticles,
@@ -69,6 +69,7 @@ const sceneData = [
 export function OfficialWebsite() {
   const [settings, setSettings] = useState(fallbackSettings);
   const [articles, setArticles] = useState(fallbackArticles);
+  const [contactNotice, setContactNotice] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,6 +90,19 @@ export function OfficialWebsite() {
   const heroTitle = settings.heroTitle.includes("，")
     ? settings.heroTitle.replace("，", "，\n")
     : settings.heroTitle;
+  const supportPhone = settings.supportPhone.trim();
+  const hasContactDetails = Boolean(supportPhone || settings.contactQrUrl.trim() || settings.contactWechat.trim());
+
+  const showContactNotice = () => {
+    setContactNotice(true);
+    window.setTimeout(() => setContactNotice(false), 2400);
+  };
+
+  const handleContactNavigation = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (hasContactDetails) return;
+    event.preventDefault();
+    showContactNotice();
+  };
 
   return (
     <main className="warm-site">
@@ -100,8 +114,8 @@ export function OfficialWebsite() {
           <h1><span>{heroTitle}</span><em>{settings.heroHighlight}</em></h1>
           <p className="warm-hero__lead">扫码点单、平板收银、自动打印、会员储值，一套摊伴就够了。</p>
           <div className="warm-hero__actions">
-            <a className="warm-button" href="#contact">免费体验</a>
-            <a className="warm-button warm-button--outline" href="#contact"><ChatCircleDots size={20} weight="fill" />联系客服</a>
+            <a className="warm-button" href="#contact" onClick={handleContactNavigation}>免费体验</a>
+            <a className="warm-button warm-button--outline" href="#contact" onClick={handleContactNavigation}><ChatCircleDots size={20} weight="fill" />联系客服</a>
           </div>
           <div className="warm-hero__features">
             <span><QrCode size={17} />微信扫码点单</span>
@@ -189,20 +203,25 @@ export function OfficialWebsite() {
           ) : (
             <span><QrCode size={52} weight="duotone" /></span>
           )}
-          <div><strong>扫码添加客服微信</strong><small>获取产品介绍与开通指导</small></div>
+          <div><strong>{settings.contactQrUrl ? "扫码添加客服微信" : "客服微信敬请期待"}</strong><small>获取产品介绍与开通指导</small></div>
         </div>
         <div className="warm-contact__phone">
           <Phone size={34} weight="fill" />
-          <div><a href={`tel:${settings.supportPhone}`}>{settings.supportPhone}</a><small>工作日 09:00 - 21:00</small></div>
+          <div>{supportPhone ? <a href={`tel:${supportPhone}`}>{supportPhone}</a> : <strong>敬请期待</strong>}<small>工作日 09:00 - 21:00</small></div>
         </div>
-        <a className="warm-button warm-contact__online" href={`tel:${settings.supportPhone}`}><ChatCircleDots size={22} weight="fill" />在线咨询</a>
+        {supportPhone ? (
+          <a className="warm-button warm-contact__online" href={`tel:${supportPhone}`}><ChatCircleDots size={22} weight="fill" />在线咨询</a>
+        ) : (
+          <button className="warm-button warm-contact__online" type="button" onClick={showContactNotice}><ChatCircleDots size={22} weight="fill" />在线咨询</button>
+        )}
       </section>
 
       <WebsiteFooter settings={settings} />
 
-      <a className="warm-floating-service" href="#contact" aria-label="客服咨询">
+      <a className="warm-floating-service" href="#contact" aria-label="客服咨询" onClick={handleContactNavigation}>
         <Headset size={25} weight="duotone" /><span>客服<br />咨询</span>
       </a>
+      {contactNotice && <div className="warm-contact-notice" role="status" aria-live="polite">客服功能敬请期待</div>}
     </main>
   );
 }

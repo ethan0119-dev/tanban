@@ -1170,6 +1170,8 @@ button { color: inherit; }
 .warm-contact__online {
   min-width: 200px;
   justify-self: end;
+  border: 0;
+  cursor: pointer;
 }
 
 .warm-footer {
@@ -1179,8 +1181,9 @@ button { color: inherit; }
   justify-content: space-between;
   margin: 0 auto;
   padding: 30px 4px 42px;
-  color: #a09489;
-  font-size: 9px;
+  color: #74685f;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .warm-footer p {
@@ -1189,7 +1192,16 @@ button { color: inherit; }
 
 .warm-footer__links {
   display: flex;
-  gap: 30px;
+  gap: 22px;
+}
+
+.warm-footer__links a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.warm-footer__links a:hover {
+  color: var(--warm-orange);
 }
 
 .warm-footer--shared {
@@ -1217,7 +1229,22 @@ button { color: inherit; }
 
 .warm-footer__brand > span:last-child {
   color: #776a60;
-  font-size: 11px;
+  font-size: 13px;
+}
+
+.warm-contact-notice {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  bottom: 42px;
+  padding: 12px 20px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  color: white;
+  background: rgba(55, 39, 30, .94);
+  box-shadow: 0 12px 34px rgba(55, 39, 30, .22);
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .warm-floating-service {

@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { canManagePlatformUsers } from '../lib/permissions';
 import { websiteService } from '../lib/services';
 import type { WebsiteMedia, WebsiteSettings } from '../types';
+import { isValidWebsiteImageURL, websiteImagePreviewURL } from '../features/website/urls';
 
 type ImageFieldProps = {
   label: string;
@@ -49,10 +50,14 @@ function WebsiteImageField({ label, name, hint, form, writable, onUploaded }: Im
       {holder}
       <div className="website-image-field">
         <div className="website-image-field__preview">
-          {value ? <Image src={value} alt={label} fallback="/favicon.svg" /> : <PictureOutlined />}
+          {value ? <Image src={websiteImagePreviewURL(value)} alt={label} fallback="/favicon.svg" /> : <PictureOutlined />}
         </div>
         <div className="website-image-field__controls">
-          <Form.Item name={name} noStyle rules={[{ required: false }, { type: 'url', warningOnly: true }]}>
+          <Form.Item name={name} noStyle rules={[{
+            validator: (_, fieldValue: string | undefined) => isValidWebsiteImageURL(fieldValue || '')
+              ? Promise.resolve()
+              : Promise.reject(new Error('请输入 HTTPS 图片地址或 /website/ 开头的官网内置图片路径')),
+          }]}>
             <Input placeholder="上传图片后自动填写，也可粘贴完整图片地址" disabled={!writable} />
           </Form.Item>
           <Space wrap>

@@ -57,9 +57,9 @@ export const fallbackSettings: WebsiteSettings = {
   supportEmail: "hello@tanban.cn",
   contactWechat: "TanbanService",
   contactQrUrl: "",
-  companyName: "摊伴科技",
-  companyAddress: "中国 · 杭州",
-  icpNumber: "",
+  companyName: "北京一百六十度科技有限公司",
+  companyAddress: "中国 · 北京",
+  icpNumber: "京ICP备2023013917号-2",
   footerText: "让小生意，也有从容经营的底气。",
   merchantLoginUrl: "https://b.tanban.com.cn/",
 };

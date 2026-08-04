@@ -20,11 +20,15 @@ test("server renders the Tanban official website", async () => {
 
   const html = await response.text();
   assert.match(html, /摊伴/);
+  assert.match(html, /<title>北京一百六十度科技-摊伴<\/title>/);
   assert.match(html, /TANBAN/);
-  assert.match(html, /小店，也值得拥有一套/);
+  assert.match(html, /小店，\s*也值得拥有一套/);
   assert.match(html, /顾客扫码点单/);
   assert.match(html, /店员平板收银/);
   assert.match(html, /tanban-icon-/);
+  assert.match(html, /北京一百六十度科技有限公司/);
+  assert.match(html, /京ICP备2023013917号-2/);
+  assert.match(html, /https:\/\/beian\.miit\.gov\.cn\//);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);
 });
 

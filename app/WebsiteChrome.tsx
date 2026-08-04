@@ -11,7 +11,7 @@ type WebsiteHeaderProps = {
 };
 
 type WebsiteFooterProps = {
-  settings?: Pick<WebsiteSettings, "brandName" | "brandEnglishName" | "icpNumber" | "footerText">;
+  settings?: Pick<WebsiteSettings, "companyName" | "icpNumber" | "footerText">;
 };
 
 const tanbanIconSrc = typeof tanbanIcon === "string" ? tanbanIcon : tanbanIcon.src;
@@ -60,8 +60,12 @@ export function WebsiteFooter({ settings = fallbackSettings }: WebsiteFooterProp
   return (
     <footer className="warm-footer warm-footer--shared">
       <div className="warm-footer__brand"><WebsiteBrand /><span>{settings.footerText}</span></div>
-      <p>© 2026 {settings.brandName} {settings.brandEnglishName}. 保留所有权利。</p>
-      <div className="warm-footer__links"><Link href="/#about">隐私政策</Link><Link href="/#about">服务协议</Link>{settings.icpNumber && <span>{settings.icpNumber}</span>}</div>
+      <p>© 2026 {settings.companyName || "北京一百六十度科技有限公司"}. 保留所有权利。</p>
+      <div className="warm-footer__links">
+        <Link href="/#about">隐私政策</Link>
+        <Link href="/#about">服务协议</Link>
+        {settings.icpNumber && <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">{settings.icpNumber}</a>}
+      </div>
     </footer>
   );
 }

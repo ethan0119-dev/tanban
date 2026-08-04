@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -104,11 +105,12 @@ func defaultWebsiteSettings() websiteSettings {
 		SupportPhone:             "400-865-0906",
 		SupportEmail:             "hello@tanban.cn",
 		ContactWechat:            "TanbanService",
-		CompanyName:              "摊伴科技",
-		CompanyAddress:           "中国 · 杭州",
+		CompanyName:              "北京一百六十度科技有限公司",
+		CompanyAddress:           "中国 · 北京",
+		ICPNumber:                "京ICP备2023013917号-2",
 		FooterText:               "让小生意，也有从容经营的底气。",
 		MerchantLoginURL:         "https://b.tanban.com.cn/",
-		MetaTitle:                "摊伴 TANBAN｜让每一个小摊，经营成一个好品牌",
+		MetaTitle:                "北京一百六十度科技-摊伴",
 		MetaDescription:          "面向咖啡摊、夜市餐饮与小型门店的一体化经营系统。",
 	}
 }
@@ -185,7 +187,14 @@ func normalizeWebsiteSettings(input *websiteSettings) {
 }
 
 func validOptionalWebsiteURL(value string) bool {
-	return value == "" || validDecorationURL(value)
+	value = strings.TrimSpace(value)
+	if value == "" || validDecorationURL(value) {
+		return true
+	}
+	parsed, err := url.ParseRequestURI(value)
+	return err == nil && parsed.Scheme == "" && parsed.Host == "" &&
+		strings.HasPrefix(parsed.Path, "/website/") &&
+		!strings.Contains(parsed.Path, "..") && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func (s *Server) updateWebsiteSettings(w http.ResponseWriter, r *http.Request) {

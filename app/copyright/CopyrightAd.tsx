@@ -71,14 +71,13 @@ export function CopyrightAd() {
         <small>长按二维码识别，或截图后在微信中扫码</small>
       </section>
       </div>
-      <WebsiteFooter settings={{ ...fallbackWebsiteFooter, brandName: copy.brand }} />
+      <WebsiteFooter settings={fallbackWebsiteFooter} />
     </main>
   );
 }
 
 const fallbackWebsiteFooter = {
-  brandName: "摊伴",
-  brandEnglishName: "TANBAN",
-  icpNumber: "",
+  companyName: "北京一百六十度科技有限公司",
+  icpNumber: "京ICP备2023013917号-2",
   footerText: "为小店经营提供数字化支持",
 };

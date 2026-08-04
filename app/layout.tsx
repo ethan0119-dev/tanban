@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://tanban.com.cn"),
   title: {
-    default: "摊伴 TANBAN｜小店，也值得拥有一套好用的经营系统",
-    template: "%s｜摊伴 TANBAN",
+    default: "北京一百六十度科技-摊伴",
+    template: "%s｜北京一百六十度科技-摊伴",
   },
   description: "扫码点单、平板收银、自动打印、会员储值，面向早餐摊、咖啡车、夜市餐饮与小型门店的一体化经营系统。",
   openGraph: {
-    title: "摊伴 TANBAN｜小店，也值得拥有一套好用的经营系统",
+    title: "北京一百六十度科技-摊伴",
     description: "扫码点单、平板收银、自动打印、会员储值，一套摊伴就够了。",
     images: [{ url: "/website/hero-devices.png", width: 1536, height: 1024, alt: "摊伴平板收银与顾客点单系统" }],
   },
