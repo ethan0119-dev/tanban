@@ -47,8 +47,8 @@ if [[ ! -f "$ENV_FILE" || -L "$ENV_FILE" ]]; then
   exit 1
 fi
 env_mode="$(stat -c '%a' "$ENV_FILE")"
-if ((8#$env_mode & 8#077)); then
-  echo "refusing to read $ENV_FILE because group/other permissions are set (mode $env_mode); run chmod 600" >&2
+if ((8#$env_mode & 8#037)); then
+  echo "refusing to read $ENV_FILE because group write/execute or other permissions are set (mode $env_mode); use 600 or 640" >&2
   exit 1
 fi
 if [[ "$BACKUP_DIR" != /* || "$BACKUP_DIR" == "/" || "$BACKUP_DIR" == *".."* ]]; then
