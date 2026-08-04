@@ -9,12 +9,16 @@ WEBSITE_READY_TIMEOUT="${WEBSITE_READY_TIMEOUT:-60}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lock/tanban-website-deploy.lock}"
 NODE_RUNTIME_BIN_DIR="${NODE_RUNTIME_BIN_DIR:-/opt/node-v22/bin}"
 WEBSITE_BACKUP_ROOT="${WEBSITE_BACKUP_ROOT:-/var/backups/tanban/website}"
+WEBSITE_BUILD_ROOT="${WEBSITE_BUILD_ROOT:-/var/cache/tanban/website-build}"
+WEBSITE_RELEASE_ROOT="${WEBSITE_RELEASE_ROOT:-/var/lib/tanban/website-releases}"
 
 WEBSITE_RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 WEBSITE_BACKUP_DIR="$WEBSITE_BACKUP_ROOT/$WEBSITE_RELEASE_ID"
+WEBSITE_RELEASE_DIR="$WEBSITE_RELEASE_ROOT/$WEBSITE_RELEASE_ID"
 WEBSITE_DIST_MUTATED=0
 WEBSITE_HAD_PRIOR_DIST=0
 WEBSITE_DEPLOY_COMMITTED=0
+WEBSITE_PRIOR_DIST_TARGET=""
 
 WEBSITE_CRITICAL_ASSET_PATHS=(
   "/og.png"
@@ -63,9 +67,10 @@ restore_previous_website_dist() {
     echo "no prior website dist is available for automatic rollback" >&2
     return
   fi
-  echo "restoring previous website build from $WEBSITE_BACKUP_DIR" >&2
-  install -d -m 0755 "$PROJECT_DIR/dist"
-  rsync -a --delete "$WEBSITE_BACKUP_DIR/" "$PROJECT_DIR/dist/"
+  local rollback_link="$PROJECT_DIR/.dist-rollback-$WEBSITE_RELEASE_ID"
+  echo "restoring previous website build from $WEBSITE_PRIOR_DIST_TARGET" >&2
+  ln -s "$WEBSITE_PRIOR_DIST_TARGET" "$rollback_link"
+  mv -Tf "$rollback_link" "$PROJECT_DIR/dist"
   systemctl restart "$WEBSITE_SERVICE"
 }
 
@@ -94,7 +99,7 @@ if [[ -z "$node_major" || "$node_major" -lt 22 ]]; then
   exit 1
 fi
 
-for command_name in curl flock grep install npm rsync sed systemctl; do
+for command_name in curl flock grep install ln mv npm readlink rsync sed systemctl; do
   require_command "$command_name"
 done
 if [[ "$PROJECT_DIR" != /* || "$PROJECT_DIR" == "/" || "$PROJECT_DIR" == *".."* ]]; then
@@ -111,6 +116,18 @@ if [[ -n "$WEBSITE_PUBLIC_URL" && "$WEBSITE_PUBLIC_URL" != https://* ]]; then
 fi
 if [[ "$WEBSITE_BACKUP_ROOT" != /* || "$WEBSITE_BACKUP_ROOT" == "/" || "$WEBSITE_BACKUP_ROOT" == *".."* ]]; then
   echo "WEBSITE_BACKUP_ROOT must be a specific absolute directory: $WEBSITE_BACKUP_ROOT" >&2
+  exit 1
+fi
+if [[ "$WEBSITE_BUILD_ROOT" != /* || "$WEBSITE_BUILD_ROOT" == "/" || "$WEBSITE_BUILD_ROOT" == *".."* ]]; then
+  echo "WEBSITE_BUILD_ROOT must be a specific absolute directory: $WEBSITE_BUILD_ROOT" >&2
+  exit 1
+fi
+if [[ "$WEBSITE_RELEASE_ROOT" != /* || "$WEBSITE_RELEASE_ROOT" == "/" || "$WEBSITE_RELEASE_ROOT" == *".."* ]]; then
+  echo "WEBSITE_RELEASE_ROOT must be a specific absolute directory: $WEBSITE_RELEASE_ROOT" >&2
+  exit 1
+fi
+if [[ "$WEBSITE_BUILD_ROOT" == "$PROJECT_DIR" || "$WEBSITE_BUILD_ROOT" == "$PROJECT_DIR/"* ]]; then
+  echo "WEBSITE_BUILD_ROOT must be outside PROJECT_DIR" >&2
   exit 1
 fi
 
@@ -144,22 +161,79 @@ export NEXT_PUBLIC_TANBAN_API_URL="$website_api_url"
 
 echo "installing deterministic website dependencies"
 npm ci
-if [[ -d dist ]]; then
-  install -d -m 0755 "$WEBSITE_BACKUP_DIR"
-  rsync -a dist/ "$WEBSITE_BACKUP_DIR/"
-  WEBSITE_HAD_PRIOR_DIST=1
+
+echo "preparing isolated website build"
+install -d -m 0755 "$WEBSITE_BUILD_ROOT"
+rsync -a --delete \
+  --exclude='.dist-*' \
+  --exclude='.env.production' \
+  --exclude='.vinext/' \
+  --exclude='.wrangler/' \
+  --exclude='dist/' \
+  --exclude='node_modules/' \
+  "$PROJECT_DIR/" "$WEBSITE_BUILD_ROOT/"
+if [[ -e "$WEBSITE_BUILD_ROOT/node_modules" && ! -L "$WEBSITE_BUILD_ROOT/node_modules" ]]; then
+  echo "website build node_modules must be a symlink" >&2
+  exit 1
 fi
-WEBSITE_DIST_MUTATED=1
+if [[ ! -L "$WEBSITE_BUILD_ROOT/node_modules" ]]; then
+  ln -s "$PROJECT_DIR/node_modules" "$WEBSITE_BUILD_ROOT/node_modules"
+elif [[ "$(readlink "$WEBSITE_BUILD_ROOT/node_modules")" != "$PROJECT_DIR/node_modules" ]]; then
+  echo "website build node_modules points to an unexpected location" >&2
+  exit 1
+fi
+if [[ -e "$WEBSITE_BUILD_ROOT/dist" || -L "$WEBSITE_BUILD_ROOT/dist" ]]; then
+  install -d -m 0755 "$WEBSITE_BACKUP_ROOT"
+  mv "$WEBSITE_BUILD_ROOT/dist" "$WEBSITE_BACKUP_ROOT/unfinished-$WEBSITE_RELEASE_ID"
+fi
+
 echo "building official website"
-npm run build:prototype
+(cd "$WEBSITE_BUILD_ROOT" && npm run build:prototype)
 
 for asset_path in "${WEBSITE_CRITICAL_ASSET_PATHS[@]}"; do
-  if [[ ! -s "dist/client${asset_path}" ]]; then
-    echo "website build is missing critical asset: dist/client${asset_path}" >&2
+  if [[ ! -s "$WEBSITE_BUILD_ROOT/dist/client${asset_path}" ]]; then
+    echo "website build is missing critical asset: $WEBSITE_BUILD_ROOT/dist/client${asset_path}" >&2
     exit 1
   fi
 done
 
+install -d -m 0755 "$WEBSITE_RELEASE_ROOT"
+if [[ -e "$WEBSITE_RELEASE_DIR" || -L "$WEBSITE_RELEASE_DIR" ]]; then
+  echo "website release path already exists: $WEBSITE_RELEASE_DIR" >&2
+  exit 1
+fi
+mv "$WEBSITE_BUILD_ROOT/dist" "$WEBSITE_RELEASE_DIR"
+
+next_dist_link="$PROJECT_DIR/.dist-next-$WEBSITE_RELEASE_ID"
+if [[ -e "$next_dist_link" || -L "$next_dist_link" ]]; then
+  echo "website activation link already exists: $next_dist_link" >&2
+  exit 1
+fi
+ln -s "$WEBSITE_RELEASE_DIR" "$next_dist_link"
+if [[ -L "$PROJECT_DIR/dist" ]]; then
+  WEBSITE_PRIOR_DIST_TARGET="$(readlink -f "$PROJECT_DIR/dist")"
+  if [[ ! -d "$WEBSITE_PRIOR_DIST_TARGET" ]]; then
+    echo "current website dist symlink target is missing: $WEBSITE_PRIOR_DIST_TARGET" >&2
+    exit 1
+  fi
+  WEBSITE_HAD_PRIOR_DIST=1
+elif [[ -d "$PROJECT_DIR/dist" ]]; then
+  install -d -m 0755 "$WEBSITE_BACKUP_ROOT"
+  if [[ -e "$WEBSITE_BACKUP_DIR" || -L "$WEBSITE_BACKUP_DIR" ]]; then
+    echo "website backup path already exists: $WEBSITE_BACKUP_DIR" >&2
+    exit 1
+  fi
+  mv "$PROJECT_DIR/dist" "$WEBSITE_BACKUP_DIR"
+  WEBSITE_PRIOR_DIST_TARGET="$WEBSITE_BACKUP_DIR"
+  WEBSITE_HAD_PRIOR_DIST=1
+  WEBSITE_DIST_MUTATED=1
+elif [[ -e "$PROJECT_DIR/dist" ]]; then
+  echo "website dist must be a directory, symlink, or missing" >&2
+  exit 1
+fi
+
+WEBSITE_DIST_MUTATED=1
+mv -Tf "$next_dist_link" "$PROJECT_DIR/dist"
 systemctl restart "$WEBSITE_SERVICE"
 deadline=$((SECONDS + WEBSITE_READY_TIMEOUT))
 website_body=""
@@ -195,5 +269,5 @@ fi
 WEBSITE_DEPLOY_COMMITTED=1
 echo "Tanban official website deployed"
 if ((WEBSITE_HAD_PRIOR_DIST == 1)); then
-  echo "Website build backup: $WEBSITE_BACKUP_DIR"
+  echo "Previous website build: $WEBSITE_PRIOR_DIST_TARGET"
 fi

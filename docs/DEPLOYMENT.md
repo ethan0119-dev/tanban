@@ -219,7 +219,8 @@ bash scripts/server-deploy-website.sh
 
 该脚本校验 `/opt/node-v22/bin` 中的独立 Node.js 22 运行时，使用 `.env.production` 中的
 `NEXT_PUBLIC_TANBAN_API_URL` 构建官网，重启
-`tanban-website.service`，并检查首页、关键图片资源及公网访问链路。官网首次发布完成后，后续升级统一执行
+`tanban-website.service`。官网会在独立目录完成构建和关键图片预检，再切换 `dist`，避免构建期间影响在线资源；
+切换后继续检查首页、关键图片资源及公网访问链路。官网首次发布完成后，后续升级统一执行
 `bash scripts/server-deploy.sh`；完整发布会自动调用官网发布脚本。仅修改官网时仍可单独执行
 `bash scripts/server-deploy-website.sh`。
 
@@ -230,7 +231,7 @@ bash scripts/server-deploy-website.sh
 3. 给当前 API 镜像创建带发布号的回滚标签，再构建并启动新容器，持续检查 `http://127.0.0.1:18090/readyz`。只有数据库迁移完成且 API 就绪后才继续；新 API 未就绪时可恢复兼容扩展后 schema 的上一镜像。新 API 已通过就绪检查后，若后续前端或 Nginx 阶段失败，脚本只恢复静态文件和 Nginx，保留已兼容新 schema 的健康 API 并要求前向修复。
 4. 安装两个 Web workspace 及其根级共享构建插件，构建前端，将产物写入带版本号的 release 目录，再通过符号链接切换生效。已有符号链接的后续发布是原子切换；第一次接管旧的实体目录时，脚本会先将旧目录改名保留。
 5. 在临时 Nginx include 目录中独立执行配置预检，通过后才备份并安装正式 vhost。正式配置还会再次执行 `nginx -t`，成功后才 reload。
-6. 重建并重启官网，检查首页、`og.png` 和 `public/website` 下的全部关键图片；官网发布失败时恢复上一份 `dist` 构建。
+6. 在旁路目录重建官网，预检 `og.png` 和 `public/website` 下的全部关键图片后切换 `dist` 并重启；线上检查失败时恢复上一份构建。
 7. 发布成功后清理旧的静态 release、Nginx 配置备份和 API rollback image，默认各保留最近 5 个。
 
 Nginx 备份默认保存在 `/var/backups/tanban/nginx/<release-id>/`。如果正式配置检查或 reload 失败，脚本会恢复旧的 vhost 和静态目录，并重新加载旧配置。可通过 `NGINX_BACKUP_ROOT` 更换备份根目录；用 `RELEASE_RETENTION_COUNT=10` 可调整发布产物保留数。
