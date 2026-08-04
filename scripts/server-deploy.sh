@@ -14,6 +14,7 @@ MYSQL_BACKUP_DIR="${MYSQL_BACKUP_DIR:-/var/backups/tanban/mysql}"
 MYSQL_BACKUP_RETENTION_DAYS="${MYSQL_BACKUP_RETENTION_DAYS:-14}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lock/tanban-server-deploy.lock}"
 DEPLOY_LOCK_TIMEOUT="${DEPLOY_LOCK_TIMEOUT:-600}"
+DEPLOY_WEBSITE="${DEPLOY_WEBSITE:-1}"
 COMPOSE_FILE="infra/deploy/docker-compose.prod.yml"
 
 if ! command -v flock >/dev/null 2>&1; then
@@ -22,6 +23,10 @@ if ! command -v flock >/dev/null 2>&1; then
 fi
 if [[ ! "$DEPLOY_LOCK_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
   echo "DEPLOY_LOCK_TIMEOUT must be a positive integer" >&2
+  exit 1
+fi
+if [[ "$DEPLOY_WEBSITE" != "0" && "$DEPLOY_WEBSITE" != "1" ]]; then
+  echo "DEPLOY_WEBSITE must be 0 or 1" >&2
   exit 1
 fi
 if [[ "$DEPLOY_LOCK_FILE" != /* || "$DEPLOY_LOCK_FILE" == "/" || "$DEPLOY_LOCK_FILE" == *".."* ]]; then
@@ -451,6 +456,11 @@ install_nginx_configs
 "$NGINX_BIN" -t
 "$NGINX_BIN" -s reload
 curl --fail --silent --show-error --max-time 5 "$API_READY_URL" >/dev/null
+
+if [[ "$DEPLOY_WEBSITE" == "1" ]]; then
+  echo "deploying official website"
+  PROJECT_DIR="$PROJECT_DIR" bash scripts/server-deploy-website.sh
+fi
 
 DEPLOY_COMMITTED=1
 cleanup_old_release_artifacts || echo "warning: release cleanup did not complete; deployment remains active" >&2
