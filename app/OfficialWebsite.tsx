@@ -24,7 +24,7 @@ import {
   type WebsiteArticle,
   type WebsiteSettings,
 } from "./website-data";
-import { WebsiteFooter, WebsiteHeader } from "./WebsiteChrome";
+import { OPEN_EXPERIENCE_EVENT, WebsiteFooter, WebsiteHeader } from "./WebsiteChrome";
 
 type WebsitePayload = {
   settings?: Partial<WebsiteSettings>;
@@ -104,9 +104,14 @@ export function OfficialWebsite() {
     showContactNotice();
   };
 
+  const handleExperience = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    window.dispatchEvent(new Event(OPEN_EXPERIENCE_EVENT));
+  };
+
   return (
     <main className="warm-site">
-      <WebsiteHeader home merchantLoginUrl={settings.merchantLoginUrl} />
+      <WebsiteHeader home />
 
       <section className="warm-hero" id="top">
         <div className="warm-hero__copy">
@@ -114,7 +119,7 @@ export function OfficialWebsite() {
           <h1><span>{heroTitle}</span><em>{settings.heroHighlight}</em></h1>
           <p className="warm-hero__lead">扫码点单、平板收银、自动打印、会员储值，一套摊伴就够了。</p>
           <div className="warm-hero__actions">
-            <a className="warm-button" href="#contact" onClick={handleContactNavigation}>免费体验</a>
+            <a className="warm-button" href="#experience" role="button" aria-haspopup="dialog" onClick={handleExperience}>免费体验</a>
             <a className="warm-button warm-button--outline" href="#contact" onClick={handleContactNavigation}><ChatCircleDots size={20} weight="fill" />联系客服</a>
           </div>
           <div className="warm-hero__features">

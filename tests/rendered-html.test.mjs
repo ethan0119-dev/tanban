@@ -30,6 +30,9 @@ test("server renders the Tanban official website", async () => {
   assert.match(html, /京ICP备2023013917号-2/);
   assert.match(html, /https:\/\/beian\.miit\.gov\.cn\//);
   assert.match(html, /aria-haspopup="dialog"[^>]*>关于摊伴<\/button>/);
+  assert.match(html, /aria-haspopup="dialog"[^>]*>免费体验<\/button>/);
+  assert.match(html, /href="(?:https:\/\/tanban\.com\.cn)?\/favicon\.svg"/);
+  assert.doesNotMatch(html, /登录商户后台/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/i);
 });
 
