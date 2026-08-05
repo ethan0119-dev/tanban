@@ -100,7 +100,8 @@ func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Reque
 		"orgId": settings.OrgID, "apiBaseUrl": settings.APIBaseURL, "notifyUrl": settings.NotifyURL,
 		"refundNotifyUrl": settings.RefundNotifyURL, "spMchId": settings.ServiceProviderMchID, "spAppId": settings.ServiceProviderAppID,
 		"microOnboardingPermissionStatus": settings.MicroOnboardingPermissionStatus,
-		"effectiveProvider":               s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(),
+		"effectiveProvider":               settings.Provider, "restartRequired": false,
+		"multiTenantRouting": true, "availableProviders": s.availablePaymentProviders(),
 		"tianqueConfigured":         s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "",
 		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": true,
 		"wechatPartnerConfigured": wechat.ServiceProviderMchID != "" && wechat.ServiceProviderAppID != "" &&

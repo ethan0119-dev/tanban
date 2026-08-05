@@ -24,6 +24,16 @@ func (s *Server) paymentProviderAvailable(name string) bool {
 	return err == nil
 }
 
+func (s *Server) availablePaymentProviders() []string {
+	if s.Payments != nil {
+		return s.Payments.Names()
+	}
+	if s.Payment != nil {
+		return []string{s.Payment.Name()}
+	}
+	return []string{}
+}
+
 func (s *Server) paymentNotifyURLFor(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "wechat_partner":
