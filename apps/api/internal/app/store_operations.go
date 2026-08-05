@@ -270,8 +270,8 @@ func allocatePickupCode(ctx context.Context, tx *sql.Tx, tenantID, storeID int64
 	if _, err := time.Parse("2006-01-02", businessDate); err != nil {
 		return 0, "", errors.New("invalid business date")
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO order_pickup_sequences(tenant_id,store_id,business_date,last_value)
-		VALUES(?,?,?,1) ON DUPLICATE KEY UPDATE last_value=LAST_INSERT_ID(last_value+1)`, tenantID, storeID, businessDate)
+	_, err := tx.ExecContext(ctx, "INSERT INTO order_pickup_sequences(tenant_id,store_id,business_date,`last_value`) "+
+		"VALUES(?,?,?,1) ON DUPLICATE KEY UPDATE `last_value`=LAST_INSERT_ID(`last_value`+1)", tenantID, storeID, businessDate)
 	if err != nil {
 		return 0, "", err
 	}
@@ -280,8 +280,8 @@ func allocatePickupCode(ctx context.Context, tx *sql.Tx, tenantID, storeID int64
 	// order transaction commits, so reading last_value here is concurrency-safe
 	// for both the first and subsequent orders of a business day.
 	var sequence int64
-	if err = tx.QueryRowContext(ctx, `SELECT last_value FROM order_pickup_sequences
-		WHERE tenant_id=? AND store_id=? AND business_date=?`, tenantID, storeID, businessDate).Scan(&sequence); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT `last_value` FROM order_pickup_sequences\n"+
+		"WHERE tenant_id=? AND store_id=? AND business_date=?", tenantID, storeID, businessDate).Scan(&sequence); err != nil {
 		return 0, "", err
 	}
 	if sequence <= 0 {

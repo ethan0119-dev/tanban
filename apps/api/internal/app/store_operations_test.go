@@ -139,12 +139,12 @@ func TestAllocatePickupCodeReadsBusinessSequenceInsteadOfInsertID(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO order_pickup_sequences(tenant_id,store_id,business_date,last_value)
-		VALUES(?,?,?,1) ON DUPLICATE KEY UPDATE last_value=LAST_INSERT_ID(last_value+1)`)).
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO order_pickup_sequences(tenant_id,store_id,business_date,`last_value`) "+
+		"VALUES(?,?,?,1) ON DUPLICATE KEY UPDATE `last_value`=LAST_INSERT_ID(`last_value`+1)")).
 		WithArgs(int64(3), int64(7), "2026-07-20").
 		WillReturnResult(sqlmock.NewResult(9821, 1))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT last_value FROM order_pickup_sequences
-		WHERE tenant_id=? AND store_id=? AND business_date=?`)).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT `last_value` FROM order_pickup_sequences\n"+
+		"WHERE tenant_id=? AND store_id=? AND business_date=?")).
 		WithArgs(int64(3), int64(7), "2026-07-20").
 		WillReturnRows(sqlmock.NewRows([]string{"last_value"}).AddRow(1))
 
