@@ -32,6 +32,7 @@ WEBSITE_CRITICAL_ASSET_PATHS=(
   "/website/scene-bakery.png"
   "/website/scene-night-market.png"
   "/website/scene-cafe.png"
+  "/website/public-security-record.png"
 )
 
 require_command() {

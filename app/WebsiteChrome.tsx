@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import tanbanIcon from "../apps/merchant-web/src/assets/brand/tanban-icon.png";
-import { fallbackSettings, type WebsiteSettings } from "./website-data";
+import { fallbackSettings, publicSecurityRecord, type WebsiteSettings } from "./website-data";
 
 type WebsiteHeaderProps = {
   home?: boolean;
@@ -145,6 +145,17 @@ export function WebsiteFooter({ settings = fallbackSettings }: WebsiteFooterProp
       <div className="warm-footer__links">
         <Link href="/#about">隐私政策</Link>
         <Link href="/#about">服务协议</Link>
+        <a
+          className="warm-footer__security-record"
+          href={publicSecurityRecord.queryUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {/* This compliance badge is an official 14×16 px raster asset and must be served without optimization. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={publicSecurityRecord.iconUrl} alt="" width="14" height="16" />
+          <span>{publicSecurityRecord.number}</span>
+        </a>
         {settings.icpNumber && <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">{settings.icpNumber}</a>}
       </div>
     </footer>

@@ -29,6 +29,9 @@ test("server renders the Tanban official website", async () => {
   assert.match(html, /北京一百六十度科技有限公司/);
   assert.match(html, /京ICP备2023013917号-2/);
   assert.match(html, /https:\/\/beian\.miit\.gov\.cn\//);
+  assert.match(html, /京公网安备11011202102155号/);
+  assert.match(html, /https:\/\/beian\.mps\.gov\.cn\/#\/query\/webSearch\?code=11011202102155/);
+  assert.match(html, /\/website\/public-security-record\.png/);
   assert.match(html, /aria-haspopup="dialog"[^>]*>关于摊伴<\/button>/);
   assert.match(html, /aria-haspopup="dialog"[^>]*>免费体验<\/button>/);
   assert.match(html, /href="(?:https:\/\/tanban\.com\.cn)?\/favicon\.svg"/);

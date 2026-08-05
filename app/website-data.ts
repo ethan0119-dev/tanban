@@ -36,6 +36,13 @@ export type WebsiteArticle = {
   isFeatured: boolean;
 };
 
+export const publicSecurityRecord = {
+  number: "京公网安备11011202102155号",
+  code: "11011202102155",
+  queryUrl: "https://beian.mps.gov.cn/#/query/webSearch?code=11011202102155",
+  iconUrl: "/website/public-security-record.png",
+} as const;
+
 export const fallbackSettings: WebsiteSettings = {
   brandName: "摊伴",
   brandEnglishName: "TANBAN",
