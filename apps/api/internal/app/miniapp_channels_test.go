@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,39 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/ethan0119-dev/tanban/apps/api/internal/config"
 )
+
+func TestPublicMiniAppBootstrapReturnsConfiguredDefaultStore(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := &Server{DB: db}
+	mock.ExpectQuery("SELECT s.code").
+		WillReturnRows(sqlmock.NewRows([]string{"code"}).AddRow("manong-coffee-gulou"))
+
+	request := httptest.NewRequest("GET", "/api/v1/public/miniapp/bootstrap?channelKey=tanban-public", nil)
+	recorder := httptest.NewRecorder()
+	server.publicMiniAppBootstrap(recorder, request)
+	if recorder.Code != 200 {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		Data struct {
+			StoreCode  string `json:"storeCode"`
+			ChannelKey string `json:"channelKey"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Data.StoreCode != "manong-coffee-gulou" || response.Data.ChannelKey != publicMiniAppChannelKey {
+		t.Fatalf("unexpected bootstrap response: %#v", response.Data)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMiniAppSecretEncryptionRoundTrip(t *testing.T) {
 	t.Parallel()

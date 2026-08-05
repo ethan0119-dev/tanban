@@ -25,6 +25,7 @@ export interface TanbanAppOption {
     appearanceStyle: string;
   };
   prepareOrderingEntry(options: OrderingEntryOptions, restoreWhenEmpty?: boolean): Promise<void>;
+  loadDefaultStoreCode(): Promise<void>;
   handleResolvedOrderingEntry(options: OrderingEntryOptions): void;
   refreshCustomerSession(): Promise<void>;
 }
@@ -50,9 +51,25 @@ App<TanbanAppOption>({
   onLaunch(options) {
     const token = wx.getStorageSync<string>("tanban_customer_token");
     if (token) this.globalData.customerToken = token;
-    this.globalData.routeReady = this.prepareOrderingEntry(options, true).then(() => {
+    this.globalData.routeReady = this.loadDefaultStoreCode().then(() => this.prepareOrderingEntry(options, true)).then(() => {
       this.handleResolvedOrderingEntry(options);
       return this.refreshCustomerSession();
+    });
+  },
+  loadDefaultStoreCode() {
+    return new Promise<void>((resolve) => {
+      wx.request<{ data?: { storeCode?: string } }>({
+        url: `${env.apiBaseUrl}/public/miniapp/bootstrap?channelKey=${encodeURIComponent(env.channelKey)}`,
+        timeout: env.requestTimeoutMs,
+        success: (response) => {
+          const storeCode = String(response.data?.data?.storeCode || "").trim();
+          if (response.statusCode >= 200 && response.statusCode < 300 && storeCode) {
+            this.globalData.storeCode = storeCode;
+          }
+          resolve();
+        },
+        fail: () => resolve(),
+      });
     });
   },
   onShow(options) {
@@ -129,7 +146,7 @@ App<TanbanAppOption>({
         clearFastFoodContext();
         this.globalData.tableContext = null;
         this.globalData.fastFoodContext = null;
-        this.globalData.storeCode = env.defaultStoreCode;
+        this.globalData.storeCode = this.globalData.storeCode || env.defaultStoreCode;
         this.globalData.appearanceStoreCode = "";
         this.globalData.routeError = "";
       }
@@ -160,7 +177,7 @@ App<TanbanAppOption>({
     clearFastFoodContext();
     this.globalData.tableContext = null;
     this.globalData.fastFoodContext = null;
-    this.globalData.storeCode = env.defaultStoreCode;
+    this.globalData.storeCode = this.globalData.storeCode || env.defaultStoreCode;
     if (route.kind === "INVALID") {
       this.globalData.routeError = route.message;
       wx.showModal({ title: "无法识别二维码", content: route.message, showCancel: false });
@@ -181,7 +198,7 @@ App<TanbanAppOption>({
           if (revision !== this.globalData.routeRevision) return;
           clearFastFoodContext();
           this.globalData.fastFoodContext = null;
-          this.globalData.storeCode = env.defaultStoreCode;
+          this.globalData.storeCode = this.globalData.storeCode || env.defaultStoreCode;
           this.globalData.routeError = customerSafeErrorMessage(error, "快餐码牌不可用，请重新扫描门店提供的二维码。");
           wx.showModal({ title: "快餐码牌不可用", content: this.globalData.routeError, showCancel: false });
         });
@@ -199,7 +216,7 @@ App<TanbanAppOption>({
         if (revision !== this.globalData.routeRevision) return;
         clearTableOrderingContext();
         this.globalData.tableContext = null;
-        this.globalData.storeCode = env.defaultStoreCode;
+        this.globalData.storeCode = this.globalData.storeCode || env.defaultStoreCode;
         this.globalData.routeError = customerSafeErrorMessage(error, "桌码不可用，请重新扫描桌面上的二维码。");
         wx.showModal({ title: "桌码不可用", content: this.globalData.routeError, showCancel: false });
       });

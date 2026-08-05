@@ -169,6 +169,7 @@ export interface PendingOnboardingApplication {
 export interface TenantMiniAppSettings {
   primaryMode: 'PUBLIC' | 'DEDICATED';
   publicEnabled: boolean;
+  publicDefaultEntry: boolean;
   publicAppId: string;
   publicConfigured: boolean;
   dedicatedEnabled: boolean;

@@ -21,6 +21,7 @@ const (
 type tenantMiniAppSettings struct {
 	PrimaryMode          string `json:"primaryMode"`
 	PublicEnabled        bool   `json:"publicEnabled"`
+	PublicDefaultEntry   bool   `json:"publicDefaultEntry"`
 	PublicAppID          string `json:"publicAppId"`
 	PublicConfigured     bool   `json:"publicConfigured"`
 	DedicatedEnabled     bool   `json:"dedicatedEnabled"`
@@ -33,6 +34,7 @@ type tenantMiniAppSettings struct {
 type tenantMiniAppSettingsInput struct {
 	PrimaryMode          string `json:"primaryMode"`
 	PublicEnabled        bool   `json:"publicEnabled"`
+	PublicDefaultEntry   bool   `json:"publicDefaultEntry"`
 	DedicatedEnabled     bool   `json:"dedicatedEnabled"`
 	DedicatedDisplayName string `json:"dedicatedDisplayName"`
 	DedicatedAppID       string `json:"dedicatedAppId"`
@@ -117,10 +119,10 @@ func (s *Server) miniAppSettingsForTenant(r *http.Request, tenantID int64) (tena
 		return settings, sql.ErrNoRows
 	}
 	var secretCipher string
-	err := s.DB.QueryRowContext(r.Context(), `SELECT primary_mode,public_enabled,dedicated_enabled,
+	err := s.DB.QueryRowContext(r.Context(), `SELECT primary_mode,public_enabled,public_default_entry,dedicated_enabled,
 		dedicated_display_name,COALESCE(dedicated_channel_key,''),COALESCE(dedicated_appid,''),dedicated_app_secret_cipher
 		FROM tenant_miniapp_channels WHERE tenant_id=?`, tenantID).
-		Scan(&settings.PrimaryMode, &settings.PublicEnabled, &settings.DedicatedEnabled,
+		Scan(&settings.PrimaryMode, &settings.PublicEnabled, &settings.PublicDefaultEntry, &settings.DedicatedEnabled,
 			&settings.DedicatedDisplayName, &settings.DedicatedChannelKey, &settings.DedicatedAppID, &secretCipher)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
@@ -161,6 +163,10 @@ func (s *Server) updateTenantMiniAppSettings(w http.ResponseWriter, r *http.Requ
 	}
 	if input.PrimaryMode == "PUBLIC" && !input.PublicEnabled {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "the primary public miniapp channel must be enabled")
+		return
+	}
+	if input.PublicDefaultEntry && !input.PublicEnabled {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "默认公版入口必须同时启用公版小程序")
 		return
 	}
 	if input.PrimaryMode == "DEDICATED" {
@@ -211,15 +217,22 @@ func (s *Server) updateTenantMiniAppSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	actor := currentIdentity(r.Context())
+	if input.PublicDefaultEntry {
+		if _, err = tx.ExecContext(r.Context(), `UPDATE tenant_miniapp_channels SET public_default_entry=0,updated_by=? WHERE public_default_entry=1 AND tenant_id<>?`, actor.UserID, tenantID); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+	}
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO tenant_miniapp_channels(
-		tenant_id,primary_mode,public_enabled,dedicated_enabled,dedicated_display_name,dedicated_channel_key,
+		tenant_id,primary_mode,public_enabled,public_default_entry,dedicated_enabled,dedicated_display_name,dedicated_channel_key,
 		dedicated_appid,dedicated_app_secret_cipher,created_by,updated_by
-	) VALUES(?,?,?,?,?,?,?,?,?,?)
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?)
 	ON DUPLICATE KEY UPDATE primary_mode=VALUES(primary_mode),public_enabled=VALUES(public_enabled),
+		public_default_entry=VALUES(public_default_entry),
 		dedicated_enabled=VALUES(dedicated_enabled),dedicated_display_name=VALUES(dedicated_display_name),
 		dedicated_channel_key=VALUES(dedicated_channel_key),dedicated_appid=VALUES(dedicated_appid),
 		dedicated_app_secret_cipher=VALUES(dedicated_app_secret_cipher),updated_by=VALUES(updated_by)`,
-		tenantID, input.PrimaryMode, input.PublicEnabled, input.DedicatedEnabled, input.DedicatedDisplayName,
+		tenantID, input.PrimaryMode, input.PublicEnabled, input.PublicDefaultEntry, input.DedicatedEnabled, input.DedicatedDisplayName,
 		nullableMiniAppString(channelKey), nullableMiniAppString(input.DedicatedAppID), secretCipher, actor.UserID, actor.UserID)
 	if err != nil {
 		if strings.Contains(err.Error(), "1062") {
@@ -235,7 +248,8 @@ func (s *Server) updateTenantMiniAppSettings(w http.ResponseWriter, r *http.Requ
 	}
 	s.audit(r.Context(), actor, "tenant.miniapp.update", "tenant", int64String(tenantID), map[string]any{
 		"primary_mode": input.PrimaryMode, "public_enabled": input.PublicEnabled,
-		"dedicated_enabled": input.DedicatedEnabled, "appid": input.DedicatedAppID,
+		"public_default_entry": input.PublicDefaultEntry,
+		"dedicated_enabled":    input.DedicatedEnabled, "appid": input.DedicatedAppID,
 		"secret_updated": input.DedicatedAppSecret != "",
 	}, r)
 	settings, err := s.miniAppSettingsForTenant(r, tenantID)

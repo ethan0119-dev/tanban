@@ -17,6 +17,7 @@ import (
 
 func (s *Server) publicRoutes(r chi.Router) {
 	s.registerPublicWebsiteRoutes(r)
+	r.Get("/miniapp/bootstrap", s.publicMiniAppBootstrap)
 	r.Post("/customer/session", s.publicCreateCustomerSession)
 	r.Get("/table-codes/{code}", s.publicResolveTableCode)
 	r.Get("/fast-food-plates/{code}", s.publicResolveFastFoodPlate)
@@ -37,6 +38,41 @@ func (s *Server) publicRoutes(r chi.Router) {
 	r.Post("/payments/{paymentID}/mock-confirm", s.publicMockConfirm)
 	r.Get("/customer/orders", s.publicCustomerOrders)
 	s.registerPublicMarketingRoutes(r)
+}
+
+func (s *Server) publicMiniAppBootstrap(w http.ResponseWriter, r *http.Request) {
+	channelKey := strings.TrimSpace(r.URL.Query().Get("channelKey"))
+	if channelKey == "" {
+		channelKey = publicMiniAppChannelKey
+	}
+	var storeCode string
+	var err error
+	if channelKey == publicMiniAppChannelKey {
+		err = s.DB.QueryRowContext(r.Context(), `SELECT s.code
+			FROM tenant_miniapp_channels c
+			JOIN tenants t ON t.id=c.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
+			JOIN stores s ON s.tenant_id=c.tenant_id AND s.status='ACTIVE' AND s.deleted_at IS NULL
+			LEFT JOIN store_profiles p ON p.tenant_id=s.tenant_id AND p.store_id=s.id
+			WHERE c.public_default_entry=1 AND c.public_enabled=1
+			AND (t.service_expires_at IS NULL OR t.service_expires_at>=CURRENT_DATE)
+			AND COALESCE(p.visible_in_miniapp,1)=1
+			ORDER BY s.id LIMIT 1`).Scan(&storeCode)
+	} else {
+		err = s.DB.QueryRowContext(r.Context(), `SELECT s.code
+			FROM tenant_miniapp_channels c
+			JOIN tenants t ON t.id=c.tenant_id AND t.status='ACTIVE' AND t.deleted_at IS NULL
+			JOIN stores s ON s.tenant_id=c.tenant_id AND s.status='ACTIVE' AND s.deleted_at IS NULL
+			LEFT JOIN store_profiles p ON p.tenant_id=s.tenant_id AND p.store_id=s.id
+			WHERE c.dedicated_channel_key=? AND c.dedicated_enabled=1
+			AND (t.service_expires_at IS NULL OR t.service_expires_at>=CURRENT_DATE)
+			AND COALESCE(p.visible_in_miniapp,1)=1
+			ORDER BY s.id LIMIT 1`, channelKey).Scan(&storeCode)
+	}
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{"storeCode": storeCode, "channelKey": channelKey})
 }
 
 func (s *Server) publicMembership(w http.ResponseWriter, r *http.Request) {

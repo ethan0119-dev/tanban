@@ -655,6 +655,12 @@ export function TenantsPage() {
             <Col xs={24} md={12}><Form.Item label="保留摊伴公版入口" name="publicEnabled" valuePropName="checked"><Switch checkedChildren="允许访问" unCheckedChildren="停止新访问" /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item label="启用商户独立小程序" name="dedicatedEnabled" valuePropName="checked"><Switch checkedChildren="已启用" unCheckedChildren="未启用" /></Form.Item></Col>
           </Row>
+          <Form.Item
+            label="设为公版小程序默认商户"
+            name="publicDefaultEntry"
+            valuePropName="checked"
+            extra="审核人员或顾客不带桌码、门店参数直接打开摊伴时，展示该商户的第一家可用门店。全平台同时只能有一个默认商户。"
+          ><Switch checkedChildren="默认展示" unCheckedChildren="普通商户" /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.dedicatedEnabled !== current.dedicatedEnabled || previous.primaryMode !== current.primaryMode}>
             {({ getFieldValue }) => getFieldValue('dedicatedEnabled') || getFieldValue('primaryMode') === 'DEDICATED' ? <>
               <Row gutter={12}>
