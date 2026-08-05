@@ -831,7 +831,7 @@ func (s *Server) publicDrawMarketingLottery(w http.ResponseWriter, r *http.Reque
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO lottery_draws(tenant_id,store_id,campaign_id,prize_id,draw_no,subject_key_hash,business_date,result_type,result_reason,customer_coupon_id,prize_snapshot_json,random_value,total_weight,idempotency_key,request_fingerprint)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, campaignID, selected.ID, drawNo, subjectHash, businessDate, resultType, resultReason, couponRecordID, string(prizeSnapshot), ticket, totalWeight, idempotencyKey, fingerprint)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if view, existingFingerprint, found, loadErr := s.loadMarketingDrawByKey(r.Context(), store.TenantID, idempotencyKey); loadErr == nil && found {
 				if existingFingerprint != fingerprint {

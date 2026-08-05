@@ -45,11 +45,11 @@ func (s *Server) createWechatCodePayment(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "device_id must not exceed 32 characters")
 		return
 	}
-	codeProvider, ok := s.Payment.(provider.PaymentCodeProvider)
-	if !ok {
+	if s.WeChatPay == nil {
 		writeError(w, http.StatusServiceUnavailable, "WECHAT_CODE_PAY_NOT_AVAILABLE", "服务器尚未启用微信付款码支付")
 		return
 	}
+	codeProvider := provider.PaymentCodeProvider(s.WeChatPay)
 	if ready, reason := codeProvider.CodePaymentReady(); !ready {
 		writeError(w, http.StatusServiceUnavailable, "WECHAT_CODE_PAY_NOT_CONFIGURED", reason)
 		return
@@ -67,7 +67,7 @@ func (s *Server) createWechatCodePayment(w http.ResponseWriter, r *http.Request)
 		handleSQLError(w, err)
 		return
 	}
-	if errorCode, message := validateWechatCodePayableOrder(order, s.Payment.Name()); errorCode != "" {
+	if errorCode, message := validateWechatCodePayableOrder(order, "wechat_partner"); errorCode != "" {
 		writeError(w, http.StatusConflict, errorCode, message)
 		return
 	}
@@ -132,7 +132,7 @@ func (s *Server) createWechatCodePayment(w http.ResponseWriter, r *http.Request)
 		tenant_id,store_id,order_id,provider,payment_method,merchant_no,sub_appid,provider_request_no,
 		provider_order_no,device_info,amount_cents,status,raw_response
 	) VALUES(?,?,?,?,?,?,?,?,?,?,?,'CREATING',?)`,
-		actor.TenantID, order.StoreID, orderID, s.Payment.Name(), wechatCodePaymentMethod,
+		actor.TenantID, order.StoreID, orderID, "wechat_partner", wechatCodePaymentMethod,
 		order.MerchantNo, order.SubAppID, providerRequestNo, providerRequestNo, input.DeviceID,
 		remainingCents, string(initialRaw))
 	if err != nil {
@@ -180,7 +180,7 @@ func (s *Server) createWechatCodePayment(w http.ResponseWriter, r *http.Request)
 		if paymentResult.PaidAt != nil {
 			paidAt = *paymentResult.PaidAt
 		}
-		if err = s.markPaymentPaidLocked(r.Context(), conn, s.Payment.Name(), providerRequestNo, paidAt); err != nil {
+		if err = s.markPaymentPaidLocked(r.Context(), conn, "wechat_partner", providerRequestNo, paidAt); err != nil {
 			handleSQLError(w, err)
 			return
 		}
@@ -208,11 +208,11 @@ func (s *Server) resolveWechatCodePayment(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	codeProvider, ok := s.Payment.(provider.PaymentCodeProvider)
-	if !ok {
+	if s.WeChatPay == nil {
 		writeError(w, http.StatusServiceUnavailable, "WECHAT_CODE_PAY_NOT_AVAILABLE", "服务器尚未启用微信付款码支付")
 		return
 	}
+	codeProvider := provider.PaymentCodeProvider(s.WeChatPay)
 	actor := currentIdentity(r.Context())
 	conn, release, err := s.acquirePaymentOrderLock(r.Context(), actor.TenantID, orderID)
 	if err != nil {
@@ -226,7 +226,7 @@ func (s *Server) resolveWechatCodePayment(w http.ResponseWriter, r *http.Request
 	var createdAt time.Time
 	err = conn.QueryRowContext(r.Context(), `SELECT id,merchant_no,provider_order_no,status,created_at
 		FROM payment_transactions WHERE tenant_id=? AND order_id=? AND provider=? AND payment_method=?
-		ORDER BY id DESC LIMIT 1`, actor.TenantID, orderID, s.Payment.Name(), wechatCodePaymentMethod).
+		ORDER BY id DESC LIMIT 1`, actor.TenantID, orderID, "wechat_partner", wechatCodePaymentMethod).
 		Scan(&paymentID, &merchantNo, &providerNo, &status, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "WECHAT_CODE_PAYMENT_NOT_FOUND", "该订单没有微信付款码支付记录")
@@ -329,7 +329,7 @@ func (s *Server) recordWechatCodeQueryResult(ctx context.Context, conn *sql.Conn
 		if result.PaidAt != nil {
 			paidAt = *result.PaidAt
 		}
-		return s.markPaymentPaidLocked(ctx, conn, s.Payment.Name(), providerNo, paidAt)
+		return s.markPaymentPaidLocked(ctx, conn, "wechat_partner", providerNo, paidAt)
 	}
 	return nil
 }

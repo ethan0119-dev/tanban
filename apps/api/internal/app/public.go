@@ -1052,7 +1052,7 @@ func (s *Server) publicCreateOrder(w http.ResponseWriter, r *http.Request) {
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO orders(tenant_id,store_id,order_no,idempotency_key,request_fingerprint,source,source_miniapp_channel_key,source_miniapp_appid,customer_openid,customer_id,member_id_snapshot,member_level_id_snapshot,member_level_name_snapshot,customer_name,customer_phone,remark,fulfillment_type,order_type,settlement_mode_snapshot,addition_count,diner_count,status,business_date,pickup_sequence,pickup_code,fast_food_plate_id,fast_food_plate_public_id_snapshot,fast_food_plate_name_snapshot,fast_food_plate_code_snapshot,table_id,table_public_id_snapshot,table_area_name_snapshot,table_name_snapshot,table_code_snapshot,inventory_reserved,stock_reserved_at,total_cents,merchandise_subtotal_cents,member_discount_cents,store_promotion_id,store_promotion_name,store_promotion_discount_cents,coupon_campaign_id,coupon_name,coupon_discount_cents)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(3),?,?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, orderNo, idempotencyKey, fingerprint, orderSource, sourceChannelKey, customerSession.MiniAppID, input.OpenID, nullableID(customerID), nullableID(memberBenefit.MemberID), nullableID(memberBenefit.LevelID), memberBenefit.LevelName, input.CustomerName, input.CustomerPhone, input.Remark, input.Fulfillment, input.OrderType, settlementModeSnapshot, input.DinerCount, initialStatus, businessDate, nullableID(pickupSequence), pickupCode, nullableID(fastFoodPlate.ID), fastFoodPlate.PublicID, fastFoodPlate.Name, fastFoodPlate.PlateCode, nullableID(table.ID), table.PublicID, table.AreaName, table.Name, table.TableCode, total, merchandiseSubtotal, memberDiscountTotal, nullableID(appliedPromotion.ID), appliedPromotion.Name, appliedPromotion.DiscountCents, nullableID(appliedCoupon.CampaignID), appliedCoupon.Name, appliedCoupon.Discount)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if e := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM orders WHERE tenant_id=? AND store_id=? AND idempotency_key=?", store.TenantID, store.ID, idempotencyKey).Scan(&existingID, &existingFingerprint); e == nil {
 				if existingFingerprint != "" && existingFingerprint != fingerprint && (legacyFingerprint == "" || existingFingerprint != legacyFingerprint) {
@@ -1230,15 +1230,15 @@ type publicPaymentInput struct {
 func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 	orderNo := chi.URLParam(r, "orderNo")
 	var tenantID, id int64
-	var settlementMode string
+	var settlementMode, tenantPaymentProvider string
 	var payAfterOnlinePaymentEnabled bool
-	if err := s.DB.QueryRowContext(r.Context(), `SELECT o.tenant_id,o.id,o.settlement_mode_snapshot,
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT o.tenant_id,o.id,o.settlement_mode_snapshot,t.payment_provider,
 		COALESCE(os.pay_after_online_payment_enabled,1) FROM orders o
 		JOIN tenants t ON t.id=o.tenant_id AND t.status='ACTIVE'
 			AND (t.service_expires_at IS NULL OR t.service_expires_at >= CURRENT_DATE) AND t.deleted_at IS NULL
 		JOIN stores st ON st.id=o.store_id AND st.status='ACTIVE' AND st.deleted_at IS NULL
 		LEFT JOIN store_operation_settings os ON os.tenant_id=o.tenant_id AND os.store_id=o.store_id
-		WHERE o.order_no=?`, orderNo).Scan(&tenantID, &id, &settlementMode, &payAfterOnlinePaymentEnabled); err != nil {
+		WHERE o.order_no=?`, orderNo).Scan(&tenantID, &id, &settlementMode, &tenantPaymentProvider, &payAfterOnlinePaymentEnabled); err != nil {
 		handleSQLError(w, err)
 		return
 	}
@@ -1250,7 +1250,7 @@ func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &requested) {
 		return
 	}
-	if requested.Provider != "" && strings.ToLower(requested.Provider) != s.Payment.Name() {
+	if requested.Provider != "" && strings.ToLower(requested.Provider) != tenantPaymentProvider {
 		writeError(w, http.StatusBadRequest, "PAYMENT_PROVIDER_UNAVAILABLE", "requested payment provider is not active")
 		return
 	}
@@ -1268,7 +1268,7 @@ func (s *Server) publicPayOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) publicMockConfirm(w http.ResponseWriter, r *http.Request) {
-	if !s.AllowMockConfirmation || s.Payment.Name() != "mock" {
+	if !s.AllowMockConfirmation || s.MockPayment == nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "mock confirmation endpoint is disabled")
 		return
 	}

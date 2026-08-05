@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS order_pickup_sequences (
   tenant_id BIGINT UNSIGNED NOT NULL,
   store_id BIGINT UNSIGNED NOT NULL,
   business_date DATE NOT NULL,
-  last_value INT UNSIGNED NOT NULL DEFAULT 0,
+  `last_value` INT UNSIGNED NOT NULL DEFAULT 0,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (tenant_id, store_id, business_date),
   CONSTRAINT fk_order_pickup_sequence_store FOREIGN KEY (store_id) REFERENCES stores(id)

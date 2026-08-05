@@ -284,6 +284,7 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 			subAppID = session.MiniAppID
 		}
 	}
+	var paymentAdapter provider.PaymentProvider
 	if amountCents > 0 {
 		enabled, enabledErr := s.paymentAcceptanceEnabled(r.Context())
 		if enabledErr != nil {
@@ -294,7 +295,8 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusServiceUnavailable, "PAYMENTS_DISABLED", "payment acceptance is disabled by the platform")
 			return
 		}
-		if paymentProvider != s.Payment.Name() {
+		paymentAdapter, err = s.resolvePaymentProvider(paymentProvider)
+		if err != nil {
 			writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "merchant payment provider is not active on the platform")
 			return
 		}
@@ -342,13 +344,13 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	createResult, createErr := s.Payment.Create(r.Context(), provider.CreatePaymentRequest{
+	createResult, createErr := paymentAdapter.Create(r.Context(), provider.CreatePaymentRequest{
 		MerchantNo:  merchantNo,
 		OrderNo:     requestNo,
 		Amount:      amountCents,
 		OpenID:      openID,
 		SubAppID:    subAppID,
-		NotifyURL:   s.paymentNotifyURL(),
+		NotifyURL:   s.paymentNotifyURLFor(paymentProvider),
 		Description: "摊伴会员服务",
 	})
 	if createErr != nil {
@@ -437,7 +439,7 @@ func (s *Server) publicGetAccountPayment(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) publicAccountPaymentMockConfirm(w http.ResponseWriter, r *http.Request) {
-	if !s.AllowMockConfirmation || s.Payment.Name() != "mock" {
+	if !s.AllowMockConfirmation || s.MockPayment == nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "mock confirmation endpoint is disabled")
 		return
 	}

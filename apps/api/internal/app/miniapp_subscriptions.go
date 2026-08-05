@@ -261,7 +261,7 @@ func enqueueMiniAppNotificationTx(ctx context.Context, tx *sql.Tx, event miniApp
 		event.TenantID, event.StoreID, event.CustomerID, subscriptionResultID, event.ChannelKey, event.AppID,
 		event.OpenID, event.Scene, templateID, event.BusinessType, event.BusinessNo, pagePath, string(payload))
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			return nil
 		}
 		return err

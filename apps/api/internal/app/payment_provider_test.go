@@ -28,7 +28,8 @@ func TestDescribePaymentProvider(t *testing.T) {
 
 func TestWeChatPayCallbacksFailClosedWithoutValidSignature(t *testing.T) {
 	t.Parallel()
-	server := &Server{Payment: &provider.WeChatPayPartner{}}
+	wechatPay := &provider.WeChatPayPartner{}
+	server := &Server{Payment: wechatPay, WeChatPay: wechatPay}
 	tests := []struct {
 		path    string
 		handler http.HandlerFunc

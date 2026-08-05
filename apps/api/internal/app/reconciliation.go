@@ -27,31 +27,37 @@ func (s *Server) StartPaymentReconciler(ctx context.Context) {
 }
 
 func (s *Server) reconcilePayments(ctx context.Context) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider_order_no,p.status,o.payment_status,p.provider_request_no,p.amount_cents,p.merchant_no,p.payment_method,
+	rows, err := s.DB.QueryContext(ctx, `SELECT p.id,p.tenant_id,p.order_id,p.provider,p.provider_order_no,p.status,o.payment_status,p.provider_request_no,p.amount_cents,p.merchant_no,p.payment_method,
 		TIMESTAMPDIFF(SECOND,p.updated_at,NOW(3))
 		FROM payment_transactions p
 		JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
-		WHERE p.provider=? AND (p.status IN ('CREATING','PENDING') OR (p.status='SUCCESS' AND o.payment_status='UNPAID'))
-		ORDER BY p.updated_at,p.id LIMIT 100`, s.Payment.Name())
+		WHERE p.status IN ('CREATING','PENDING') OR (p.status='SUCCESS' AND o.payment_status='UNPAID')
+		ORDER BY p.updated_at,p.id LIMIT 100`)
 	if err != nil {
 		s.Logger.Error("list payments for reconciliation", "error", err)
 		return
 	}
 	type pendingPayment struct {
-		id, tenantID, orderID, amount, ageSeconds                                            int64
-		providerNo, status, orderPaymentStatus, providerRequestNo, merchantNo, paymentMethod string
+		id, tenantID, orderID, amount, ageSeconds                                                          int64
+		providerName, providerNo, status, orderPaymentStatus, providerRequestNo, merchantNo, paymentMethod string
 	}
 	var pending []pendingPayment
 	for rows.Next() {
 		var item pendingPayment
-		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.providerRequestNo, &item.amount, &item.merchantNo, &item.paymentMethod, &item.ageSeconds) == nil {
+		if rows.Scan(&item.id, &item.tenantID, &item.orderID, &item.providerName, &item.providerNo, &item.status, &item.orderPaymentStatus, &item.providerRequestNo, &item.amount, &item.merchantNo, &item.paymentMethod, &item.ageSeconds) == nil {
 			pending = append(pending, item)
 		}
 	}
 	rows.Close()
 	for _, item := range pending {
+		paymentAdapter, resolveErr := s.resolvePaymentProvider(item.providerName)
+		if resolveErr != nil {
+			_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
+			s.Logger.Error("payment provider unavailable during reconciliation", "payment_id", item.id, "provider", item.providerName, "error", resolveErr)
+			continue
+		}
 		if item.status == string(provider.PaymentSuccess) && item.orderPaymentStatus == "UNPAID" {
-			if err = s.markPaymentPaid(ctx, s.Payment.Name(), item.providerNo, time.Now()); err != nil {
+			if err = s.markPaymentPaid(ctx, item.providerName, item.providerNo, time.Now()); err != nil {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
 				s.Logger.Error("finish locally successful payment", "payment_id", item.id, "error", err)
 			}
@@ -61,7 +67,7 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 			if item.status == paymentStatusCreating && item.ageSeconds < 20 {
 				continue
 			}
-			codeProvider, available := s.Payment.(provider.PaymentCodeProvider)
+			codeProvider, available := paymentAdapter.(provider.PaymentCodeProvider)
 			if !available {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
 				s.Logger.Error("WeChat code payment provider is unavailable during reconciliation", "payment_id", item.id)
@@ -123,7 +129,7 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 			continue
 		}
 		queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		result, queryErr := s.Payment.Query(queryCtx, item.providerNo)
+		result, queryErr := paymentAdapter.Query(queryCtx, item.providerNo)
 		cancel()
 		if queryErr != nil {
 			_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=? AND status='PENDING'", item.id)
@@ -141,12 +147,12 @@ func (s *Server) reconcilePayments(ctx context.Context) {
 			if result.PaidAt != nil {
 				paidAt = *result.PaidAt
 			}
-			if err = s.markPaymentPaid(ctx, s.Payment.Name(), item.providerNo, paidAt); err != nil {
+			if err = s.markPaymentPaid(ctx, item.providerName, item.providerNo, paidAt); err != nil {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET updated_at=NOW(3) WHERE id=?", item.id)
 				s.Logger.Error("finalize reconciled payment", "provider_order_no", item.providerNo, "error", err)
 			}
 		case provider.PaymentFailed, provider.PaymentClosed:
-			_, err = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET status=? WHERE id=? AND provider=? AND status='PENDING'", string(result.Status), item.id, s.Payment.Name())
+			_, err = s.DB.ExecContext(ctx, "UPDATE payment_transactions SET status=? WHERE id=? AND provider=? AND status='PENDING'", string(result.Status), item.id, item.providerName)
 			if err != nil {
 				s.Logger.Error("record reconciled payment status", "provider_order_no", item.providerNo, "error", err)
 			}
@@ -174,9 +180,9 @@ func (s *Server) StartRefundReconciler(ctx context.Context) {
 }
 
 func (s *Server) reconcileRefunds(ctx context.Context) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT r.id,r.refund_no,r.provider_refund_no,p.provider_order_no,r.amount_cents,p.amount_cents,p.merchant_no FROM refunds r
+	rows, err := s.DB.QueryContext(ctx, `SELECT r.id,p.provider,r.refund_no,r.provider_refund_no,p.provider_order_no,r.amount_cents,p.amount_cents,p.merchant_no FROM refunds r
 		JOIN payment_transactions p ON p.id=r.payment_id
-		WHERE p.provider=? AND r.status='PENDING' ORDER BY r.updated_at,r.id LIMIT 100`, s.Payment.Name())
+		WHERE r.status='PENDING' ORDER BY r.updated_at,r.id LIMIT 100`)
 	if err != nil {
 		s.Logger.Error("list refunds for reconciliation", "error", err)
 		return
@@ -185,6 +191,7 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 		id               int64
 		amount           int64
 		totalAmount      int64
+		providerName     string
 		refundNo         string
 		providerRefundNo string
 		providerOrderNo  string
@@ -193,7 +200,7 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 	var pending []pendingRefund
 	for rows.Next() {
 		var item pendingRefund
-		if rows.Scan(&item.id, &item.refundNo, &item.providerRefundNo, &item.providerOrderNo, &item.amount, &item.totalAmount, &item.merchantNo) == nil {
+		if rows.Scan(&item.id, &item.providerName, &item.refundNo, &item.providerRefundNo, &item.providerOrderNo, &item.amount, &item.totalAmount, &item.merchantNo) == nil {
 			pending = append(pending, item)
 		}
 	}
@@ -205,15 +212,20 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 			}
 			continue
 		}
+		paymentAdapter, resolveErr := s.resolvePaymentProvider(item.providerName)
+		if resolveErr != nil {
+			_, _ = s.DB.ExecContext(ctx, "UPDATE refunds SET last_error=?,updated_at=NOW(3) WHERE id=? AND status='PENDING'", truncateError(resolveErr), item.id)
+			continue
+		}
 		queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		result, queryErr := s.Payment.QueryRefund(queryCtx, provider.QueryRefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo})
+		result, queryErr := paymentAdapter.QueryRefund(queryCtx, provider.QueryRefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo})
 		cancel()
 		if queryErr != nil {
 			// RefundNo is a mandatory provider-side idempotency key. Re-submit the
 			// same durable intent after an ambiguous/not-found query so a crash
 			// between local commit and the first provider call cannot strand it.
 			refundCtx, refundCancel := context.WithTimeout(ctx, 12*time.Second)
-			resubmitted, refundErr := s.Payment.Refund(refundCtx, provider.RefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo, Amount: item.amount, TotalAmount: item.totalAmount})
+			resubmitted, refundErr := paymentAdapter.Refund(refundCtx, provider.RefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo, Amount: item.amount, TotalAmount: item.totalAmount})
 			refundCancel()
 			if refundErr != nil {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE refunds SET last_error=?,updated_at=NOW(3) WHERE id=? AND status='PENDING'", truncateError(refundErr), item.id)

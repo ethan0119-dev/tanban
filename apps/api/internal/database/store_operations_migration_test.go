@@ -20,6 +20,7 @@ func TestStoreOperationsMigrationHasSchedulePlateSnapshotsAndSequence(t *testing
 		"CREATE TABLE IF NOT EXISTS fast_food_plates",
 		"UNIQUE KEY uk_fast_food_plates_scene (public_scene)",
 		"CREATE TABLE IF NOT EXISTS order_pickup_sequences",
+		"`last_value` INT UNSIGNED",
 		"ADD COLUMN pickup_code VARCHAR(16)",
 		"ADD COLUMN fast_food_plate_public_id_snapshot",
 		"ADD UNIQUE KEY uk_orders_pickup_sequence",

@@ -21,6 +21,7 @@ import (
 	"github.com/ethan0119-dev/tanban/apps/api/internal/securestore"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	mysql "github.com/go-sql-driver/mysql"
 )
 
 type Server struct {
@@ -29,6 +30,7 @@ type Server struct {
 	Logger                *slog.Logger
 	Cache                 cache.Cache
 	Payment               provider.PaymentProvider
+	Payments              *provider.PaymentRouter
 	WeChatPay             *provider.WeChatPayPartner
 	MockPayment           *provider.MockPayment
 	Printer               provider.PrinterProvider
@@ -72,6 +74,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 	} else if cfg.PaymentProvider == "wechat_partner" {
 		payment = wechatPay
 	}
+	paymentRouter := provider.NewPaymentRouter(mockPayment, wechatPay, provider.TianQue{Config: provider.TianQueConfig{
+		BaseURL: cfg.TianQue.BaseURL, OrgID: cfg.TianQue.OrgID,
+		PrivateKey: cfg.TianQue.PrivateKey, PublicKey: cfg.TianQue.PublicKey,
+		NotifyURL: cfg.TianQue.NotifyURL,
+	}})
 	printer := provider.NewPrinterRouter(cfg.PrinterProvider, logger, provider.NewXPrinter(provider.XPrinterConfig{
 		BaseURL: cfg.XPYun.BaseURL,
 		User:    cfg.XPYun.User,
@@ -79,7 +86,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 	}))
 	server := &Server{
 		DB: db, Config: cfg, Logger: logger, Cache: cache.NewMemory(),
-		Payment: payment, WeChatPay: wechatPay, MockPayment: mockPayment, Printer: printer, HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		Payment: payment, Payments: paymentRouter, WeChatPay: wechatPay, MockPayment: mockPayment, Printer: printer, HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		AllowMockConfirmation: cfg.AllowMockConfirmation,
 	}
 	if cfg.DataEncryptionKey != "" {
@@ -276,12 +283,43 @@ func handleSQLError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 		return
 	}
-	if strings.Contains(err.Error(), "1062") {
+	if isMySQLError(err, 1062) {
 		writeError(w, http.StatusConflict, "ALREADY_EXISTS", "resource already exists")
 		return
 	}
-	slog.Error("database operation failed", "error", err)
+	if errors.Is(err, mysql.ErrInvalidConn) || errors.Is(err, context.DeadlineExceeded) {
+		slog.Error("database unavailable", "error", err)
+		writeError(w, http.StatusServiceUnavailable, "DATABASE_UNAVAILABLE", "database is temporarily unavailable")
+		return
+	}
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		slog.Error("database operation failed", "error", err, "mysql_code", mysqlErr.Number, "mysql_state", string(mysqlErr.SQLState[:]))
+		if mysqlErr.Number == 1205 || mysqlErr.Number == 1213 {
+			writeError(w, http.StatusServiceUnavailable, "DATABASE_BUSY", "database is busy; please retry")
+			return
+		}
+		if mysqlErr.Number == 2006 || mysqlErr.Number == 2013 {
+			writeError(w, http.StatusServiceUnavailable, "DATABASE_UNAVAILABLE", "database is temporarily unavailable")
+			return
+		}
+	} else {
+		slog.Error("database operation failed", "error", err)
+	}
 	writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "database operation failed")
+}
+
+func isMySQLError(err error, numbers ...uint16) bool {
+	var mysqlErr *mysql.MySQLError
+	if !errors.As(err, &mysqlErr) {
+		return false
+	}
+	for _, number := range numbers {
+		if mysqlErr.Number == number {
+			return true
+		}
+	}
+	return false
 }
 
 type requestIDKey struct{}

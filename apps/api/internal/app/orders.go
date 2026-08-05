@@ -599,6 +599,7 @@ const paymentStatusCreating = "CREATING"
 type paymentCreationIntent struct {
 	ID, TenantID, StoreID, OrderID, Amount int64
 	BusinessOrderNo, ProviderRequestNo     string
+	Provider                               string
 	MerchantNo, SubAppID, OpenID           string
 }
 
@@ -649,12 +650,12 @@ func (s *Server) paymentAcceptanceEnabled(ctx context.Context) (bool, error) {
 
 func (s *Server) loadPaymentCreationIntent(ctx context.Context, queryer sqlQueryer, paymentID int64) (paymentCreationIntent, error) {
 	var intent paymentCreationIntent
-	err := queryer.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.amount_cents,o.order_no,p.provider_request_no,
+	err := queryer.QueryRowContext(ctx, `SELECT p.id,p.tenant_id,p.store_id,p.order_id,p.amount_cents,o.order_no,p.provider_request_no,p.provider,
 		p.merchant_no,p.sub_appid,p.customer_openid
 		FROM payment_transactions p
 		JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
 		WHERE p.id=?`, paymentID).
-		Scan(&intent.ID, &intent.TenantID, &intent.StoreID, &intent.OrderID, &intent.Amount, &intent.BusinessOrderNo, &intent.ProviderRequestNo, &intent.MerchantNo, &intent.SubAppID, &intent.OpenID)
+		Scan(&intent.ID, &intent.TenantID, &intent.StoreID, &intent.OrderID, &intent.Amount, &intent.BusinessOrderNo, &intent.ProviderRequestNo, &intent.Provider, &intent.MerchantNo, &intent.SubAppID, &intent.OpenID)
 	return intent, err
 }
 
@@ -664,15 +665,19 @@ func (s *Server) loadPaymentCreationIntent(ctx context.Context, queryer sqlQuery
 // treat OrderNo as an idempotency key; the reconciler safely resubmits the same
 // intent after an ambiguous timeout or process restart.
 func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent paymentCreationIntent) (provider.CreatePaymentResult, error) {
+	paymentProvider, err := s.resolvePaymentProvider(intent.Provider)
+	if err != nil {
+		return provider.CreatePaymentResult{}, err
+	}
 	providerCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	result, err := s.Payment.Create(providerCtx, provider.CreatePaymentRequest{
+	result, err := paymentProvider.Create(providerCtx, provider.CreatePaymentRequest{
 		MerchantNo:  intent.MerchantNo,
 		OrderNo:     intent.ProviderRequestNo,
 		Amount:      intent.Amount,
 		OpenID:      intent.OpenID,
 		SubAppID:    intent.SubAppID,
-		NotifyURL:   s.paymentNotifyURL(),
+		NotifyURL:   s.paymentNotifyURLFor(intent.Provider),
 		Description: "摊伴门店订单 " + intent.BusinessOrderNo,
 	})
 	if err == nil && strings.TrimSpace(result.ProviderOrderNo) == "" {
@@ -697,18 +702,11 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 		return result, errors.New("payment intent changed while provider creation was in progress")
 	}
 	if result.Status == provider.PaymentSuccess {
-		if err = s.markPaymentPaidLocked(ctx, conn, s.Payment.Name(), result.ProviderOrderNo, time.Now()); err != nil {
+		if err = s.markPaymentPaidLocked(ctx, conn, intent.Provider, result.ProviderOrderNo, time.Now()); err != nil {
 			return result, err
 		}
 	}
 	return result, nil
-}
-
-func (s *Server) paymentNotifyURL() string {
-	if s.Payment.Name() == "wechat_partner" {
-		return s.Config.WeChatPayPartner.NotifyURL
-	}
-	return s.Config.TianQue.NotifyURL
 }
 
 func (s *Server) createPayment(w http.ResponseWriter, r *http.Request) {
@@ -825,7 +823,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		writeError(w, http.StatusServiceUnavailable, "PAYMENTS_DISABLED", "payment acceptance is disabled by the platform")
 		return
 	}
-	if tenantPaymentProvider != s.Payment.Name() {
+	if !s.paymentProviderAvailable(tenantPaymentProvider) {
 		writeError(w, http.StatusServiceUnavailable, "PAYMENT_PROVIDER_UNAVAILABLE", "merchant payment provider is not active on the platform")
 		return
 	}
@@ -849,7 +847,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
 	renewReservation := newReservation && !postPay
-	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? AND provider=? ORDER BY id DESC LIMIT 1", tenantID, orderID, s.Payment.Name()).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
+	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? AND provider=? ORDER BY id DESC LIMIT 1", tenantID, orderID, tenantPaymentProvider).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
 	createAttempt := errors.Is(err, sql.ErrNoRows)
 	if err == nil {
 		switch existingStatus {
@@ -893,7 +891,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 		existingNo = localPaymentReference(providerRequestNo)
 		var dbResult sql.Result
 		dbResult, err = conn.ExecContext(r.Context(), `INSERT INTO payment_transactions(tenant_id,store_id,order_id,provider,merchant_no,sub_appid,customer_openid,provider_request_no,provider_order_no,amount_cents,status,raw_response)
-			VALUES(?,?,?,?,?,?,?,?,?,?,'CREATING','{}')`, tenantID, storeID, orderID, s.Payment.Name(), merchantNo, subAppID, input.OpenID, providerRequestNo, existingNo, amount)
+			VALUES(?,?,?,?,?,?,?,?,?,?,'CREATING','{}')`, tenantID, storeID, orderID, tenantPaymentProvider, merchantNo, subAppID, input.OpenID, providerRequestNo, existingNo, amount)
 		if err == nil {
 			existingID, _ = dbResult.LastInsertId()
 		}
@@ -923,14 +921,14 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 			return
 		}
 		s.Logger.Warn("payment creation outcome is pending reconciliation", "payment_id", existingID, "order_id", orderID, "error", submitErr)
-		writePaymentResponse(w, http.StatusAccepted, existingID, s.Payment.Name(), localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"}, balancePayment)
+		writePaymentResponse(w, http.StatusAccepted, existingID, intent.Provider, localPaymentReference(intent.ProviderRequestNo), paymentStatusCreating, map[string]string{"mode": "processing"}, balancePayment)
 		return
 	}
 	statusCode := http.StatusOK
 	if createAttempt {
 		statusCode = http.StatusCreated
 	}
-	writePaymentResponse(w, statusCode, existingID, s.Payment.Name(), result.ProviderOrderNo, string(result.Status), result.PayParams, balancePayment)
+	writePaymentResponse(w, statusCode, existingID, intent.Provider, result.ProviderOrderNo, string(result.Status), result.PayParams, balancePayment)
 }
 
 func writePaymentResponse(w http.ResponseWriter, statusCode int, id int64, providerName, providerNo, status string, payParams map[string]string, balancePayments ...orderBalancePaymentResult) {
@@ -958,8 +956,9 @@ func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, 
 	if status == string(provider.PaymentClosed) || status == string(provider.PaymentFailed) {
 		return nil
 	}
-	if providerName != s.Payment.Name() {
-		return fmt.Errorf("payment provider %s is not active", providerName)
+	paymentProvider, resolveErr := s.resolvePaymentProvider(providerName)
+	if resolveErr != nil {
+		return resolveErr
 	}
 	var paymentMethod, merchantNo string
 	var createdAt time.Time
@@ -970,7 +969,7 @@ func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, 
 		}
 	}
 	if paymentMethod == wechatCodePaymentMethod {
-		codeProvider, ok := s.Payment.(provider.PaymentCodeProvider)
+		codeProvider, ok := paymentProvider.(provider.PaymentCodeProvider)
 		if !ok {
 			return errors.New("WeChat code payment provider is unavailable")
 		}
@@ -1031,7 +1030,7 @@ func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, 
 	}
 	providerCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err = s.Payment.Close(providerCtx, providerNo); err != nil {
+	if err = paymentProvider.Close(providerCtx, providerNo); err != nil {
 		return err
 	}
 	result, err := conn.ExecContext(ctx, "UPDATE payment_transactions SET status='CLOSED' WHERE id=? AND tenant_id=? AND status='PENDING'", id, tenantID)
@@ -1051,7 +1050,7 @@ func (s *Server) closePendingPaymentLocked(ctx context.Context, conn *sql.Conn, 
 }
 
 func (s *Server) mockConfirm(w http.ResponseWriter, r *http.Request) {
-	if !s.AllowMockConfirmation || s.Payment.Name() != "mock" {
+	if !s.AllowMockConfirmation || s.MockPayment == nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "mock confirmation endpoint is disabled")
 		return
 	}
@@ -1077,7 +1076,7 @@ func (s *Server) mockConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) tianQueCallback(w http.ResponseWriter, r *http.Request) {
-	if s.Payment.Name() != "tianque" {
+	if !s.paymentProviderAvailable("tianque") {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "tianque provider is not active")
 		return
 	}
@@ -1087,15 +1086,11 @@ func (s *Server) tianQueCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) wechatPayCallback(w http.ResponseWriter, r *http.Request) {
-	if s.Payment.Name() != "wechat_partner" {
+	if s.WeChatPay == nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
 		return
 	}
-	wechat, ok := s.Payment.(*provider.WeChatPayPartner)
-	if !ok {
-		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay provider type is invalid")
-		return
-	}
+	wechat := s.WeChatPay
 	notification, err := wechat.ParsePaymentNotification(r.Context(), r)
 	if err != nil {
 		if s.Logger != nil {
@@ -1143,15 +1138,11 @@ func (s *Server) wechatPayCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) wechatPayRefundCallback(w http.ResponseWriter, r *http.Request) {
-	if s.Payment.Name() != "wechat_partner" {
+	if s.WeChatPay == nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
 		return
 	}
-	wechat, ok := s.Payment.(*provider.WeChatPayPartner)
-	if !ok {
-		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay provider type is invalid")
-		return
-	}
+	wechat := s.WeChatPay
 	notification, err := wechat.ParseRefundNotification(r.Context(), r)
 	if err != nil {
 		if s.Logger != nil {
@@ -1240,11 +1231,14 @@ func (s *Server) markPaymentPaidLocked(ctx context.Context, conn *sql.Conn, prov
 			switch {
 			case newerActiveStatus != string(provider.PaymentPending):
 				newerCloseError = "newer payment creation is still unresolved"
-			case newerActiveProvider != s.Payment.Name():
-				newerCloseError = "newer payment belongs to an inactive provider"
 			default:
+				newerProvider, resolveErr := s.resolvePaymentProvider(newerActiveProvider)
+				if resolveErr != nil {
+					newerCloseError = "newer payment provider is unavailable"
+					break
+				}
 				closeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				closeErr := s.Payment.Close(closeCtx, newerActiveNo)
+				closeErr := newerProvider.Close(closeCtx, newerActiveNo)
 				cancel()
 				if closeErr != nil {
 					newerCloseError = truncateError(closeErr)
@@ -1357,7 +1351,8 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "ORDER_NOT_REFUNDABLE", "order payment is not refundable")
 		return
 	}
-	if providerName != s.Payment.Name() {
+	paymentProvider, resolveErr := s.resolvePaymentProvider(providerName)
+	if resolveErr != nil {
 		writeError(w, http.StatusConflict, "OFFLINE_PAYMENT_REFUND_REQUIRED", "现金或系统外支付请在线下完成退款并保留交接记录")
 		return
 	}
@@ -1373,7 +1368,7 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 	refundNo := newBusinessNo("RF")
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO refunds(tenant_id,store_id,order_id,payment_id,refund_no,idempotency_key,request_fingerprint,amount_cents,reason,status,created_by) VALUES(?,?,?,?,?,?,?,?,?, 'PENDING',?)`, identity.TenantID, storeID, input.OrderID, paymentID, refundNo, idempotencyKey, fingerprint, input.AmountCents, input.Reason, identity.UserID)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if duplicateErr := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM refunds WHERE tenant_id=? AND idempotency_key=?", identity.TenantID, idempotencyKey).Scan(&existingID, &existingFingerprint); duplicateErr == nil {
 				if existingFingerprint != "" && existingFingerprint != fingerprint {
@@ -1394,7 +1389,7 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 	}
 	providerCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	providerResult, err := s.Payment.Refund(providerCtx, provider.RefundRequest{MerchantNo: merchantNo, ProviderOrderNo: providerNo, RefundNo: refundNo, Amount: input.AmountCents, TotalAmount: totalCents})
+	providerResult, err := paymentProvider.Refund(providerCtx, provider.RefundRequest{MerchantNo: merchantNo, ProviderOrderNo: providerNo, RefundNo: refundNo, Amount: input.AmountCents, TotalAmount: totalCents})
 	if err != nil {
 		// A transport error is an unknown outcome, not proof that the provider
 		// rejected the refund. Keep it pending for query-based reconciliation.

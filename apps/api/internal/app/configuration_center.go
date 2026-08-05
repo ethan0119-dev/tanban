@@ -315,8 +315,8 @@ func (s *Server) getMerchantPaymentSettings(w http.ResponseWriter, r *http.Reque
 		handleSQLError(w, acceptanceErr)
 		return
 	}
-	effectiveProvider := s.Payment.Name()
-	providerActive := acceptanceEnabled && providerName == effectiveProvider
+	effectiveProvider := providerName
+	providerActive := acceptanceEnabled && s.paymentProviderAvailable(providerName)
 	onboardingReady := providerName == "mock" || (onboardingStatus == "ACTIVE" && productAuthorizationStatus == "AUTHORIZED" && merchantNo != "")
 	writeData(w, http.StatusOK, map[string]any{
 		"provider": providerName, "providerDisplayName": presentation.DisplayName, "bindingStatus": bindingStatus,

@@ -149,7 +149,7 @@ func (s *Server) createFastFoodPlate(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO fast_food_plates(tenant_id,store_id,name,plate_code,public_scene,remark,sort_order,status) VALUES(?,?,?,?,?,?,?,?)`, actor.TenantID, input.StoreID, input.Name, input.PlateCode, publicID, input.Remark, input.SortOrder, input.Status)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			writeError(w, http.StatusConflict, "PLATE_CODE_EXISTS", "plateCode already exists in this store")
 			return
 		}
@@ -194,7 +194,7 @@ func (s *Server) updateFastFoodPlate(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE fast_food_plates SET name=?,plate_code=?,remark=?,sort_order=?,status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL`, input.Name, input.PlateCode, input.Remark, input.SortOrder, input.Status, id, actor.TenantID)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			writeError(w, http.StatusConflict, "PLATE_CODE_EXISTS", "plateCode already exists in this store")
 			return
 		}

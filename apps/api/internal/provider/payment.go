@@ -306,4 +306,4 @@ type WeChatPayPartner struct {
 	v3Mu       sync.Mutex
 }
 
-func (w WeChatPayPartner) Name() string { return "wechat_partner" }
+func (w *WeChatPayPartner) Name() string { return "wechat_partner" }

@@ -235,7 +235,7 @@ func (s *Server) updateTenantMiniAppSettings(w http.ResponseWriter, r *http.Requ
 		tenantID, input.PrimaryMode, input.PublicEnabled, input.PublicDefaultEntry, input.DedicatedEnabled, input.DedicatedDisplayName,
 		nullableMiniAppString(channelKey), nullableMiniAppString(input.DedicatedAppID), secretCipher, actor.UserID, actor.UserID)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			writeError(w, http.StatusConflict, "MINIAPP_ALREADY_BOUND", "该 AppID 已绑定到其他商户")
 			return
 		}

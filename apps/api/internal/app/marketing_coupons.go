@@ -608,7 +608,7 @@ func (s *Server) publicClaimMarketingCoupon(w http.ResponseWriter, r *http.Reque
 	result, err := tx.ExecContext(r.Context(), `INSERT INTO customer_coupons(tenant_id,store_id,campaign_id,coupon_no,subject_key_hash,source,status,campaign_snapshot_json,valid_from,valid_to,idempotency_key,request_fingerprint)
 		VALUES(?,?,?,?,?,'PUBLIC_CLAIM','PROVISIONAL',?,?,?,?,?)`, store.TenantID, store.ID, campaignID, couponNo, subjectHash, string(snapshot), validFrom, validTo, idempotencyKey, fingerprint)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if existing, existingFingerprint, found, loadErr := s.loadProvisionalCouponByKey(r.Context(), store.TenantID, idempotencyKey); loadErr == nil && found {
 				if existingFingerprint != fingerprint {

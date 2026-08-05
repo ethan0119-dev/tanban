@@ -834,7 +834,7 @@ func (s *Server) saveDecorationDraft(w http.ResponseWriter, r *http.Request) {
 	if input.ExpectedRevision == 0 {
 		result, insertErr := tx.ExecContext(r.Context(), `INSERT INTO store_decorations(tenant_id,store_id,schema_version,draft_json,draft_revision,created_by,updated_by) VALUES(?,?,?,?,1,?,?)`, identity.TenantID, store.ID, input.Config.SchemaVersion, string(body), identity.UserID, identity.UserID)
 		if insertErr != nil {
-			if strings.Contains(insertErr.Error(), "1062") {
+			if isMySQLError(insertErr, 1062) {
 				writeError(w, http.StatusConflict, "DRAFT_CONFLICT", "decoration draft changed; reload before saving")
 				return
 			}

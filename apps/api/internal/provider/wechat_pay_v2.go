@@ -27,7 +27,7 @@ const (
 	wechatReversePath    = "/secapi/pay/reverse"
 )
 
-func (w WeChatPayPartner) CodePaymentReady() (bool, string) {
+func (w *WeChatPayPartner) CodePaymentReady() (bool, string) {
 	switch {
 	case strings.TrimSpace(w.Config.ServiceProviderMchID) == "":
 		return false, "平台尚未配置微信支付服务商商户号"
@@ -53,7 +53,7 @@ func (w WeChatPayPartner) CodePaymentReady() (bool, string) {
 	}
 }
 
-func (w WeChatPayPartner) PayCode(ctx context.Context, req CodePaymentRequest) (CodePaymentResult, error) {
+func (w *WeChatPayPartner) PayCode(ctx context.Context, req CodePaymentRequest) (CodePaymentResult, error) {
 	if ready, reason := w.CodePaymentReady(); !ready {
 		return CodePaymentResult{}, fmt.Errorf("%w: %s", ErrNotConfigured, reason)
 	}
@@ -90,7 +90,7 @@ func (w WeChatPayPartner) PayCode(ctx context.Context, req CodePaymentRequest) (
 	return result, nil
 }
 
-func (w WeChatPayPartner) QueryCode(ctx context.Context, req QueryCodePaymentRequest) (CodePaymentResult, error) {
+func (w *WeChatPayPartner) QueryCode(ctx context.Context, req QueryCodePaymentRequest) (CodePaymentResult, error) {
 	if ready, reason := w.CodePaymentReady(); !ready {
 		return CodePaymentResult{}, fmt.Errorf("%w: %s", ErrNotConfigured, reason)
 	}
@@ -108,7 +108,7 @@ func (w WeChatPayPartner) QueryCode(ctx context.Context, req QueryCodePaymentReq
 	return result, nil
 }
 
-func (w WeChatPayPartner) ReverseCode(ctx context.Context, req ReverseCodePaymentRequest) (ReverseCodePaymentResult, error) {
+func (w *WeChatPayPartner) ReverseCode(ctx context.Context, req ReverseCodePaymentRequest) (ReverseCodePaymentResult, error) {
 	if ready, reason := w.CodePaymentReady(); !ready {
 		return ReverseCodePaymentResult{}, fmt.Errorf("%w: %s", ErrNotConfigured, reason)
 	}
@@ -138,7 +138,7 @@ func (w WeChatPayPartner) ReverseCode(ctx context.Context, req ReverseCodePaymen
 	return result, nil
 }
 
-func (w WeChatPayPartner) baseV2Params(merchantNo, subAppID string) map[string]string {
+func (w *WeChatPayPartner) baseV2Params(merchantNo, subAppID string) map[string]string {
 	params := map[string]string{
 		"appid":      strings.TrimSpace(w.Config.ServiceProviderAppID),
 		"mch_id":     strings.TrimSpace(w.Config.ServiceProviderMchID),
@@ -151,13 +151,13 @@ func (w WeChatPayPartner) baseV2Params(merchantNo, subAppID string) map[string]s
 	return params
 }
 
-func (w WeChatPayPartner) queryV2Params(merchantNo, orderNo string) map[string]string {
+func (w *WeChatPayPartner) queryV2Params(merchantNo, orderNo string) map[string]string {
 	params := w.baseV2Params(merchantNo, "")
 	params["out_trade_no"] = orderNo
 	return params
 }
 
-func (w WeChatPayPartner) postV2(ctx context.Context, path string, params map[string]string, mutualTLS bool) (map[string]string, error) {
+func (w *WeChatPayPartner) postV2(ctx context.Context, path string, params map[string]string, mutualTLS bool) (map[string]string, error) {
 	params["sign"] = signWeChatV2(params, w.Config.APIV2Key)
 	body := marshalWeChatXML(params)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(w.Config.BaseURL, "/")+path, bytes.NewReader(body))

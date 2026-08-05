@@ -27,9 +27,14 @@ func Open(dsn string) (*sql.DB, error) {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(10)
 	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(2 * time.Minute)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := verifyMySQL8(ctx, db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -49,11 +54,61 @@ func beijingDSN(dsn string) (string, error) {
 		return "", fmt.Errorf("load Beijing timezone: %w", err)
 	}
 	config.Loc = location
+	config.ParseTime = true
+	config.CheckConnLiveness = true
+	if config.Collation == "" {
+		config.Collation = "utf8mb4_unicode_ci"
+	}
+	if config.Timeout == 0 {
+		config.Timeout = 10 * time.Second
+	}
+	if config.ReadTimeout == 0 {
+		config.ReadTimeout = 30 * time.Second
+	}
+	if config.WriteTimeout == 0 {
+		config.WriteTimeout = 30 * time.Second
+	}
 	if config.Params == nil {
 		config.Params = make(map[string]string)
 	}
+	config.Params["charset"] = "utf8mb4"
 	config.Params["time_zone"] = "'+08:00'"
 	return config.FormatDSN(), nil
+}
+
+func verifyMySQL8(ctx context.Context, db *sql.DB) error {
+	var version, versionComment, sqlMode, timezone, charset, collation, isolation, storageEngine string
+	err := db.QueryRowContext(ctx, `SELECT VERSION(),@@version_comment,@@SESSION.sql_mode,
+		@@SESSION.time_zone,@@SESSION.character_set_connection,@@SESSION.collation_connection,
+		@@SESSION.transaction_isolation,@@default_storage_engine`).
+		Scan(&version, &versionComment, &sqlMode, &timezone, &charset, &collation, &isolation, &storageEngine)
+	if err != nil {
+		return fmt.Errorf("inspect database compatibility: %w", err)
+	}
+	major := 0
+	if _, err = fmt.Sscanf(version, "%d.", &major); err != nil || major < 8 || strings.Contains(strings.ToLower(version), "mariadb") || strings.Contains(strings.ToLower(versionComment), "mariadb") {
+		return fmt.Errorf("unsupported database server %q (%s): MySQL 8 or newer is required", version, versionComment)
+	}
+	modes := make(map[string]bool)
+	for _, mode := range strings.Split(sqlMode, ",") {
+		modes[strings.TrimSpace(mode)] = true
+	}
+	if !modes["ONLY_FULL_GROUP_BY"] || (!modes["STRICT_TRANS_TABLES"] && !modes["STRICT_ALL_TABLES"]) || !modes["NO_ZERO_DATE"] {
+		return fmt.Errorf("incompatible MySQL sql_mode %q: ONLY_FULL_GROUP_BY, strict mode and NO_ZERO_DATE are required", sqlMode)
+	}
+	if timezone != "+08:00" {
+		return fmt.Errorf("incompatible MySQL session time_zone %q: +08:00 is required", timezone)
+	}
+	if charset != "utf8mb4" || !strings.HasPrefix(collation, "utf8mb4_") {
+		return fmt.Errorf("incompatible MySQL connection encoding %s/%s: utf8mb4 is required", charset, collation)
+	}
+	if isolation != "REPEATABLE-READ" {
+		return fmt.Errorf("incompatible MySQL transaction isolation %q: REPEATABLE-READ is required", isolation)
+	}
+	if !strings.EqualFold(storageEngine, "InnoDB") {
+		return fmt.Errorf("incompatible MySQL storage engine %q: InnoDB is required", storageEngine)
+	}
+	return nil
 }
 
 func Migrate(ctx context.Context, db *sql.DB, dir string) error {
@@ -91,7 +146,7 @@ version VARCHAR(255) PRIMARY KEY, applied_at DATETIME(3) NOT NULL DEFAULT CURREN
 		}
 		for _, statement := range splitSQL(string(body)) {
 			if _, err = tx.ExecContext(ctx, statement); err != nil {
-				// MySQL 5.7 auto-commits DDL even inside a transaction. If a process
+				// MySQL auto-commits DDL even inside a transaction. If a process
 				// stops halfway through a migration, replay already-applied ADD COLUMN
 				// or ADD KEY statements and continue to the remaining statements.
 				if isAlreadyAppliedDDL(err) {
@@ -146,8 +201,6 @@ func splitSQL(input string) []string {
 }
 
 func IsDuplicate(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "Error 1062") || errors.Is(err, sql.ErrNoRows)
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

@@ -167,14 +167,18 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 		handleSQLError(w, acceptanceErr)
 		return
 	}
-	codeProvider, codeProviderAvailable := s.Payment.(provider.PaymentCodeProvider)
+	var codeProvider provider.PaymentCodeProvider
+	codeProviderAvailable := s.WeChatPay != nil
+	if codeProviderAvailable {
+		codeProvider = s.WeChatPay
+	}
 	codeProviderReady, codeProviderReason := false, "平台尚未启用微信付款码支付"
 	if codeProviderAvailable {
 		codeProviderReady, codeProviderReason = codeProvider.CodePaymentReady()
 	}
 	merchantReady := paymentProvider == "wechat_partner" && merchantNo != "" &&
 		onboardingStatus == "ACTIVE" && productAuthorizationStatus == "AUTHORIZED"
-	wechatCodePaymentEnabled := acceptanceEnabled && s.Payment.Name() == "wechat_partner" &&
+	wechatCodePaymentEnabled := acceptanceEnabled &&
 		codeProviderReady && merchantReady
 	wechatCodePaymentReason := ""
 	switch {
@@ -182,8 +186,8 @@ func (s *Server) getCashierContext(w http.ResponseWriter, r *http.Request) {
 		wechatCodePaymentReason = "平台已暂停支付受理"
 	case paymentProvider != "wechat_partner":
 		wechatCodePaymentReason = "当前商户未选择微信支付服务商"
-	case s.Payment.Name() != "wechat_partner":
-		wechatCodePaymentReason = "服务器当前未启用微信支付服务商"
+	case s.WeChatPay == nil:
+		wechatCodePaymentReason = "服务器当前未注册微信支付服务商"
 	case !merchantReady:
 		wechatCodePaymentReason = "特约商户进件或付款码支付产品授权尚未完成"
 	case !codeProviderReady:

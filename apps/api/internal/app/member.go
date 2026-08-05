@@ -900,7 +900,7 @@ func (s *Server) issueMemberCard(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := tx.ExecContext(r.Context(), "INSERT INTO member_card_issuances(tenant_id,issue_no,customer_id,member_id,level_id,issue_source,idempotency_key,request_fingerprint,level_snapshot_json,valid_to,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)", actor.TenantID, newBusinessNo("MC"), input.CustomerID, memberID, nullableID(input.LevelID), input.IssueSource, key, fingerprint, levelSnapshot, expires, actor.UserID)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if loadErr := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM member_card_issuances WHERE tenant_id=? AND idempotency_key=?", actor.TenantID, key).Scan(&existing, &existingFingerprint); loadErr == nil {
 				if existingFingerprint != fingerprint {
@@ -1096,7 +1096,7 @@ func (s *Server) createMemberLevelOrder(w http.ResponseWriter, r *http.Request) 
 	orderNo := newBusinessNo("ML")
 	result, err := tx.ExecContext(r.Context(), "INSERT INTO member_level_orders(tenant_id,order_no,customer_id,member_id,level_id,level_snapshot_json,amount_cents,payment_method,payment_status,status,remark,idempotency_key,request_fingerprint,created_by,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", actor.TenantID, orderNo, input.CustomerID, nullableNullInt64(memberID), input.LevelID, string(snapshot), input.AmountCents, input.PaymentMethod, paymentStatus, input.Status, input.Remark, key, fingerprint, actor.UserID, completed)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			_ = tx.Rollback()
 			if loadErr := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM member_level_orders WHERE tenant_id=? AND idempotency_key=?", actor.TenantID, key).Scan(&existing, &existingFingerprint); loadErr == nil {
 				if existingFingerprint != fingerprint {
@@ -1340,7 +1340,7 @@ func applyBalanceDeltaTx(ctx context.Context, tx *sql.Tx, tenantID, customerID i
 	}
 	result, err = tx.ExecContext(ctx, "INSERT INTO balance_ledger(tenant_id,customer_id,account_bucket,delta_cents,balance_before_cents,balance_after_cents,entry_type,business_type,business_no,idempotency_key,operator_user_id,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", tenantID, customerID, bucket, delta, before, after, entryType, businessType, businessNo, idempotencyKey, operatorID, remark)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			existing, found, loadErr := loadBalanceLedgerByKey(ctx, tx, tenantID, idempotencyKey)
 			if loadErr != nil {
 				return balanceLedgerEntry{}, false, loadErr
@@ -1697,7 +1697,7 @@ func (s *Server) createStoredValueRecord(w http.ResponseWriter, r *http.Request)
 	recordNo := newBusinessNo("SV")
 	result, err := tx.ExecContext(r.Context(), "INSERT INTO stored_value_records(tenant_id,record_no,customer_id,rule_id,rule_snapshot_json,principal_cents,gift_cents,payment_method,idempotency_key,request_fingerprint,created_by,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", actor.TenantID, recordNo, input.CustomerID, nullableID(input.RuleID), snapshot, input.PrincipalCents, input.GiftCents, input.PaymentMethod, key, fingerprint, actor.UserID, input.Remark)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			// The competing transaction may have committed after this transaction's
 			// REPEATABLE READ snapshot was created. Roll back and load through a fresh
 			// database statement so an idempotent race returns the winner reliably.

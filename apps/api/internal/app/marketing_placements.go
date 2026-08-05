@@ -611,7 +611,7 @@ func (s *Server) publicRecordMarketingEvent(w http.ResponseWriter, r *http.Reque
 	result, err := s.DB.ExecContext(r.Context(), `INSERT INTO marketing_events(tenant_id,store_id,placement_id,event_type,subject_key_hash,idempotency_key,request_fingerprint,occurred_at)
 		VALUES(?,?,?,?,?,?,?,?)`, store.TenantID, store.ID, input.PlacementID, input.EventType, subjectHash, idempotencyKey, fingerprint, now)
 	if err != nil {
-		if strings.Contains(err.Error(), "1062") {
+		if isMySQLError(err, 1062) {
 			loadErr := s.DB.QueryRowContext(r.Context(), "SELECT id,request_fingerprint FROM marketing_events WHERE tenant_id=? AND idempotency_key=?", store.TenantID, idempotencyKey).Scan(&existingID, &existingFingerprint)
 			if loadErr == nil && existingFingerprint == fingerprint {
 				writeData(w, http.StatusOK, map[string]any{"id": existingID, "event_type": input.EventType})
