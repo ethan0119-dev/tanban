@@ -127,6 +127,9 @@ export interface PaymentSettings {
   wechatPayPublicKeyConfigured?: boolean;
   effectiveProvider?: 'mock' | 'tianque' | 'wechat_partner';
   restartRequired?: boolean;
+  multiTenantRouting?: boolean;
+  availableProviders?: Array<'mock' | 'tianque' | 'wechat_partner'>;
+  mockEnabled?: boolean;
   tianqueAdapterImplemented?: boolean;
   wechatPartnerAdapterImplemented?: boolean;
   wechatPartnerConfigured?: boolean;
@@ -140,6 +143,9 @@ export interface TenantPaymentSettings {
   onboardingStatus: 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
   productAuthorizationStatus: 'NOT_AUTHORIZED' | 'PENDING' | 'AUTHORIZED' | 'REVOKED';
   refundAuthorized: boolean;
+  pendingPaymentCount?: number;
+  pendingRefundCount?: number;
+  legacyPendingPaymentCount?: number;
   onboardingApplication?: {
     subjectType: 'MICRO' | 'INDIVIDUAL' | 'ENTERPRISE';
     businessScene: 'STORE' | 'MOBILE';

@@ -1276,10 +1276,29 @@ func (s *Server) publicMockConfirm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var providerNo, currentStatus string
-	if err := s.DB.QueryRowContext(r.Context(), "SELECT provider_order_no,status FROM payment_transactions WHERE id=? AND provider='mock'", paymentID).Scan(&providerNo, &currentStatus); err != nil {
+	var providerNo, currentStatus, tenantProvider string
+	var tenantID, customerID int64
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT p.provider_order_no,p.status,p.tenant_id,COALESCE(o.customer_id,0),t.payment_provider
+		FROM payment_transactions p JOIN orders o ON o.id=p.order_id AND o.tenant_id=p.tenant_id
+		JOIN tenants t ON t.id=p.tenant_id AND t.deleted_at IS NULL
+		WHERE p.id=? AND p.provider='mock'`, paymentID).
+		Scan(&providerNo, &currentStatus, &tenantID, &customerID, &tenantProvider); err != nil {
 		handleSQLError(w, err)
 		return
+	}
+	// Authenticated customers may finish a mock intent created before an
+	// administrator switched the tenant to a real channel. Guest mock payments
+	// are only confirmable while the tenant is explicitly assigned to mock.
+	if customerID == 0 && tenantProvider != "mock" {
+		writeError(w, http.StatusConflict, "MOCK_PAYMENT_DISABLED", "mock payment is disabled for this merchant")
+		return
+	}
+	if customerID > 0 {
+		session, sessionOK := s.optionalPublicCustomerSession(r.Context(), r, tenantID)
+		if !sessionOK || session.CustomerID != customerID {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "payment was not found")
+			return
+		}
 	}
 	if currentStatus == string(provider.PaymentClosed) {
 		writeError(w, http.StatusConflict, "PAYMENT_CLOSED", "closed payment cannot be confirmed")

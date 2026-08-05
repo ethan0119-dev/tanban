@@ -97,43 +97,51 @@ export function PaymentSettingsPage() {
   return (
     <div>
       {contextHolder}
-      <PageHeader title="支付服务商" description="配置平台支付适配器；资金始终由支付机构直接结算给商户。" />
+      <PageHeader title="支付服务商" description="平台可同时运行多个支付适配器，每个商户独立选择自己的收款渠道。" />
       {error && <div className="section-gap"><LoadError message={error} onRetry={() => void load()} /></div>}
       <Alert
         showIcon
         type="info"
-        message="平台不沉淀商户资金"
-        description="摊伴只发起支付、验证回调并推动订单状态。微信支付普通服务商模式下，资金归属特约商户，并按商户与微信支付的签约规则结算；平台账户不收取顾客货款。"
+        message="多租户支付路由已启用，平台不沉淀商户资金"
+        description="商户当前选择的渠道只用于创建新支付；订单会保存渠道、商户号和支付单号快照，后续查单、关单、对账及退款仍回到原渠道。Mock 仅供指定演示商户使用，真实商户资金由支付机构直接结算。"
         className="settings-alert"
       />
-	  {settings?.restartRequired && <Alert
-		showIcon
-		type="warning"
-			message={`配置已保存，但当前运行中的适配器仍为 ${providerNames[settings.effectiveProvider || 'mock'] || settings.effectiveProvider}`}
-		description="支付适配器和密钥由服务器环境变量注入；完成部署并重启 API 后才会生效。"
-		className="settings-alert"
-	  />}
-		  {provider === 'tianque' && settings?.tianqueAdapterImplemented === false && <Alert
-		showIcon
-		type="error"
-		message="真实会生活/天阙适配器尚未启用"
-		description="当前版本只保留接口边界。取得官方联调文档、机构号、密钥和沙箱权限并完成验签测试前，不可用于真实收款。"
-		className="settings-alert"
-	  />}
-		  {provider === 'wechat_partner' && settings?.wechatPartnerAdapterImplemented === false && <Alert
-		showIcon
-		type="warning"
-		message="微信支付（普通服务商）配置入口已就绪，真实交易适配尚未启用"
-		description="可以先维护服务商参数和商户进件状态；在完成 API v3 下单、回调验签解密、查单、退款及沙箱/生产联调前，系统不会把它标记为可真实收款。"
-		className="settings-alert"
-	  />}
+      {settings?.availableProviders && <Alert
+        showIcon
+        type="success"
+        message="本进程已注册的支付适配器"
+        description={<Space wrap>{settings.availableProviders.map((name) => <Tag color="green" key={name}>{providerNames[name] || name}</Tag>)}</Space>}
+        className="settings-alert"
+      />}
+      {settings?.restartRequired && <Alert
+        showIcon
+        type="warning"
+        message={`配置已保存，但当前运行中的适配器仍为 ${providerNames[settings.effectiveProvider || 'mock'] || settings.effectiveProvider}`}
+        description="支付适配器和密钥由服务器环境变量注入；完成部署并重启 API 后才会生效。"
+        className="settings-alert"
+      />}
+      {provider === 'tianque' && settings?.tianqueAdapterImplemented === false && <Alert
+        showIcon
+        type="error"
+        message="真实会生活/天阙适配器尚未启用"
+        description="当前版本只保留接口边界。取得官方联调文档、机构号、密钥和沙箱权限并完成验签测试前，不可用于真实收款。"
+        className="settings-alert"
+      />}
+      {provider === 'wechat_partner' && settings?.wechatPartnerAdapterImplemented === false && <Alert
+        showIcon
+        type="warning"
+        message="微信支付（普通服务商）配置入口已就绪，真实交易适配尚未启用"
+        description="可以先维护服务商参数和商户进件状态；在完成 API v3 下单、回调验签解密、查单、退款及沙箱/生产联调前，系统不会把它标记为可真实收款。"
+        className="settings-alert"
+      />}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={16}>
           <Card bordered={false} title="服务商配置">
             <Form form={form} layout="vertical" requiredMark={false} onFinish={() => void save()}>
-              <Form.Item label="当前支付适配器" name="provider" rules={[{ required: true }]}>
-	                <Radio.Group className="provider-selector" onChange={(event) => selectProvider(event.target.value)}>
+              <Alert type="info" showIcon message="此处维护平台级接入参数" description="商户实际使用哪个渠道，请在“商户管理 → 支付配置”中选择；修改这里不会批量切换现有商户。" style={{ marginBottom: 16 }} />
+              <Form.Item label="配置查看渠道" name="provider" rules={[{ required: true }]}>
+                <Radio.Group className="provider-selector" onChange={(event) => selectProvider(event.target.value)}>
                   <Radio.Button value="mock">
                     <span className="provider-option"><ExperimentOutlined /><span><strong>Mock 模拟支付</strong><small>开发调试，无真实资金</small></span></span>
                   </Radio.Button>

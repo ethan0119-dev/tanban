@@ -67,7 +67,8 @@ NEXT_PUBLIC_TANBAN_API_URL=https://api.tanban.com.cn/api/v1
 VITE_API_BASE_URL=https://api.tanban.com.cn/api/v1
 TB_AUTO_MIGRATE=true
 TB_SEED_DEMO=false
-TB_ALLOW_MOCK_CONFIRMATION=false
+# 如果生产环境保留样板演示商户，则设为 true；真实商户必须选择真实渠道。
+TB_ALLOW_MOCK_CONFIRMATION=true
 
 TB_WECHAT_PAY_BASE_URL=https://api.mch.weixin.qq.com
 TB_WECHAT_PAY_SP_MCH_ID=1748591603
@@ -86,7 +87,9 @@ TB_DATA_ENCRYPTION_KEY=file:/run/secrets/data-encryption/master.key
 
 `master.key` 必须是独立生成的 32 字节随机密钥（推荐保存为 Base64），用于租户进件敏感字段的 AES-256-GCM 加密，不能复用 JWT、APIv2 或 APIv3 密钥。容器通过补充组 `TB_SECRETS_GID` 只读访问密钥；不得通过放宽为 `0644` 解决权限问题。
 
-APIv3 小程序下单、通知验签解密、主动查单、退款和退款通知均已实现。首个特约商户完成微信审核、签约及 `sub_mchid` 自动回填前，`TB_PAYMENT_PROVIDER` 保持 `mock`；进件客户端独立初始化，仍可在此期间上传资料和提交申请。首商户状态为 `ACTIVE/AUTHORIZED` 且完成一笔真实小额支付与退款联调后，再切换为 `wechat_partner`。
+APIv3 小程序下单、通知验签解密、主动查单、退款和退款通知均已实现。API 进程会同时注册可用的支付适配器，`TB_PAYMENT_PROVIDER` 仅作为兼容旧配置的平台默认值；每个商户的新支付由 `tenants.payment_provider` 独立路由。样板商户可保持 `mock`，种子商户可使用 `wechat_partner`，两者能在同一套部署中并存。
+
+切换商户渠道只影响切换后创建的支付意图。`payment_transactions` 与 `customer_account_payment_intents` 会保存 provider、商户号、子 AppID 和渠道单号快照；历史查单、关单、回调、对账及退款始终解析该快照并调用原渠道。因此，只要仍有历史交易或退款，原渠道密钥、回调和适配器就不能删除。利楚支付接入后应新增独立 provider 适配器并注册到路由器，不得复用或改名现有 `tianque` 适配器。
 
 ## 首次部署
 

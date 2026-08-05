@@ -86,6 +86,12 @@ const paymentStatusColor: Record<string, string> = {
   rejected: 'error',
 };
 
+const providerNames: Record<TenantPaymentSettings['provider'], string> = {
+  mock: 'Mock 模拟支付',
+  tianque: '会生活/天阙',
+  wechat_partner: '微信支付（普通服务商）',
+};
+
 export function TenantsPage() {
   const [rows, setRows] = useState<Tenant[]>([]);
   const [meta, setMeta] = useState<PageMeta>({ page: 1, pageSize: 20, total: 0 });
@@ -102,6 +108,8 @@ export function TenantsPage() {
   const [expirationOpen, setExpirationOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentOriginalProvider, setPaymentOriginalProvider] = useState<TenantPaymentSettings['provider']>();
+  const [paymentOperational, setPaymentOperational] = useState({ pendingPayments: 0, pendingRefunds: 0, legacyPendingPayments: 0 });
   const [miniAppOpen, setMiniAppOpen] = useState(false);
   const [miniAppLoading, setMiniAppLoading] = useState(false);
   const [reviewApproveOpen, setReviewApproveOpen] = useState(false);
@@ -114,6 +122,7 @@ export function TenantsPage() {
   const [paymentForm] = Form.useForm<TenantPaymentSettings>();
   const [miniAppForm] = Form.useForm<TenantMiniAppSettings>();
   const [messageApi, contextHolder] = message.useMessage();
+  const selectedPaymentProvider = Form.useWatch('provider', paymentForm);
 
   const load = useCallback(async (page = meta.page, pageSize = meta.pageSize) => {
     setLoading(true);
@@ -271,9 +280,18 @@ export function TenantsPage() {
     setSelected(record);
     setPaymentOpen(true);
     setPaymentLoading(true);
+    setPaymentOriginalProvider(undefined);
+    setPaymentOperational({ pendingPayments: 0, pendingRefunds: 0, legacyPendingPayments: 0 });
     paymentForm.resetFields();
     try {
-      paymentForm.setFieldsValue(await tenantService.getPaymentSettings(record.id));
+      const paymentSettings = await tenantService.getPaymentSettings(record.id);
+      paymentForm.setFieldsValue(paymentSettings);
+      setPaymentOriginalProvider(paymentSettings.provider);
+      setPaymentOperational({
+        pendingPayments: paymentSettings.pendingPaymentCount || 0,
+        pendingRefunds: paymentSettings.pendingRefundCount || 0,
+        legacyPendingPayments: paymentSettings.legacyPendingPaymentCount || 0,
+      });
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '支付配置加载失败');
       setPaymentOpen(false);
@@ -288,6 +306,12 @@ export function TenantsPage() {
     setSaving(true);
     try {
       const updated = await tenantService.updatePaymentSettings(selected.id, values);
+      setPaymentOriginalProvider(updated.provider);
+      setPaymentOperational({
+        pendingPayments: updated.pendingPaymentCount || 0,
+        pendingRefunds: updated.pendingRefundCount || 0,
+        legacyPendingPayments: updated.legacyPendingPaymentCount || 0,
+      });
       setSelected({ ...selected, paymentProvider: updated.provider, paymentMerchantNo: updated.merchantNo, paymentSubAppId: updated.subAppId, paymentStatus: updated.onboardingStatus === 'ACTIVE' && updated.productAuthorizationStatus === 'AUTHORIZED' ? 'active' : updated.onboardingStatus === 'REJECTED' ? 'rejected' : updated.onboardingStatus === 'NOT_APPLIED' ? 'unbound' : 'pending' });
       setPaymentOpen(false);
       messageApi.success('商户支付配置已保存');
@@ -552,7 +576,21 @@ export function TenantsPage() {
 
       <Modal title={`支付配置 · ${selected?.name || ''}`} open={paymentOpen} width={680} okText="保存支付配置" onCancel={() => setPaymentOpen(false)} onOk={() => void savePaymentSettings()} confirmLoading={saving} okButtonProps={{ disabled: paymentLoading }}>
         <Form form={paymentForm} layout="vertical" requiredMark={false}>
-          <Alert type="info" showIcon message="商户端无需填写支付密钥" description="服务商证书和 APIv3 密钥由平台统一保管。商户这里只绑定微信支付特约商户号，并记录进件、产品授权和退款授权状态。" style={{ marginBottom: 16 }} />
+          <Alert type="info" showIcon message="每个商户独立选择支付渠道" description="服务商证书和平台密钥统一保管；商户配置只决定新支付走哪个渠道。历史订单已保存渠道快照，切换后退款、查单和对账仍走原渠道。" style={{ marginBottom: 16 }} />
+          {paymentOriginalProvider && selectedPaymentProvider && paymentOriginalProvider !== selectedPaymentProvider && <Alert
+            type="warning"
+            showIcon
+            message={`确认将新支付从“${providerNames[paymentOriginalProvider] || paymentOriginalProvider}”切换到“${providerNames[selectedPaymentProvider] || selectedPaymentProvider}”`}
+            description={`保存后立即影响新支付；已有 ${paymentOperational.pendingPayments} 笔在途支付和 ${paymentOperational.pendingRefunds} 笔在途退款仍由原渠道继续处理。请勿删除原渠道密钥或停用回调。`}
+            style={{ marginBottom: 16 }}
+          />}
+          {paymentOperational.legacyPendingPayments > 0 && <Alert
+            type="warning"
+            showIcon
+            message={`仍有 ${paymentOperational.legacyPendingPayments} 笔在途支付属于历史渠道`}
+            description="系统会继续按交易快照查单和接收回调；待这些交易完成或关闭前，需要保持历史渠道适配器和密钥可用。"
+            style={{ marginBottom: 16 }}
+          />}
           {paymentForm.getFieldValue('onboardingApplication') && <Alert
             type={paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) === 'PENDING_PLATFORM_REVIEW' ? 'warning' : 'info'}
             showIcon
@@ -582,7 +620,7 @@ export function TenantsPage() {
             }
             style={{ marginBottom: 16 }}
           />}
-          <Form.Item label="支付适配器" name="provider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item>
+          <Form.Item label="新支付使用渠道" name="provider" rules={[{ required: true }]} extra="Mock 只用于样板演示商户；真实营业商户请选择已完成签约和联调的支付机构。"><Select options={[{ value: 'mock', label: 'Mock 模拟支付（样板演示）' }, { value: 'tianque', label: '会生活/天阙（待正式适配）' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider}>
             {({ getFieldValue }) => getFieldValue('provider') === 'wechat_partner' ? <>
               <Form.Item label="微信支付特约商户号（sub_mchid）" name="merchantNo" rules={[{ pattern: /^\d{8,32}$/, message: '请输入 8 至 32 位数字' }]}><Input placeholder="进件通过后由微信支付分配" /></Form.Item>

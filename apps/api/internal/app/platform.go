@@ -77,6 +77,9 @@ type tenantPaymentSettings struct {
 	OnboardingStatus           string                       `json:"onboardingStatus"`
 	ProductAuthorizationStatus string                       `json:"productAuthorizationStatus"`
 	RefundAuthorized           bool                         `json:"refundAuthorized"`
+	PendingPaymentCount        int                          `json:"pendingPaymentCount"`
+	PendingRefundCount         int                          `json:"pendingRefundCount"`
+	LegacyPendingPaymentCount  int                          `json:"legacyPendingPaymentCount"`
 	OnboardingApplication      *wechatOnboardingApplication `json:"onboardingApplication,omitempty"`
 }
 
@@ -452,6 +455,17 @@ func (s *Server) getTenantPaymentSettings(w http.ResponseWriter, r *http.Request
 		handleSQLError(w, err)
 		return
 	}
+	if err = s.DB.QueryRowContext(r.Context(), `SELECT
+		(SELECT COUNT(*) FROM payment_transactions WHERE tenant_id=? AND status IN ('CREATING','PENDING'))+
+		(SELECT COUNT(*) FROM customer_account_payment_intents WHERE tenant_id=? AND status IN ('CREATING','PENDING')),
+		(SELECT COUNT(*) FROM refunds WHERE tenant_id=? AND status='PENDING'),
+		(SELECT COUNT(*) FROM payment_transactions WHERE tenant_id=? AND provider<>? AND status IN ('CREATING','PENDING'))+
+		(SELECT COUNT(*) FROM customer_account_payment_intents WHERE tenant_id=? AND provider<>? AND status IN ('CREATING','PENDING'))`,
+		id, id, id, id, settings.Provider, id, settings.Provider).
+		Scan(&settings.PendingPaymentCount, &settings.PendingRefundCount, &settings.LegacyPendingPaymentCount); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	application, applicationErr := s.loadWechatOnboarding(r, id)
 	if applicationErr != nil {
 		handleSQLError(w, applicationErr)
@@ -503,6 +517,11 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	var previousProvider string
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT payment_provider FROM tenants WHERE id=? AND deleted_at IS NULL", id).Scan(&previousProvider); err != nil {
+		handleSQLError(w, err)
+		return
+	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET payment_provider=?,payment_merchant_no=?,payment_sub_appid=?,
 		payment_onboarding_status=?,payment_product_authorization_status=?,payment_refund_authorized=?
 		WHERE id=? AND deleted_at IS NULL`, input.Provider, input.MerchantNo, input.SubAppID,
@@ -516,8 +535,9 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.payment_settings.update", "tenant", int64String(id), map[string]any{
-		"provider": input.Provider, "merchant_no_configured": input.MerchantNo != "",
-		"sub_appid_configured": input.SubAppID != "", "onboarding_status": input.OnboardingStatus,
+		"previous_provider": previousProvider, "provider": input.Provider, "channel_changed": previousProvider != input.Provider,
+		"merchant_no_configured": input.MerchantNo != "",
+		"sub_appid_configured":   input.SubAppID != "", "onboarding_status": input.OnboardingStatus,
 		"product_authorization_status": input.ProductAuthorizationStatus, "refund_authorized": input.RefundAuthorized,
 	}, r)
 	s.getTenantPaymentSettings(w, r)

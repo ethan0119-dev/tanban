@@ -596,6 +596,20 @@ type paymentInput struct {
 
 const paymentStatusCreating = "CREATING"
 
+const latestPaymentAttemptQuery = "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? ORDER BY id DESC LIMIT 1"
+
+type latestPaymentAttempt struct {
+	ID                                             int64
+	Provider, ProviderOrderNo, Status, RawResponse string
+}
+
+func loadLatestPaymentAttempt(ctx context.Context, queryer sqlQueryer, tenantID, orderID int64) (latestPaymentAttempt, error) {
+	var attempt latestPaymentAttempt
+	err := queryer.QueryRowContext(ctx, latestPaymentAttemptQuery, tenantID, orderID).
+		Scan(&attempt.ID, &attempt.Provider, &attempt.ProviderOrderNo, &attempt.Status, &attempt.RawResponse)
+	return attempt, err
+}
+
 type paymentCreationIntent struct {
 	ID, TenantID, StoreID, OrderID, Amount int64
 	BusinessOrderNo, ProviderRequestNo     string
@@ -847,7 +861,19 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 	var existingProvider, existingNo, existingStatus, raw string
 	var intent paymentCreationIntent
 	renewReservation := newReservation && !postPay
-	err = conn.QueryRowContext(r.Context(), "SELECT id,provider,provider_order_no,status,COALESCE(raw_response,'') FROM payment_transactions WHERE tenant_id=? AND order_id=? AND provider=? ORDER BY id DESC LIMIT 1", tenantID, orderID, tenantPaymentProvider).Scan(&existingID, &existingProvider, &existingNo, &existingStatus, &raw)
+	// A channel switch only affects new payment intents. Reuse the latest intent
+	// regardless of its provider so an order cannot acquire two concurrently
+	// payable attempts on the old and new channels. FAILED/CLOSED attempts remain
+	// append-only history and allow the new tenant channel to create a fresh one.
+	latestAttempt, latestAttemptErr := loadLatestPaymentAttempt(r.Context(), conn, tenantID, orderID)
+	err = latestAttemptErr
+	if err == nil {
+		existingID = latestAttempt.ID
+		existingProvider = latestAttempt.Provider
+		existingNo = latestAttempt.ProviderOrderNo
+		existingStatus = latestAttempt.Status
+		raw = latestAttempt.RawResponse
+	}
 	createAttempt := errors.Is(err, sql.ErrNoRows)
 	if err == nil {
 		switch existingStatus {
