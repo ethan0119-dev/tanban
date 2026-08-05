@@ -347,9 +347,9 @@ func (s *Server) merchantDashboard(w http.ResponseWriter, r *http.Request) {
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, beijingLocation)
 	monthEnd := monthStart.AddDate(0, 1, 0)
 	monthlyRows, err := s.DB.QueryContext(r.Context(),
-		`SELECT DATE_FORMAT(DATE(paid_at),'%m-%d'),COALESCE(SUM(paid_cents-refunded_cents),0)
+		`SELECT DATE_FORMAT(paid_at,'%m-%d'),COALESCE(SUM(paid_cents-refunded_cents),0)
 		FROM orders WHERE tenant_id=? AND store_id=? AND paid_at>=? AND paid_at<?
-		GROUP BY DATE(paid_at) ORDER BY DATE(paid_at)`, identity.TenantID, storeID, monthStart, monthEnd)
+		GROUP BY DATE_FORMAT(paid_at,'%m-%d') ORDER BY DATE_FORMAT(paid_at,'%m-%d')`, identity.TenantID, storeID, monthStart, monthEnd)
 	if err != nil {
 		handleSQLError(w, err)
 		return
