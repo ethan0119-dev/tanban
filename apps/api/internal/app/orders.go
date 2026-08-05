@@ -667,12 +667,13 @@ func (s *Server) submitPaymentIntent(ctx context.Context, conn *sql.Conn, intent
 	providerCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	result, err := s.Payment.Create(providerCtx, provider.CreatePaymentRequest{
-		MerchantNo: intent.MerchantNo,
-		OrderNo:    intent.ProviderRequestNo,
-		Amount:     intent.Amount,
-		OpenID:     intent.OpenID,
-		SubAppID:   intent.SubAppID,
-		NotifyURL:  s.paymentNotifyURL(),
+		MerchantNo:  intent.MerchantNo,
+		OrderNo:     intent.ProviderRequestNo,
+		Amount:      intent.Amount,
+		OpenID:      intent.OpenID,
+		SubAppID:    intent.SubAppID,
+		NotifyURL:   s.paymentNotifyURL(),
+		Description: "摊伴门店订单 " + intent.BusinessOrderNo,
 	})
 	if err == nil && strings.TrimSpace(result.ProviderOrderNo) == "" {
 		err = errors.New("provider returned an empty payment number")
@@ -1090,9 +1091,55 @@ func (s *Server) wechatPayCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
 		return
 	}
-	// Never acknowledge a payment notification before API v3 signature
-	// verification, resource decryption and payment identity checks exist.
-	writeError(w, http.StatusNotImplemented, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay notification verification is not implemented")
+	wechat, ok := s.Payment.(*provider.WeChatPayPartner)
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay provider type is invalid")
+		return
+	}
+	notification, err := wechat.ParsePaymentNotification(r.Context(), r)
+	if err != nil {
+		if s.Logger != nil {
+			s.Logger.Warn("reject WeChat Pay notification", "error", err)
+		}
+		writeError(w, http.StatusUnauthorized, "INVALID_WECHAT_PAY_NOTIFICATION", "signature verification or decryption failed")
+		return
+	}
+	var merchantNo string
+	var amount int64
+	err = s.DB.QueryRowContext(r.Context(), `SELECT merchant_no,amount_cents FROM payment_transactions
+		WHERE provider='wechat_partner' AND provider_order_no=?`, notification.ProviderOrderNo).Scan(&merchantNo, &amount)
+	if err == nil {
+		if merchantNo != notification.MerchantNo || amount != notification.Amount || notification.Status != provider.PaymentSuccess {
+			writeError(w, http.StatusConflict, "WECHAT_PAY_IDENTITY_MISMATCH", "merchant, order or amount mismatch")
+			return
+		}
+		if err = s.markPaymentPaid(r.Context(), "wechat_partner", notification.ProviderOrderNo, notification.PaidAt); err != nil {
+			handleSQLError(w, err)
+			return
+		}
+		writeWechatPayAck(w)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		handleSQLError(w, err)
+		return
+	}
+	var intentID int64
+	err = s.DB.QueryRowContext(r.Context(), `SELECT id,merchant_no,amount_cents FROM customer_account_payment_intents
+		WHERE provider='wechat_partner' AND provider_order_no=?`, notification.ProviderOrderNo).Scan(&intentID, &merchantNo, &amount)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if merchantNo != notification.MerchantNo || amount != notification.Amount || notification.Status != provider.PaymentSuccess {
+		writeError(w, http.StatusConflict, "WECHAT_PAY_IDENTITY_MISMATCH", "merchant, order or amount mismatch")
+		return
+	}
+	if err = s.fulfillPublicAccountPayment(r.Context(), intentID, "wechat_partner", notification.ProviderOrderNo, notification.PaidAt); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	writeWechatPayAck(w)
 }
 
 func (s *Server) wechatPayRefundCallback(w http.ResponseWriter, r *http.Request) {
@@ -1100,9 +1147,50 @@ func (s *Server) wechatPayRefundCallback(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "WeChat Pay provider is not active")
 		return
 	}
-	// Refund notifications have the same fail-closed boundary as payment
-	// notifications. Returning a non-success response prevents false success.
-	writeError(w, http.StatusNotImplemented, "WECHAT_PAY_REFUND_NOT_CONFIGURED", "WeChat Pay refund notification verification is not implemented")
+	wechat, ok := s.Payment.(*provider.WeChatPayPartner)
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_CONFIGURED", "WeChat Pay provider type is invalid")
+		return
+	}
+	notification, err := wechat.ParseRefundNotification(r.Context(), r)
+	if err != nil {
+		if s.Logger != nil {
+			s.Logger.Warn("reject WeChat Pay refund notification", "error", err)
+		}
+		writeError(w, http.StatusUnauthorized, "INVALID_WECHAT_PAY_NOTIFICATION", "signature verification or decryption failed")
+		return
+	}
+	var refundID, amount int64
+	var merchantNo, providerOrderNo string
+	err = s.DB.QueryRowContext(r.Context(), `SELECT r.id,r.amount_cents,p.merchant_no,p.provider_order_no
+		FROM refunds r JOIN payment_transactions p ON p.id=r.payment_id
+		WHERE p.provider='wechat_partner' AND r.refund_no=?`, notification.RefundNo).
+		Scan(&refundID, &amount, &merchantNo, &providerOrderNo)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if amount != notification.Amount || notification.Status != provider.PaymentSuccess || notification.ProviderRefundNo == "" {
+		writeError(w, http.StatusConflict, "WECHAT_PAY_REFUND_IDENTITY_MISMATCH", "refund number or amount mismatch")
+		return
+	}
+	// The decrypted refund resource omits sub_mchid. The durable payment binding
+	// still has to be internally consistent before local accounting is updated.
+	if !strings.HasPrefix(providerOrderNo, merchantNo+":") {
+		writeError(w, http.StatusConflict, "WECHAT_PAY_REFUND_IDENTITY_MISMATCH", "refund merchant binding mismatch")
+		return
+	}
+	if err = s.finalizeRefund(r.Context(), refundID, notification.ProviderRefundNo); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	writeWechatPayAck(w)
+}
+
+func writeWechatPayAck(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"code":"SUCCESS","message":"成功"}`))
 }
 
 func (s *Server) markPaymentPaid(ctx context.Context, providerName, providerNo string, paidAt time.Time) error {
@@ -1306,7 +1394,7 @@ func (s *Server) createRefund(w http.ResponseWriter, r *http.Request) {
 	}
 	providerCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	providerResult, err := s.Payment.Refund(providerCtx, provider.RefundRequest{MerchantNo: merchantNo, ProviderOrderNo: providerNo, RefundNo: refundNo, Amount: input.AmountCents})
+	providerResult, err := s.Payment.Refund(providerCtx, provider.RefundRequest{MerchantNo: merchantNo, ProviderOrderNo: providerNo, RefundNo: refundNo, Amount: input.AmountCents, TotalAmount: totalCents})
 	if err != nil {
 		// A transport error is an unknown outcome, not proof that the provider
 		// rejected the refund. Keep it pending for query-based reconciliation.

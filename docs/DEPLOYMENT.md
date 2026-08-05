@@ -41,6 +41,8 @@
     wechatpay_public_key.pem
     api_v2.key
     api_v3.key
+  secrets/data-encryption/
+    master.key
 
 /var/backups/tanban/
   mysql/
@@ -79,9 +81,12 @@ TB_WECHAT_PAY_PUBLIC_KEY_ID=<微信支付公钥ID>
 TB_WECHAT_PAY_PUBLIC_KEY=file:/run/secrets/wechat-pay/wechatpay_public_key.pem
 TB_WECHAT_PAY_NOTIFY_URL=https://api.tanban.com.cn/api/v1/payments/wechat-partner/callback
 TB_WECHAT_PAY_REFUND_NOTIFY_URL=https://api.tanban.com.cn/api/v1/payments/wechat-partner/refund-callback
+TB_DATA_ENCRYPTION_KEY=file:/run/secrets/data-encryption/master.key
 ```
 
-在 APIv3 小程序下单、通知验签解密、主动查单、退款和退款通知全部完成生产联调前，`TB_PAYMENT_PROVIDER` 必须保持 `mock`，不得切换为 `wechat_partner`。
+`master.key` 必须是独立生成的 32 字节随机密钥（推荐保存为 Base64），用于租户进件敏感字段的 AES-256-GCM 加密，不能复用 JWT、APIv2 或 APIv3 密钥。容器通过补充组 `TB_SECRETS_GID` 只读访问密钥；不得通过放宽为 `0644` 解决权限问题。
+
+APIv3 小程序下单、通知验签解密、主动查单、退款和退款通知均已实现。首个特约商户完成微信审核、签约及 `sub_mchid` 自动回填前，`TB_PAYMENT_PROVIDER` 保持 `mock`；进件客户端独立初始化，仍可在此期间上传资料和提交申请。首商户状态为 `ACTIVE/AUTHORIZED` 且完成一笔真实小额支付与退款联调后，再切换为 `wechat_partner`。
 
 ## 首次部署
 

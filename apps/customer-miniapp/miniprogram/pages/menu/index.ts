@@ -11,6 +11,7 @@ import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerSafeErrorMessage, showUnavailableFeature } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { scanAndBindTableCode } from "../../utils/table-scanner";
+import { storeShareMessage, storeTimelineMessage } from "../../utils/share";
 
 interface Catalog { store?: Store; categories: Category[]; products: Product[]; }
 interface MenuProduct extends Product {
@@ -86,6 +87,12 @@ Page({
     dineInScanPromptVisible: false,
     scanInProgress: false,
     routeError: "",
+  },
+  onShareAppMessage() {
+    return storeShareMessage(this.data.store, getApp<TanbanAppOption>().globalData.storeCode);
+  },
+  onShareTimeline() {
+    return storeTimelineMessage(this.data.store, getApp<TanbanAppOption>().globalData.storeCode);
   },
   async onShow() {
     const app = getApp<TanbanAppOption>();

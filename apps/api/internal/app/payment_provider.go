@@ -12,7 +12,7 @@ func describePaymentProvider(providerName string) paymentProviderPresentation {
 		return paymentProviderPresentation{
 			DisplayName:        "微信支付（普通服务商）",
 			CheckoutMode:       "WECHAT_MINI_PROGRAM",
-			AdapterImplemented: false,
+			AdapterImplemented: true,
 		}
 	case "tianque":
 		return paymentProviderPresentation{

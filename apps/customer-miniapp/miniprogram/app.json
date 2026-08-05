@@ -30,6 +30,7 @@
     }
   },
   "requiredPrivateInfos": ["getLocation"],
+  "__usePrivacyCheck__": true,
   "tabBar": {
     "color": "#7b807a",
     "selectedColor": "#214d3f",

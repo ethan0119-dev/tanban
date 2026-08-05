@@ -7,13 +7,14 @@ import (
 
 func completeWechatOnboardingApplication() wechatOnboardingApplication {
 	return wechatOnboardingApplication{
-		SubjectType:            "MICRO",
+		SubjectType:            "INDIVIDUAL",
 		BusinessScene:          "STORE",
 		MerchantShortName:      "码农咖啡",
 		ServicePhone:           "13800000000",
 		BusinessAddress:        "天津市和平区测试路1号",
 		OperatorName:           "张三",
 		ContactPhone:           "13800000000",
+		LicenseNumber:          "91120101MA00000000",
 		QualificationConfirmed: true,
 		IdentityMaterialReady:  true,
 		SettlementAccountReady: true,
@@ -21,13 +22,13 @@ func completeWechatOnboardingApplication() wechatOnboardingApplication {
 	}
 }
 
-func TestValidateWechatOnboardingRequiresMicroQualification(t *testing.T) {
+func TestValidateWechatOnboardingRejectsUnsupportedMicroSubject(t *testing.T) {
 	input := completeWechatOnboardingApplication()
-	input.QualificationConfirmed = false
+	input.SubjectType = "MICRO"
 	response := httptest.NewRecorder()
 
 	if validateWechatOnboarding(response, input, true) {
-		t.Fatal("expected micro qualification validation to fail")
+		t.Fatal("expected unsupported micro subject to fail")
 	}
 	if response.Code != 400 {
 		t.Fatalf("expected 400, got %d", response.Code)
@@ -36,8 +37,7 @@ func TestValidateWechatOnboardingRequiresMicroQualification(t *testing.T) {
 
 func TestValidateWechatOnboardingRequiresLicenseForRegisteredSubject(t *testing.T) {
 	input := completeWechatOnboardingApplication()
-	input.SubjectType = "INDIVIDUAL"
-	input.QualificationConfirmed = false
+	input.LicenseNumber = ""
 	response := httptest.NewRecorder()
 
 	if validateWechatOnboarding(response, input, true) {
@@ -52,11 +52,11 @@ func TestValidateWechatOnboardingRequiresLicenseForRegisteredSubject(t *testing.
 
 func TestNormalizeWechatOnboarding(t *testing.T) {
 	input := completeWechatOnboardingApplication()
-	input.SubjectType = " micro "
+	input.SubjectType = " individual "
 	input.BusinessScene = " mobile "
 	input.MerchantShortName = " 码农咖啡 "
 	normalizeWechatOnboarding(&input)
-	if input.SubjectType != "MICRO" || input.BusinessScene != "MOBILE" || input.MerchantShortName != "码农咖啡" {
+	if input.SubjectType != "INDIVIDUAL" || input.BusinessScene != "MOBILE" || input.MerchantShortName != "码农咖啡" {
 		t.Fatalf("application was not normalized: %#v", input)
 	}
 }

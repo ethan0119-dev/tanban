@@ -61,6 +61,7 @@ type Config struct {
 	PrinterProvider       string
 	MediaStorageDir       string
 	MediaPublicBaseURL    string
+	DataEncryptionKey     string
 	RedisAddr             string
 	AutoMigrate           bool
 	AllowMockConfirmation bool
@@ -132,6 +133,10 @@ func Load() (Config, error) {
 		},
 	}
 	var secretErr error
+	cfg.DataEncryptionKey, secretErr = secretEnv("TB_DATA_ENCRYPTION_KEY")
+	if secretErr != nil {
+		return Config{}, secretErr
+	}
 	cfg.WeChatPayPartner.APIV2Key, secretErr = secretEnv("TB_WECHAT_PAY_API_V2_KEY")
 	if secretErr != nil {
 		return Config{}, secretErr

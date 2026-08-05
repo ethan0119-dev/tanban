@@ -1,0 +1,11 @@
+ALTER TABLE wechat_pay_onboarding_applications
+  DROP INDEX uk_wechat_onboarding_applyment_id,
+  DROP INDEX uk_wechat_onboarding_business_code,
+  DROP COLUMN provider_submitted_at,
+  DROP COLUMN sign_url,
+  DROP COLUMN wechat_state_message,
+  DROP COLUMN wechat_applyment_state,
+  DROP COLUMN wechat_applyment_id,
+  DROP COLUMN business_code,
+  DROP COLUMN sensitive_key_version,
+  DROP COLUMN sensitive_ciphertext;

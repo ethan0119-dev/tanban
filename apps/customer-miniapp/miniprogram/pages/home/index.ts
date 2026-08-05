@@ -19,6 +19,7 @@ import { rememberPageAppearance } from "../../utils/page-appearance";
 import { customerExperienceCopy, customerSafeErrorMessage } from "../../utils/availability";
 import { formatBeijingDateTime } from "../../utils/datetime";
 import { rememberClaimedCoupon } from "../../utils/coupon-wallet";
+import { storeShareMessage, storeTimelineMessage } from "../../utils/share";
 
 let splashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -58,6 +59,12 @@ Page({
   },
   onPullDownRefresh() {
     this.syncOrderingRoute(true).finally(() => wx.stopPullDownRefresh());
+  },
+  onShareAppMessage() {
+    return storeShareMessage(this.data.store, getApp<TanbanAppOption>().globalData.storeCode);
+  },
+  onShareTimeline() {
+    return storeTimelineMessage(this.data.store, getApp<TanbanAppOption>().globalData.storeCode);
   },
   async loadStore(storeCode: string) {
     this.setData({ loading: true, error: "" });

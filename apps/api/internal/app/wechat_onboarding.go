@@ -45,11 +45,16 @@ type wechatOnboardingApplication struct {
 	UpdatedAt                  string `json:"updatedAt"`
 	SensitiveCollectionEnabled bool   `json:"sensitiveCollectionEnabled"`
 	ProviderSubmissionEnabled  bool   `json:"providerSubmissionEnabled"`
+	SensitiveConfigured        bool   `json:"sensitiveConfigured"`
+	WechatApplymentID          string `json:"wechatApplymentId"`
+	WechatApplymentState       string `json:"wechatApplymentState"`
+	WechatStateMessage         string `json:"wechatStateMessage"`
+	SignURL                    string `json:"signUrl"`
 }
 
 func defaultWechatOnboardingApplication() wechatOnboardingApplication {
 	return wechatOnboardingApplication{
-		SubjectType:       "MICRO",
+		SubjectType:       "INDIVIDUAL",
 		BusinessScene:     "STORE",
 		ApplicationStatus: "DRAFT",
 	}
@@ -67,23 +72,28 @@ func (s *Server) getMerchantWechatOnboarding(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) loadWechatOnboarding(r *http.Request, tenantID int64) (wechatOnboardingApplication, error) {
 	application := defaultWechatOnboardingApplication()
+	var ciphertext string
 	err := s.DB.QueryRowContext(r.Context(), `SELECT subject_type,business_scene,merchant_short_name,service_phone,business_address,
 		operator_name,contact_phone,contact_email,license_number,qualification_confirmed,identity_material_ready,
 		settlement_account_ready,business_material_ready,application_status,platform_note,
+		COALESCE(sensitive_ciphertext,''),wechat_applyment_id,wechat_applyment_state,wechat_state_message,sign_url,
 		COALESCE(DATE_FORMAT(submitted_at,'%Y-%m-%d %H:%i:%s'),''),DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM wechat_pay_onboarding_applications WHERE tenant_id=?`, tenantID).
 		Scan(&application.SubjectType, &application.BusinessScene, &application.MerchantShortName, &application.ServicePhone,
 			&application.BusinessAddress, &application.OperatorName, &application.ContactPhone, &application.ContactEmail,
 			&application.LicenseNumber, &application.QualificationConfirmed, &application.IdentityMaterialReady,
 			&application.SettlementAccountReady, &application.BusinessMaterialReady, &application.ApplicationStatus,
-			&application.PlatformNote, &application.SubmittedAt, &application.UpdatedAt)
+			&application.PlatformNote, &ciphertext, &application.WechatApplymentID, &application.WechatApplymentState,
+			&application.WechatStateMessage, &application.SignURL, &application.SubmittedAt, &application.UpdatedAt)
 	if err != nil && err != sql.ErrNoRows {
 		return application, err
 	}
-	// Identity documents and bank-card numbers are deliberately not accepted until a
-	// dedicated encrypted-at-rest store and the provider permission are configured.
-	application.SensitiveCollectionEnabled = false
-	application.ProviderSubmissionEnabled = false
+	application.SensitiveConfigured = ciphertext != ""
+	application.SensitiveCollectionEnabled = s.SensitiveData != nil
+	if s.WeChatPay != nil && s.SensitiveData != nil {
+		ready, _ := s.WeChatPay.APIv3Ready(r.Context())
+		application.ProviderSubmissionEnabled = ready
+	}
 	return application, nil
 }
 
@@ -100,15 +110,15 @@ func normalizeWechatOnboarding(input *wechatOnboardingApplication) {
 }
 
 func validateWechatOnboarding(w http.ResponseWriter, input wechatOnboardingApplication, submitting bool) bool {
-	if !validStatus(input.SubjectType, "MICRO", "INDIVIDUAL", "ENTERPRISE") {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "subjectType must be MICRO, INDIVIDUAL or ENTERPRISE")
+	if !validStatus(input.SubjectType, "INDIVIDUAL", "ENTERPRISE") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "subjectType must be INDIVIDUAL or ENTERPRISE")
 		return false
 	}
 	if !validStatus(input.BusinessScene, "STORE", "MOBILE") {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "businessScene must be STORE or MOBILE")
 		return false
 	}
-	if input.SubjectType != "MICRO" && input.LicenseNumber == "" && submitting {
+	if input.LicenseNumber == "" && submitting {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "个体工商户或企业进件必须填写营业执照统一社会信用代码")
 		return false
 	}
@@ -118,10 +128,6 @@ func validateWechatOnboarding(w http.ResponseWriter, input wechatOnboardingAppli
 	if input.MerchantShortName == "" || input.ServicePhone == "" || input.BusinessAddress == "" ||
 		input.OperatorName == "" || input.ContactPhone == "" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请完整填写商户、经营地址、经营者和联系方式")
-		return false
-	}
-	if input.SubjectType == "MICRO" && !input.QualificationConfirmed {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "小微商户必须确认属于依法免办理工商登记的实体经营者")
 		return false
 	}
 	if !input.IdentityMaterialReady || !input.SettlementAccountReady || !input.BusinessMaterialReady {
@@ -172,6 +178,19 @@ func (s *Server) submitMerchantWechatOnboarding(w http.ResponseWriter, r *http.R
 	}
 	normalizeWechatOnboarding(&input)
 	if !validateWechatOnboarding(w, input, true) {
+		return
+	}
+	if s.SensitiveData == nil {
+		writeError(w, http.StatusServiceUnavailable, "SENSITIVE_STORE_NOT_CONFIGURED", "平台尚未配置专用数据加密主密钥")
+		return
+	}
+	var sensitiveConfigured bool
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT COALESCE(sensitive_ciphertext,'')<>'' FROM wechat_pay_onboarding_applications WHERE tenant_id=?", actor.TenantID).Scan(&sensitiveConfigured); err != nil && err != sql.ErrNoRows {
+		handleSQLError(w, err)
+		return
+	}
+	if !sensitiveConfigured {
+		writeError(w, http.StatusBadRequest, "SENSITIVE_MATERIAL_REQUIRED", "请先通过安全资料步骤填写身份证、结算账户并上传进件图片")
 		return
 	}
 	if _, err := s.DB.ExecContext(r.Context(), `INSERT INTO wechat_pay_onboarding_applications(
@@ -237,6 +256,11 @@ func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) 
 
 	var newAppStatus, newTenantStatus string
 	if input.Action == "approve" {
+		if _, submitErr := s.submitWechatApplyment(r.Context(), tenantID); submitErr != nil {
+			s.Logger.Warn("submit WeChat Pay applyment", "tenant_id", tenantID, "error", submitErr)
+			writeError(w, http.StatusBadGateway, "WECHAT_APPLYMENT_SUBMIT_FAILED", "提交微信支付进件失败，请核对资料或平台配置")
+			return
+		}
 		newAppStatus = "SUBMITTED_TO_WECHAT"
 		newTenantStatus = "REVIEWING"
 	} else {

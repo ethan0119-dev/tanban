@@ -174,7 +174,7 @@ func (s *Server) StartRefundReconciler(ctx context.Context) {
 }
 
 func (s *Server) reconcileRefunds(ctx context.Context) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT r.id,r.refund_no,r.provider_refund_no,p.provider_order_no,r.amount_cents,p.merchant_no FROM refunds r
+	rows, err := s.DB.QueryContext(ctx, `SELECT r.id,r.refund_no,r.provider_refund_no,p.provider_order_no,r.amount_cents,p.amount_cents,p.merchant_no FROM refunds r
 		JOIN payment_transactions p ON p.id=r.payment_id
 		WHERE p.provider=? AND r.status='PENDING' ORDER BY r.updated_at,r.id LIMIT 100`, s.Payment.Name())
 	if err != nil {
@@ -184,6 +184,7 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 	type pendingRefund struct {
 		id               int64
 		amount           int64
+		totalAmount      int64
 		refundNo         string
 		providerRefundNo string
 		providerOrderNo  string
@@ -192,7 +193,7 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 	var pending []pendingRefund
 	for rows.Next() {
 		var item pendingRefund
-		if rows.Scan(&item.id, &item.refundNo, &item.providerRefundNo, &item.providerOrderNo, &item.amount, &item.merchantNo) == nil {
+		if rows.Scan(&item.id, &item.refundNo, &item.providerRefundNo, &item.providerOrderNo, &item.amount, &item.totalAmount, &item.merchantNo) == nil {
 			pending = append(pending, item)
 		}
 	}
@@ -205,14 +206,14 @@ func (s *Server) reconcileRefunds(ctx context.Context) {
 			continue
 		}
 		queryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		result, queryErr := s.Payment.QueryRefund(queryCtx, item.refundNo)
+		result, queryErr := s.Payment.QueryRefund(queryCtx, provider.QueryRefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo})
 		cancel()
 		if queryErr != nil {
 			// RefundNo is a mandatory provider-side idempotency key. Re-submit the
 			// same durable intent after an ambiguous/not-found query so a crash
 			// between local commit and the first provider call cannot strand it.
 			refundCtx, refundCancel := context.WithTimeout(ctx, 12*time.Second)
-			resubmitted, refundErr := s.Payment.Refund(refundCtx, provider.RefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo, Amount: item.amount})
+			resubmitted, refundErr := s.Payment.Refund(refundCtx, provider.RefundRequest{MerchantNo: item.merchantNo, ProviderOrderNo: item.providerOrderNo, RefundNo: item.refundNo, Amount: item.amount, TotalAmount: item.totalAmount})
 			refundCancel()
 			if refundErr != nil {
 				_, _ = s.DB.ExecContext(ctx, "UPDATE refunds SET last_error=?,updated_at=NOW(3) WHERE id=? AND status='PENDING'", truncateError(refundErr), item.id)

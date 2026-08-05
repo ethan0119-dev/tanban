@@ -102,7 +102,7 @@ func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Reque
 		"microOnboardingPermissionStatus": settings.MicroOnboardingPermissionStatus,
 		"effectiveProvider":               s.Payment.Name(), "restartRequired": settings.Provider != s.Payment.Name(),
 		"tianqueConfigured":         s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "",
-		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": false,
+		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": true,
 		"wechatPartnerConfigured": wechat.ServiceProviderMchID != "" && wechat.ServiceProviderAppID != "" &&
 			wechat.APICertSerialNo != "" && wechat.MerchantPrivateKey != "" && wechat.APIV3Key != "" &&
 			wechat.WeChatPayPublicKeyID != "" && wechat.WeChatPayPublicKey != "" && wechat.NotifyURL != "",

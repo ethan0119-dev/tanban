@@ -16,7 +16,7 @@ func TestDescribePaymentProvider(t *testing.T) {
 	}{
 		{"mock", "模拟支付（开发环境）", "MOCK", true},
 		{"tianque", "会生活 · 随行付", "HALF_SCREEN_CASHIER", false},
-		{"wechat_partner", "微信支付（普通服务商）", "WECHAT_MINI_PROGRAM", false},
+		{"wechat_partner", "微信支付（普通服务商）", "WECHAT_MINI_PROGRAM", true},
 	}
 	for _, test := range tests {
 		got := describePaymentProvider(test.provider)
@@ -26,9 +26,9 @@ func TestDescribePaymentProvider(t *testing.T) {
 	}
 }
 
-func TestWeChatPayCallbacksFailClosedUntilVerificationExists(t *testing.T) {
+func TestWeChatPayCallbacksFailClosedWithoutValidSignature(t *testing.T) {
 	t.Parallel()
-	server := &Server{Payment: provider.WeChatPayPartner{}}
+	server := &Server{Payment: &provider.WeChatPayPartner{}}
 	tests := []struct {
 		path    string
 		handler http.HandlerFunc
@@ -39,8 +39,8 @@ func TestWeChatPayCallbacksFailClosedUntilVerificationExists(t *testing.T) {
 	for _, test := range tests {
 		response := httptest.NewRecorder()
 		test.handler(response, httptest.NewRequest(http.MethodPost, test.path, nil))
-		if response.Code != http.StatusNotImplemented {
-			t.Fatalf("%s returned %d, want %d", test.path, response.Code, http.StatusNotImplemented)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s returned %d, want %d", test.path, response.Code, http.StatusUnauthorized)
 		}
 	}
 }

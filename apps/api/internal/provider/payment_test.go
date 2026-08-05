@@ -25,7 +25,7 @@ func TestMockPaymentLifecycle(t *testing.T) {
 	if err != nil || refunded.Status != PaymentSuccess {
 		t.Fatalf("refund: result=%+v err=%v", refunded, err)
 	}
-	queriedRefund, err := provider.QueryRefund(context.Background(), "RF001")
+	queriedRefund, err := provider.QueryRefund(context.Background(), QueryRefundRequest{RefundNo: "RF001"})
 	if err != nil || queriedRefund.Status != PaymentSuccess || queriedRefund.ProviderRefundNo == "" || queriedRefund.RefundNo != "RF001" || queriedRefund.ProviderOrderNo != created.ProviderOrderNo || queriedRefund.MerchantNo != "M001" || queriedRefund.Amount != 300 {
 		t.Fatalf("query refund: result=%+v err=%v", queriedRefund, err)
 	}

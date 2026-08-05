@@ -142,6 +142,7 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.Get("/payment-settings", s.getTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/payment-settings", s.updateTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/review", s.reviewWechatOnboarding)
+		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/sync", s.syncPlatformWechatOnboarding)
 		t.Get("/miniapp-settings", s.getTenantMiniAppSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/miniapp-settings", s.updateTenantMiniAppSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/renew-one-year", s.renewTenantOneYear)

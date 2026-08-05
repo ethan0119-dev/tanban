@@ -343,12 +343,13 @@ func (s *Server) publicCreateAccountPayment(w http.ResponseWriter, r *http.Reque
 	}
 
 	createResult, createErr := s.Payment.Create(r.Context(), provider.CreatePaymentRequest{
-		MerchantNo: merchantNo,
-		OrderNo:    requestNo,
-		Amount:     amountCents,
-		OpenID:     openID,
-		SubAppID:   subAppID,
-		NotifyURL:  s.paymentNotifyURL(),
+		MerchantNo:  merchantNo,
+		OrderNo:     requestNo,
+		Amount:      amountCents,
+		OpenID:      openID,
+		SubAppID:    subAppID,
+		NotifyURL:   s.paymentNotifyURL(),
+		Description: "摊伴会员服务",
 	})
 	if createErr != nil {
 		raw, _ := json.Marshal(map[string]string{"phase": "creating", "last_error": truncateError(createErr)})

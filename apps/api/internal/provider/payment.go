@@ -22,12 +22,13 @@ const (
 )
 
 type CreatePaymentRequest struct {
-	MerchantNo string
-	OrderNo    string
-	Amount     int64
-	OpenID     string
-	SubAppID   string
-	NotifyURL  string
+	MerchantNo  string
+	OrderNo     string
+	Amount      int64
+	OpenID      string
+	SubAppID    string
+	NotifyURL   string
+	Description string
 }
 
 type CreatePaymentResult struct {
@@ -50,6 +51,13 @@ type RefundRequest struct {
 	ProviderOrderNo string
 	RefundNo        string
 	Amount          int64
+	TotalAmount     int64
+}
+
+type QueryRefundRequest struct {
+	MerchantNo      string
+	ProviderOrderNo string
+	RefundNo        string
 }
 
 type RefundResult struct {
@@ -72,7 +80,7 @@ type PaymentProvider interface {
 	Query(context.Context, string) (QueryPaymentResult, error)
 	Close(context.Context, string) error
 	Refund(context.Context, RefundRequest) (RefundResult, error)
-	QueryRefund(context.Context, string) (QueryRefundResult, error)
+	QueryRefund(context.Context, QueryRefundRequest) (QueryRefundResult, error)
 }
 
 type CodePaymentRequest struct {
@@ -247,12 +255,12 @@ func (m *MockPayment) Refund(_ context.Context, req RefundRequest) (RefundResult
 	return RefundResult{ProviderRefundNo: result.ProviderRefundNo, Status: result.Status}, nil
 }
 
-func (m *MockPayment) QueryRefund(_ context.Context, refundNo string) (QueryRefundResult, error) {
+func (m *MockPayment) QueryRefund(_ context.Context, req QueryRefundRequest) (QueryRefundResult, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	result, ok := m.refundStatuses[refundNo]
+	result, ok := m.refundStatuses[req.RefundNo]
 	if !ok {
-		return QueryRefundResult{}, fmt.Errorf("mock refund %s not found", refundNo)
+		return QueryRefundResult{}, fmt.Errorf("mock refund %s not found", req.RefundNo)
 	}
 	return result, nil
 }
@@ -276,7 +284,7 @@ func (t TianQue) Close(context.Context, string) error { return ErrNotConfigured 
 func (t TianQue) Refund(context.Context, RefundRequest) (RefundResult, error) {
 	return RefundResult{}, ErrNotConfigured
 }
-func (t TianQue) QueryRefund(context.Context, string) (QueryRefundResult, error) {
+func (t TianQue) QueryRefund(context.Context, QueryRefundRequest) (QueryRefundResult, error) {
 	return QueryRefundResult{}, ErrNotConfigured
 }
 
@@ -293,22 +301,9 @@ type WeChatPayPartnerConfig struct {
 // service-provider account and a test sub-merchant are supplied.
 type WeChatPayPartner struct {
 	Config     WeChatPayPartnerConfig
-	HTTPClient interface {
-		Do(*http.Request) (*http.Response, error)
-	}
+	HTTPClient *http.Client
+	v3         *wechatPayV3Runtime
+	v3Mu       sync.Mutex
 }
 
 func (w WeChatPayPartner) Name() string { return "wechat_partner" }
-func (w WeChatPayPartner) Create(context.Context, CreatePaymentRequest) (CreatePaymentResult, error) {
-	return CreatePaymentResult{}, ErrNotConfigured
-}
-func (w WeChatPayPartner) Query(context.Context, string) (QueryPaymentResult, error) {
-	return QueryPaymentResult{}, ErrNotConfigured
-}
-func (w WeChatPayPartner) Close(context.Context, string) error { return ErrNotConfigured }
-func (w WeChatPayPartner) Refund(context.Context, RefundRequest) (RefundResult, error) {
-	return RefundResult{}, ErrNotConfigured
-}
-func (w WeChatPayPartner) QueryRefund(context.Context, string) (QueryRefundResult, error) {
-	return QueryRefundResult{}, ErrNotConfigured
-}

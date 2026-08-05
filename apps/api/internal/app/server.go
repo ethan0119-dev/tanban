@@ -18,6 +18,7 @@ import (
 	"github.com/ethan0119-dev/tanban/apps/api/internal/cache"
 	"github.com/ethan0119-dev/tanban/apps/api/internal/config"
 	"github.com/ethan0119-dev/tanban/apps/api/internal/provider"
+	"github.com/ethan0119-dev/tanban/apps/api/internal/securestore"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -28,9 +29,11 @@ type Server struct {
 	Logger                *slog.Logger
 	Cache                 cache.Cache
 	Payment               provider.PaymentProvider
+	WeChatPay             *provider.WeChatPayPartner
 	MockPayment           *provider.MockPayment
 	Printer               provider.PrinterProvider
 	HTTPClient            *http.Client
+	SensitiveData         *securestore.Store
 	AllowMockConfirmation bool
 	publicRateMu          sync.Mutex
 }
@@ -51,6 +54,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 		logger = slog.Default()
 	}
 	mockPayment := provider.NewMockPayment()
+	wechatPay := &provider.WeChatPayPartner{Config: provider.WeChatPayPartnerConfig{
+		BaseURL: cfg.WeChatPayPartner.BaseURL, ServiceProviderMchID: cfg.WeChatPayPartner.ServiceProviderMchID,
+		ServiceProviderAppID: cfg.WeChatPayPartner.ServiceProviderAppID, APICertSerialNo: cfg.WeChatPayPartner.APICertSerialNo,
+		MerchantPrivateKey: cfg.WeChatPayPartner.MerchantPrivateKey, MerchantCertificate: cfg.WeChatPayPartner.MerchantCertificate,
+		APIV2Key: cfg.WeChatPayPartner.APIV2Key, APIV3Key: cfg.WeChatPayPartner.APIV3Key,
+		WeChatPayPublicKeyID: cfg.WeChatPayPartner.WeChatPayPublicKeyID, WeChatPayPublicKey: cfg.WeChatPayPartner.WeChatPayPublicKey,
+		ServerIP: cfg.WeChatPayPartner.ServerIP, NotifyURL: cfg.WeChatPayPartner.NotifyURL, RefundNotifyURL: cfg.WeChatPayPartner.RefundNotifyURL,
+	}}
 	var payment provider.PaymentProvider = mockPayment
 	if cfg.PaymentProvider == "tianque" {
 		payment = provider.TianQue{Config: provider.TianQueConfig{
@@ -59,21 +70,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 			NotifyURL: cfg.TianQue.NotifyURL,
 		}}
 	} else if cfg.PaymentProvider == "wechat_partner" {
-		payment = &provider.WeChatPayPartner{Config: provider.WeChatPayPartnerConfig{
-			BaseURL:              cfg.WeChatPayPartner.BaseURL,
-			ServiceProviderMchID: cfg.WeChatPayPartner.ServiceProviderMchID,
-			ServiceProviderAppID: cfg.WeChatPayPartner.ServiceProviderAppID,
-			APICertSerialNo:      cfg.WeChatPayPartner.APICertSerialNo,
-			MerchantPrivateKey:   cfg.WeChatPayPartner.MerchantPrivateKey,
-			MerchantCertificate:  cfg.WeChatPayPartner.MerchantCertificate,
-			APIV2Key:             cfg.WeChatPayPartner.APIV2Key,
-			APIV3Key:             cfg.WeChatPayPartner.APIV3Key,
-			WeChatPayPublicKeyID: cfg.WeChatPayPartner.WeChatPayPublicKeyID,
-			WeChatPayPublicKey:   cfg.WeChatPayPartner.WeChatPayPublicKey,
-			ServerIP:             cfg.WeChatPayPartner.ServerIP,
-			NotifyURL:            cfg.WeChatPayPartner.NotifyURL,
-			RefundNotifyURL:      cfg.WeChatPayPartner.RefundNotifyURL,
-		}}
+		payment = wechatPay
 	}
 	printer := provider.NewPrinterRouter(cfg.PrinterProvider, logger, provider.NewXPrinter(provider.XPrinterConfig{
 		BaseURL: cfg.XPYun.BaseURL,
@@ -82,8 +79,16 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 	}))
 	server := &Server{
 		DB: db, Config: cfg, Logger: logger, Cache: cache.NewMemory(),
-		Payment: payment, MockPayment: mockPayment, Printer: printer, HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		Payment: payment, WeChatPay: wechatPay, MockPayment: mockPayment, Printer: printer, HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		AllowMockConfirmation: cfg.AllowMockConfirmation,
+	}
+	if cfg.DataEncryptionKey != "" {
+		store, err := securestore.New(cfg.DataEncryptionKey)
+		if err != nil {
+			logger.Error("disable sensitive data storage", "error", err)
+		} else {
+			server.SensitiveData = store
+		}
 	}
 	server.loadPrinterProviderRuntime(context.Background())
 	return server

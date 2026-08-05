@@ -14,6 +14,9 @@ services:
     volumes:
       - ${TB_MEDIA_HOST_DIR:-/srv/tanban/shared/media}:/var/lib/tanban/media
       - ${TB_WECHAT_PAY_SECRETS_DIR:-/etc/tanban/secrets/wechat-pay}:/run/secrets/wechat-pay:ro
+      - ${TB_DATA_ENCRYPTION_SECRETS_DIR:-/etc/tanban/secrets/data-encryption}:/run/secrets/data-encryption:ro
+    group_add:
+      - ${TB_SECRETS_GID:-2001}
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777

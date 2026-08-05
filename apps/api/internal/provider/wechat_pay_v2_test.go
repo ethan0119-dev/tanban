@@ -111,9 +111,7 @@ func TestWeChatPayPartnerRejectsInvalidAuthCodeBeforeTransport(t *testing.T) {
 
 func configuredWechatV2Adapter(server *httptest.Server) WeChatPayPartner {
 	baseURL := "http://127.0.0.1"
-	var client interface {
-		Do(*http.Request) (*http.Response, error)
-	}
+	var client *http.Client
 	if server != nil {
 		baseURL = server.URL
 		client = server.Client()
