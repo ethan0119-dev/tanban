@@ -79,7 +79,7 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, sub
 		input.IDCardName: "身份证姓名", input.IDCardNumber: "身份证号码", input.IDCardAddress: "身份证住址",
 		input.CardPeriodBegin: "身份证有效期开始日期", input.CardPeriodEnd: "身份证有效期结束日期", input.IDCardCopy: "身份证人像面", input.IDCardNational: "身份证国徽面",
 		input.AccountName: "结算账户名称", input.AccountNumber: "结算账户号", input.AccountBank: "开户银行",
-		input.BankAddressCode: "开户银行省市编码", input.StoreName: "门店名称", input.StoreAddressCode: "门店省市编码",
+		input.StoreName: "门店名称", input.StoreAddressCode: "门店省市编码",
 		input.StoreEntrancePic: "门店门头照片", input.IndoorPic: "店内环境照片", input.SettlementID: "结算规则ID",
 		input.QualificationType: "所属行业名称",
 	}
@@ -98,6 +98,15 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, sub
 	}
 	if subjectType == "MICRO" && input.AccountType != "BANK_ACCOUNT_TYPE_PERSONAL" {
 		return errors.New("小微商户只能使用经营者个人银行卡")
+	}
+	if input.BankAddressCode != "" && (len(input.BankAddressCode) != 6 || !digitsOnly(input.BankAddressCode)) {
+		return errors.New("开户银行省市编码必须是微信支付地区表中的6位数字")
+	}
+	if input.BankBranchID != "" && (len(input.BankBranchID) != 12 || !digitsOnly(input.BankBranchID)) {
+		return errors.New("开户银行联行号必须是12位数字")
+	}
+	if input.AccountBank == "其他银行" && input.BankBranchID == "" && input.BankName == "" {
+		return errors.New("开户银行为其他银行时，开户支行全称和联行号至少填写一项")
 	}
 	if subjectType != "MICRO" && len(input.MiniProgramPics) == 0 {
 		return errors.New("请至少上传一张小程序经营页面截图")
@@ -298,14 +307,28 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 			"mini_program_info": map[string]any{"mini_program_appid": s.Config.WeChatPayPartner.ServiceProviderAppID, "mini_program_pics": sensitive.MiniProgramPics},
 		}
 	}
+	bankAccountInfo := map[string]any{
+		"bank_account_type": sensitive.AccountType,
+		"account_name":      accountName,
+		"account_bank":      sensitive.AccountBank,
+		"account_number":    accountNumber,
+	}
+	if sensitive.BankAddressCode != "" {
+		bankAccountInfo["bank_address_code"] = sensitive.BankAddressCode
+	}
+	if sensitive.BankBranchID != "" {
+		bankAccountInfo["bank_branch_id"] = sensitive.BankBranchID
+	}
+	if sensitive.BankName != "" {
+		bankAccountInfo["bank_name"] = sensitive.BankName
+	}
 	payload := map[string]any{
-		"business_code":   businessCode,
-		"contact_info":    contactInfo,
-		"subject_info":    subjectInfo,
-		"business_info":   businessInfo,
-		"settlement_info": map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType},
-		"bank_account_info": map[string]any{"bank_account_type": sensitive.AccountType, "account_name": accountName, "account_bank": sensitive.AccountBank,
-			"bank_address_code": sensitive.BankAddressCode, "bank_branch_id": sensitive.BankBranchID, "bank_name": sensitive.BankName, "account_number": accountNumber},
+		"business_code":     businessCode,
+		"contact_info":      contactInfo,
+		"subject_info":      subjectInfo,
+		"business_info":     businessInfo,
+		"settlement_info":   map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType},
+		"bank_account_info": bankAccountInfo,
 	}
 	result, err := wechat.SubmitApplyment(ctx, payload)
 	if err != nil {

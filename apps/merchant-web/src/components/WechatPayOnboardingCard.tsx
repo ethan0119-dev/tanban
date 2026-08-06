@@ -315,10 +315,14 @@ export function WechatPayOnboardingCard() {
             <Col xs={24} md={12}><Form.Item name="accountType" label="账户类型" rules={[{ required: true }]}><Radio.Group><Radio value="BANK_ACCOUNT_TYPE_PERSONAL">经营者个人账户</Radio>{subjectType !== 'MICRO' && <Radio value="BANK_ACCOUNT_TYPE_CORPORATE">对公账户</Radio>}</Radio.Group></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="accountName" label="账户名称" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="accountNumber" label="银行账号" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="accountBank" label="开户银行" rules={[{ required: true }]}><Input placeholder="例：工商银行" /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="bankAddressCode" label="开户银行省市编码" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="bankBranchId" label="联行号（选填）"><Input /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="bankName" label="开户支行（选填）"><Input /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="accountBank" label="开户银行" extra="须使用微信银行列表的标准值；天津银行等地方银行通常填写“其他银行”" rules={[{ required: true }]}><Input placeholder="例：工商银行；地方银行填：其他银行" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="bankAddressCode" label="开户银行省市编码" extra="填写支行所在地的6位微信地区编码；不确定时可留空" rules={[{ pattern: /^\d{6}$/, message: '请输入6位微信地区编码' }]}><Input placeholder="例：天津市静海区 120118" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="bankBranchId" label="开户银行联行号" extra="其他银行：与开户支行全称至少填写一项" rules={[{ pattern: /^\d{12}$/, message: '联行号应为12位数字' }]}><Input /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="bankName" label="开户支行全称" extra="其他银行：与联行号至少填写一项" dependencies={['accountBank', 'bankBranchId']} rules={[{ validator: async (_, value) => {
+              if (sensitiveForm.getFieldValue('accountBank') === '其他银行' && !String(value || '').trim() && !String(sensitiveForm.getFieldValue('bankBranchId') || '').trim()) {
+                throw new Error('开户银行为其他银行时，开户支行全称和联行号至少填写一项');
+              }
+            } }]}><Input placeholder="填写银行查询结果中的完整支行名称" /></Form.Item></Col>
           </Row>
           <Typography.Title level={5}>经营场景与结算规则</Typography.Title>
           <Row gutter={16}>

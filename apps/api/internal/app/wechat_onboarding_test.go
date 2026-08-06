@@ -94,3 +94,26 @@ func TestValidateWechatOnboardingSensitiveStillRequiresRegisteredBusinessLicense
 		t.Fatal("expected registered merchant license image to remain required")
 	}
 }
+
+func TestValidateWechatOnboardingSensitiveBankFields(t *testing.T) {
+	input := completeWechatOnboardingSensitiveInput()
+	input.BankAddressCode = ""
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err != nil {
+		t.Fatalf("bank address code is optional, got %v", err)
+	}
+
+	input.BankAddressCode = "0302"
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err == nil {
+		t.Fatal("expected invalid four-digit bank address code to be rejected")
+	}
+
+	input.BankAddressCode = "120118"
+	input.AccountBank = "其他银行"
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err == nil {
+		t.Fatal("expected other bank without branch details to be rejected")
+	}
+	input.BankName = "天津银行股份有限公司测试支行"
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err != nil {
+		t.Fatalf("expected other bank with a branch name to be accepted, got %v", err)
+	}
+}
