@@ -1,4 +1,0 @@
-server
-*.test
-.env
-.env.*

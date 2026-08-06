@@ -1,9 +1,0 @@
-.marketing-popup-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 120; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 54rpx; background: rgba(20,14,11,.72); }
-.marketing-popup-card { position: relative; width: 100%; max-width: 650rpx; overflow: hidden; border-radius: 32rpx; background: var(--surface, #fffefa); box-shadow: 0 34rpx 100rpx rgba(0,0,0,.32); }
-.marketing-popup-image { display: block; width: 100%; max-height: 610rpx; background: var(--paper, #eee4da); }
-.marketing-popup-close { position: absolute; top: 22rpx; right: 22rpx; z-index: 3; width: 58rpx; height: 58rpx; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border-radius: 50%; background: rgba(0,0,0,.58); }
-.marketing-popup-close image { width: 28rpx; height: 28rpx; }
-.marketing-popup-copy { display: flex; flex-direction: column; gap: 9rpx; padding: 28rpx 34rpx 8rpx; color: var(--ink, #3d2c22); }
-.marketing-popup-copy text:first-child { font-size: 39rpx; font-weight: 900; }
-.marketing-popup-copy text:last-child { font-size: 23rpx; }
-.marketing-popup-action { width: calc(100% - 68rpx); min-height: 78rpx; margin: 24rpx 34rpx 32rpx; padding: 0 28rpx; border: 0; border-radius: var(--button-radius, 18rpx); color: var(--on-primary, #fff); background: var(--green, #214d3f); font-size: 28rpx; font-weight: 800; line-height: 78rpx; }
