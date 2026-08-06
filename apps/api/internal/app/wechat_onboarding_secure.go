@@ -212,7 +212,7 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 	var app wechatOnboardingApplication
 	var ciphertext, businessCode string
 	err := s.DB.QueryRowContext(ctx, `SELECT subject_type,business_scene,merchant_short_name,service_phone,business_address,
-		operator_name,contact_phone,contact_email,license_number,COALESCE(sensitive_ciphertext,''),business_code
+		operator_name,contact_phone,contact_email,license_number,COALESCE(sensitive_ciphertext,''),COALESCE(business_code,'')
 		FROM wechat_pay_onboarding_applications WHERE tenant_id=?`, tenantID).Scan(&app.SubjectType, &app.BusinessScene,
 		&app.MerchantShortName, &app.ServicePhone, &app.BusinessAddress, &app.OperatorName, &app.ContactPhone,
 		&app.ContactEmail, &app.LicenseNumber, &ciphertext, &businessCode)
@@ -323,7 +323,7 @@ func (s *Server) syncWechatApplyment(ctx context.Context, tenantID int64) (provi
 		return provider.WeChatApplymentStatus{}, errors.New("WeChat Pay partner provider is not active")
 	}
 	var applymentID string
-	if err := s.DB.QueryRowContext(ctx, "SELECT wechat_applyment_id FROM wechat_pay_onboarding_applications WHERE tenant_id=?", tenantID).Scan(&applymentID); err != nil {
+	if err := s.DB.QueryRowContext(ctx, "SELECT COALESCE(wechat_applyment_id,'') FROM wechat_pay_onboarding_applications WHERE tenant_id=?", tenantID).Scan(&applymentID); err != nil {
 		return provider.WeChatApplymentStatus{}, err
 	}
 	status, err := wechat.QueryApplyment(ctx, applymentID)

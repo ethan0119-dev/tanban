@@ -76,7 +76,7 @@ func (s *Server) loadWechatOnboarding(r *http.Request, tenantID int64) (wechatOn
 	err := s.DB.QueryRowContext(r.Context(), `SELECT subject_type,business_scene,merchant_short_name,service_phone,business_address,
 		operator_name,contact_phone,contact_email,license_number,qualification_confirmed,identity_material_ready,
 		settlement_account_ready,business_material_ready,application_status,platform_note,
-		COALESCE(sensitive_ciphertext,''),wechat_applyment_id,wechat_applyment_state,wechat_state_message,sign_url,
+		COALESCE(sensitive_ciphertext,''),COALESCE(wechat_applyment_id,''),wechat_applyment_state,wechat_state_message,sign_url,
 		COALESCE(DATE_FORMAT(submitted_at,'%Y-%m-%d %H:%i:%s'),''),DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s')
 		FROM wechat_pay_onboarding_applications WHERE tenant_id=?`, tenantID).
 		Scan(&application.SubjectType, &application.BusinessScene, &application.MerchantShortName, &application.ServicePhone,
