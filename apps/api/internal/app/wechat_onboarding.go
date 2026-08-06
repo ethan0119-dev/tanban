@@ -110,15 +110,15 @@ func normalizeWechatOnboarding(input *wechatOnboardingApplication) {
 }
 
 func validateWechatOnboarding(w http.ResponseWriter, input wechatOnboardingApplication, submitting bool) bool {
-	if !validStatus(input.SubjectType, "INDIVIDUAL", "ENTERPRISE") {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "subjectType must be INDIVIDUAL or ENTERPRISE")
+	if !validStatus(input.SubjectType, "MICRO", "INDIVIDUAL", "ENTERPRISE") {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "subjectType must be MICRO, INDIVIDUAL or ENTERPRISE")
 		return false
 	}
 	if !validStatus(input.BusinessScene, "STORE", "MOBILE") {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "businessScene must be STORE or MOBILE")
 		return false
 	}
-	if input.LicenseNumber == "" && submitting {
+	if input.SubjectType != "MICRO" && input.LicenseNumber == "" && submitting {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "个体工商户或企业进件必须填写营业执照统一社会信用代码")
 		return false
 	}
@@ -126,7 +126,7 @@ func validateWechatOnboarding(w http.ResponseWriter, input wechatOnboardingAppli
 		return true
 	}
 	if input.MerchantShortName == "" || input.ServicePhone == "" || input.BusinessAddress == "" ||
-		input.OperatorName == "" || input.ContactPhone == "" {
+		input.OperatorName == "" || input.ContactPhone == "" || input.ContactEmail == "" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请完整填写商户、经营地址、经营者和联系方式")
 		return false
 	}

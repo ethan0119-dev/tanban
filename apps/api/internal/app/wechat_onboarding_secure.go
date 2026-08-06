@@ -74,15 +74,19 @@ func normalizeWechatOnboardingSensitive(input *wechatOnboardingSensitiveInput) {
 	}
 }
 
-func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput) error {
+func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, subjectType string) error {
 	required := map[string]string{
 		input.IDCardName: "身份证姓名", input.IDCardNumber: "身份证号码", input.IDCardAddress: "身份证住址",
 		input.CardPeriodBegin: "身份证有效期开始日期", input.CardPeriodEnd: "身份证有效期结束日期", input.IDCardCopy: "身份证人像面", input.IDCardNational: "身份证国徽面",
-		input.BusinessLicenseCopy: "营业执照照片", input.MerchantName: "主体全称", input.LegalPerson: "法定代表人/经营者",
 		input.AccountName: "结算账户名称", input.AccountNumber: "结算账户号", input.AccountBank: "开户银行",
 		input.BankAddressCode: "开户银行省市编码", input.StoreName: "门店名称", input.StoreAddressCode: "门店省市编码",
 		input.StoreEntrancePic: "门店门头照片", input.IndoorPic: "店内环境照片", input.SettlementID: "结算规则ID",
 		input.QualificationType: "所属行业名称",
+	}
+	if subjectType != "MICRO" {
+		required[input.BusinessLicenseCopy] = "营业执照照片"
+		required[input.MerchantName] = "主体全称"
+		required[input.LegalPerson] = "法定代表人/经营者"
 	}
 	for value, label := range required {
 		if value == "" {
@@ -92,7 +96,10 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput) err
 	if !validStatus(input.AccountType, "BANK_ACCOUNT_TYPE_CORPORATE", "BANK_ACCOUNT_TYPE_PERSONAL") {
 		return errors.New("结算账户类型不正确")
 	}
-	if len(input.MiniProgramPics) == 0 {
+	if subjectType == "MICRO" && input.AccountType != "BANK_ACCOUNT_TYPE_PERSONAL" {
+		return errors.New("小微商户只能使用经营者个人银行卡")
+	}
+	if subjectType != "MICRO" && len(input.MiniProgramPics) == 0 {
 		return errors.New("请至少上传一张小程序经营页面截图")
 	}
 	return nil
@@ -109,7 +116,16 @@ func (s *Server) saveMerchantWechatOnboardingSensitive(w http.ResponseWriter, r 
 		return
 	}
 	normalizeWechatOnboardingSensitive(&input)
-	if err := validateWechatOnboardingSensitive(input); err != nil {
+	var subjectType string
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT subject_type FROM wechat_pay_onboarding_applications WHERE tenant_id=?", actor.TenantID).Scan(&subjectType); err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusConflict, "ONBOARDING_DRAFT_REQUIRED", "请先保存主体基础资料")
+			return
+		}
+		handleSQLError(w, err)
+		return
+	}
+	if err := validateWechatOnboardingSensitive(input, subjectType); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
@@ -173,7 +189,7 @@ func detectUploadContentType(file multipart.File, header *multipart.FileHeader) 
 	return detected
 }
 
-func (s *Server) decryptWechatOnboardingSensitive(ctx context.Context, tenantID int64, ciphertext string) (wechatOnboardingSensitiveInput, error) {
+func (s *Server) decryptWechatOnboardingSensitive(ctx context.Context, tenantID int64, ciphertext, subjectType string) (wechatOnboardingSensitiveInput, error) {
 	if s.SensitiveData == nil {
 		return wechatOnboardingSensitiveInput{}, errors.New("sensitive store is not configured")
 	}
@@ -185,7 +201,7 @@ func (s *Server) decryptWechatOnboardingSensitive(ctx context.Context, tenantID 
 	if err = json.Unmarshal(plaintext, &input); err != nil {
 		return input, err
 	}
-	return input, validateWechatOnboardingSensitive(input)
+	return input, validateWechatOnboardingSensitive(input, subjectType)
 }
 
 func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (provider.WeChatApplymentResult, error) {
@@ -206,7 +222,7 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 	if businessCode == "" {
 		businessCode = fmt.Sprintf("TB%08d%d", tenantID, time.Now().Unix())
 	}
-	sensitive, err := s.decryptWechatOnboardingSensitive(ctx, tenantID, ciphertext)
+	sensitive, err := s.decryptWechatOnboardingSensitive(ctx, tenantID, ciphertext, app.SubjectType)
 	if err != nil {
 		return provider.WeChatApplymentResult{}, err
 	}
@@ -243,25 +259,50 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 	if err != nil {
 		return provider.WeChatApplymentResult{}, err
 	}
-	subjectType := map[string]string{"INDIVIDUAL": "SUBJECT_TYPE_INDIVIDUAL", "ENTERPRISE": "SUBJECT_TYPE_ENTERPRISE"}[app.SubjectType]
+	subjectType := map[string]string{"MICRO": "SUBJECT_TYPE_MICRO", "INDIVIDUAL": "SUBJECT_TYPE_INDIVIDUAL", "ENTERPRISE": "SUBJECT_TYPE_ENTERPRISE"}[app.SubjectType]
 	if subjectType == "" {
-		return provider.WeChatApplymentResult{}, errors.New("current WeChat API supports individual or enterprise subjects only")
+		return provider.WeChatApplymentResult{}, errors.New("unsupported WeChat onboarding subject type")
 	}
-	payload := map[string]any{
-		"business_code": businessCode,
-		"contact_info":  map[string]any{"contact_type": "LEGAL", "contact_name": contactName, "mobile_phone": contactPhone, "contact_email": contactEmail},
-		"subject_info": map[string]any{
-			"subject_type":          subjectType,
-			"business_license_info": map[string]any{"license_copy": sensitive.BusinessLicenseCopy, "license_number": app.LicenseNumber, "merchant_name": sensitive.MerchantName, "legal_person": sensitive.LegalPerson},
-			"identity_info": map[string]any{"id_holder_type": "LEGAL", "id_doc_type": "IDENTIFICATION_TYPE_IDCARD", "id_card_info": map[string]any{
-				"id_card_copy": sensitive.IDCardCopy, "id_card_national": sensitive.IDCardNational, "id_card_name": idName, "id_card_number": idNumber,
-				"id_card_address": idAddress, "card_period_begin": sensitive.CardPeriodBegin, "card_period_end": sensitive.CardPeriodEnd}},
-		},
-		"business_info": map[string]any{"merchant_shortname": app.MerchantShortName, "service_phone": app.ServicePhone, "sales_info": map[string]any{
+	contactInfo := map[string]any{"contact_type": "LEGAL", "contact_name": contactName, "mobile_phone": contactPhone, "contact_email": contactEmail}
+	idCardInfo := map[string]any{
+		"id_card_copy": sensitive.IDCardCopy, "id_card_national": sensitive.IDCardNational, "id_card_name": idName, "id_card_number": idNumber,
+		"id_card_address": idAddress, "card_period_begin": sensitive.CardPeriodBegin, "card_period_end": sensitive.CardPeriodEnd}
+	identityInfo := map[string]any{"id_holder_type": "LEGAL", "id_doc_type": "IDENTIFICATION_TYPE_IDCARD", "id_card_info": idCardInfo}
+	subjectInfo := map[string]any{"subject_type": subjectType, "identity_info": identityInfo}
+	businessInfo := map[string]any{"merchant_shortname": app.MerchantShortName, "service_phone": app.ServicePhone}
+	if app.SubjectType == "MICRO" {
+		delete(contactInfo, "contact_type")
+		contactInfo["contact_id_number"] = idNumber
+		delete(identityInfo, "id_holder_type")
+		delete(idCardInfo, "id_card_address")
+		microBizInfo := map[string]any{}
+		if app.BusinessScene == "MOBILE" {
+			microBizInfo["micro_biz_type"] = "MICRO_TYPE_MOBILE"
+			microBizInfo["micro_mobile_info"] = map[string]any{
+				"micro_mobile_name": sensitive.StoreName, "micro_mobile_city": sensitive.StoreAddressCode,
+				"micro_mobile_address": "无", "micro_mobile_pics": []string{sensitive.StoreEntrancePic, sensitive.IndoorPic},
+			}
+		} else {
+			microBizInfo["micro_biz_type"] = "MICRO_TYPE_STORE"
+			microBizInfo["micro_store_info"] = map[string]any{
+				"micro_name": sensitive.StoreName, "micro_address_code": sensitive.StoreAddressCode, "micro_address": app.BusinessAddress,
+				"store_entrance_pic": sensitive.StoreEntrancePic, "micro_indoor_copy": sensitive.IndoorPic,
+			}
+		}
+		subjectInfo["micro_biz_info"] = microBizInfo
+	} else {
+		subjectInfo["business_license_info"] = map[string]any{"license_copy": sensitive.BusinessLicenseCopy, "license_number": app.LicenseNumber, "merchant_name": sensitive.MerchantName, "legal_person": sensitive.LegalPerson}
+		businessInfo["sales_info"] = map[string]any{
 			"sales_scenes_type": []string{"SALES_SCENES_STORE", "SALES_SCENES_MINI_PROGRAM"},
 			"biz_store_info":    map[string]any{"biz_store_name": sensitive.StoreName, "biz_address_code": sensitive.StoreAddressCode, "biz_store_address": app.BusinessAddress, "store_entrance_pic": []string{sensitive.StoreEntrancePic}, "indoor_pic": []string{sensitive.IndoorPic}},
 			"mini_program_info": map[string]any{"mini_program_appid": s.Config.WeChatPayPartner.ServiceProviderAppID, "mini_program_pics": sensitive.MiniProgramPics},
-		}},
+		}
+	}
+	payload := map[string]any{
+		"business_code":   businessCode,
+		"contact_info":    contactInfo,
+		"subject_info":    subjectInfo,
+		"business_info":   businessInfo,
 		"settlement_info": map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType},
 		"bank_account_info": map[string]any{"bank_account_type": sensitive.AccountType, "account_name": accountName, "account_bank": sensitive.AccountBank,
 			"bank_address_code": sensitive.BankAddressCode, "bank_branch_id": sensitive.BankBranchID, "bank_name": sensitive.BankName, "account_number": accountNumber},

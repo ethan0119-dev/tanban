@@ -484,7 +484,7 @@ export interface MerchantPaymentSettings {
 }
 
 export interface WechatPayOnboardingApplication {
-  subjectType: 'INDIVIDUAL' | 'ENTERPRISE';
+  subjectType: 'MICRO' | 'INDIVIDUAL' | 'ENTERPRISE';
   businessScene: 'STORE' | 'MOBILE';
   merchantShortName: string;
   servicePhone: string;
