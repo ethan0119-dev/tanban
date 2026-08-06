@@ -138,10 +138,15 @@ export function WechatPayOnboardingCard() {
   };
 
   const saveSensitive = async () => {
+    const applicationValues = await form.validateFields();
     const values = await sensitiveForm.validateFields();
     const { miniProgramPic, ...sensitiveValues } = values;
     setSavingSensitive(true);
     try {
+      // The secure endpoint requires an onboarding draft. Persist the visible
+      // basic fields first so merchants do not have to remember a separate
+      // "save draft" action before saving the secure material.
+      await api.put<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding', applicationValues);
       const result = await api.put<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding/sensitive', {
         ...sensitiveValues,
         miniProgramPics: miniProgramPic ? [miniProgramPic] : [],
