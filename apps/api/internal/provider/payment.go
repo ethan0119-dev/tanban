@@ -288,6 +288,31 @@ func (t TianQue) QueryRefund(context.Context, QueryRefundRequest) (QueryRefundRe
 	return QueryRefundResult{}, ErrNotConfigured
 }
 
+type LichuConfig struct {
+	BaseURL, NotifyURL string
+}
+
+// Lichu is the isolated adapter boundary for Lichu/Saobei ordinary payment 2.0.
+// The provider requires merchant_no, terminal_id and a per-terminal access_token.
+// It remains fail-closed until issued sandbox credentials have validated create,
+// signature verification, query, close, refund and callback behavior end to end.
+type Lichu struct{ Config LichuConfig }
+
+func (l Lichu) Name() string { return "lichu" }
+func (l Lichu) Create(context.Context, CreatePaymentRequest) (CreatePaymentResult, error) {
+	return CreatePaymentResult{}, ErrNotConfigured
+}
+func (l Lichu) Query(context.Context, string) (QueryPaymentResult, error) {
+	return QueryPaymentResult{}, ErrNotConfigured
+}
+func (l Lichu) Close(context.Context, string) error { return ErrNotConfigured }
+func (l Lichu) Refund(context.Context, RefundRequest) (RefundResult, error) {
+	return RefundResult{}, ErrNotConfigured
+}
+func (l Lichu) QueryRefund(context.Context, QueryRefundRequest) (QueryRefundResult, error) {
+	return QueryRefundResult{}, ErrNotConfigured
+}
+
 type WeChatPayPartnerConfig struct {
 	BaseURL, ServiceProviderMchID, ServiceProviderAppID, APICertSerialNo   string
 	MerchantPrivateKey, APIV3Key, WeChatPayPublicKeyID, WeChatPayPublicKey string

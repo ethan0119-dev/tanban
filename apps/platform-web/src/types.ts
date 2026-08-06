@@ -110,7 +110,7 @@ export interface AuditLog {
 }
 
 export interface PaymentSettings {
-  provider: 'mock' | 'tianque' | 'wechat_partner';
+  provider: 'mock' | 'tianque' | 'wechat_partner' | 'lichu';
   enabled: boolean;
   environment?: 'sandbox' | 'production';
   orgId?: string;
@@ -125,21 +125,25 @@ export interface PaymentSettings {
   apiCertSerialConfigured?: boolean;
   apiV3KeyConfigured?: boolean;
   wechatPayPublicKeyConfigured?: boolean;
-  effectiveProvider?: 'mock' | 'tianque' | 'wechat_partner';
+  effectiveProvider?: 'mock' | 'tianque' | 'wechat_partner' | 'lichu';
   restartRequired?: boolean;
   multiTenantRouting?: boolean;
-  availableProviders?: Array<'mock' | 'tianque' | 'wechat_partner'>;
+  availableProviders?: Array<'mock' | 'tianque' | 'wechat_partner' | 'lichu'>;
   mockEnabled?: boolean;
   tianqueAdapterImplemented?: boolean;
   wechatPartnerAdapterImplemented?: boolean;
+  lichuAdapterImplemented?: boolean;
   wechatPartnerConfigured?: boolean;
   updatedAt?: string;
 }
 
 export interface TenantPaymentSettings {
-  provider: 'mock' | 'tianque' | 'wechat_partner';
+  provider: 'mock' | 'tianque' | 'wechat_partner' | 'lichu';
   merchantNo: string;
   subAppId: string;
+  terminalId: string;
+  accessToken?: string;
+  accessTokenConfigured?: boolean;
   onboardingStatus: 'NOT_APPLIED' | 'REVIEWING' | 'PENDING_SIGNING' | 'ACTIVE' | 'REJECTED';
   productAuthorizationStatus: 'NOT_AUTHORIZED' | 'PENDING' | 'AUTHORIZED' | 'REVOKED';
   refundAuthorized: boolean;

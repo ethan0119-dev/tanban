@@ -16,6 +16,11 @@ type TianQue struct {
 	NotifyURL  string
 }
 
+type Lichu struct {
+	BaseURL   string
+	NotifyURL string
+}
+
 type WeChatPayPartner struct {
 	BaseURL              string
 	ServiceProviderMchID string
@@ -70,6 +75,7 @@ type Config struct {
 	DemoMerchantUser      string
 	DemoMerchantPass      string
 	TianQue               TianQue
+	Lichu                 Lichu
 	WeChatPayPartner      WeChatPayPartner
 	WeChatMiniApp         WeChatMiniApp
 	WeChatOfficialAccount WeChatOfficialAccount
@@ -101,6 +107,10 @@ func Load() (Config, error) {
 			PrivateKey: os.Getenv("TB_TIANQUE_PRIVATE_KEY"),
 			PublicKey:  os.Getenv("TB_TIANQUE_PUBLIC_KEY"),
 			NotifyURL:  os.Getenv("TB_TIANQUE_NOTIFY_URL"),
+		},
+		Lichu: Lichu{
+			BaseURL:   strings.TrimRight(env("TB_LICHU_BASE_URL", "https://pay.lcsw.cn/lcsw"), "/"),
+			NotifyURL: strings.TrimSpace(os.Getenv("TB_LICHU_NOTIFY_URL")),
 		},
 		WeChatPayPartner: WeChatPayPartner{
 			BaseURL:              strings.TrimRight(env("TB_WECHAT_PAY_BASE_URL", "https://api.mch.weixin.qq.com"), "/"),
@@ -151,8 +161,8 @@ func Load() (Config, error) {
 	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("TB_JWT_SECRET must contain at least 32 characters")
 	}
-	if cfg.PaymentProvider != "mock" && cfg.PaymentProvider != "tianque" && cfg.PaymentProvider != "wechat_partner" {
-		return Config{}, fmt.Errorf("TB_PAYMENT_PROVIDER must be mock, tianque or wechat_partner")
+	if cfg.PaymentProvider != "mock" && cfg.PaymentProvider != "tianque" && cfg.PaymentProvider != "wechat_partner" && cfg.PaymentProvider != "lichu" {
+		return Config{}, fmt.Errorf("TB_PAYMENT_PROVIDER must be mock, tianque, wechat_partner or lichu")
 	}
 	if (cfg.WeChatMiniApp.AppID == "") != (cfg.WeChatMiniApp.AppSecret == "") {
 		return Config{}, fmt.Errorf("TB_WECHAT_MINIAPP_APP_ID and TB_WECHAT_MINIAPP_APP_SECRET must be configured together")

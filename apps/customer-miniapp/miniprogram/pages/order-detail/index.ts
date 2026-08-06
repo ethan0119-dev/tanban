@@ -7,13 +7,9 @@ import { formatBeijingDateTime } from "../../utils/datetime";
 import { customerOrderActions } from "../../utils/order-actions";
 import { tableContextForStore } from "../../utils/table-context";
 import { clearCart } from "../../utils/cart";
+import { executeClientPayment, type ClientPaymentResult } from "../../utils/customer-payment";
 
-interface PaymentResult {
-  id: number;
-  provider: "balance" | "mock" | "tianque" | "wechat_partner";
-  status: string;
-  wxPayParams?: WechatMiniprogram.RequestPaymentOption;
-}
+interface PaymentResult extends ClientPaymentResult {}
 
 interface OrderView extends Order {
   isDineIn: boolean;
@@ -28,10 +24,6 @@ interface OrderView extends Order {
   displayTableName: string;
   displayTableCode: string;
   displayTableArea: string;
-}
-
-function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): value is WechatMiniprogram.RequestPaymentOption {
-  return Boolean(value?.timeStamp && value.nonceStr && value.package && value.signType && value.paySign);
 }
 
 function decorateOrder(order: Order, payAfterOnlinePaymentEnabled: boolean): OrderView {
@@ -127,14 +119,8 @@ Page({
       });
       if (payment.provider === "balance") {
         // 服务端已在同一事务中完成余额扣减和订单结账。
-      } else if (payment.provider === "mock") {
-        await request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" });
-      } else if (payment.provider === "wechat_partner" && validWechatPayParams(payment.wxPayParams)) {
-        await new Promise<void>((resolve, reject) => wx.requestPayment({ ...payment.wxPayParams!, success: () => resolve(), fail: reject }));
-      } else if (payment.provider === "tianque") {
-        throw new Error("会生活收银台尚未完成小程序接入");
       } else {
-        throw new Error("支付参数缺失，请稍后重试");
+        await executeClientPayment(payment, () => request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" }));
       }
       wx.showToast({ title: "支付成功", icon: "success" });
       await this.loadOrder();

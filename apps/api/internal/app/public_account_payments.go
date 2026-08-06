@@ -415,7 +415,7 @@ func (s *Server) writePublicAccountPayment(w http.ResponseWriter, statusCode int
 	params := map[string]string{}
 	_ = json.Unmarshal([]byte(intent.RawResponse), &params)
 	writeData(w, statusCode, map[string]any{
-		"id": intent.ID, "paymentId": intent.ID, "provider": intent.Provider, "status": intent.Status,
+		"id": intent.ID, "paymentId": intent.ID, "provider": intent.Provider, "clientAction": paymentClientAction(intent.Provider, params), "status": intent.Status,
 		"businessType": intent.BusinessType, "amountCents": intent.AmountCents, "giftCents": intent.GiftCents,
 		"providerOrderNo": intent.ProviderOrderNo, "wxPayParams": params, "fulfilled": intent.FulfilledAt.Valid,
 	})

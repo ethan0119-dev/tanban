@@ -13,14 +13,11 @@ import { formatBeijingDateTime } from "../../utils/datetime";
 import { bestEligibleCoupon, eligibleCoupons, forgetClaimedCoupon } from "../../utils/coupon-wallet";
 import { balancePaymentBreakdown } from "../../utils/payment-breakdown";
 import { requestNotificationSubscriptions, type NotificationScene } from "../../utils/notification-subscriptions";
+import { executeClientPayment, type ClientPaymentResult } from "../../utils/customer-payment";
 
-interface PaymentResult {
-  id: number;
-  provider: "balance" | "mock" | "tianque" | "wechat_partner";
-  status: string;
+interface PaymentResult extends ClientPaymentResult {
   balancePaidAmount?: number;
   remainingAmount?: number;
-  wxPayParams?: WechatMiniprogram.RequestPaymentOption;
 }
 interface StoredValueSummary {
   balance?: { balanceCents?: number };
@@ -28,10 +25,6 @@ interface StoredValueSummary {
 interface TextInputEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
 interface CouponChoiceEvent { currentTarget: { dataset: { id?: number | string } } }
 interface PickerChangeEvent extends WechatMiniprogram.BaseEvent { detail: { value: string } }
-
-function validWechatPayParams(value?: WechatMiniprogram.RequestPaymentOption): value is WechatMiniprogram.RequestPaymentOption {
-  return Boolean(value?.timeStamp && value.nonceStr && value.package && value.signType && value.paySign);
-}
 
 function customerLocation(): Promise<{ customerLatitude: number; customerLongitude: number }> {
   return new Promise((resolve, reject) => wx.getLocation({
@@ -424,14 +417,8 @@ Page({
       }
       if (payment.provider === "balance") {
         wx.showToast({ title: "余额支付成功", icon: "success" });
-      } else if (payment.provider === "mock") {
-        await request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" });
-      } else if (payment.provider === "wechat_partner" && validWechatPayParams(payment.wxPayParams)) {
-        await new Promise<void>((resolve, reject) => wx.requestPayment({ ...payment.wxPayParams!, success: () => resolve(), fail: reject }));
-      } else if (payment.provider === "tianque") {
-        throw new Error("会生活收银台尚未完成小程序接入");
       } else {
-        throw new Error("支付参数缺失，请稍后重试");
+        await executeClientPayment(payment, () => request({ url: `/public/payments/${payment.id}/mock-confirm`, method: "POST" }));
       }
       clearCart(storeCode);
       if (this.data.selectedCoupon) forgetClaimedCoupon(storeCode, this.data.selectedCoupon.id);

@@ -958,7 +958,7 @@ func (s *Server) createPaymentForOrder(w http.ResponseWriter, r *http.Request, t
 }
 
 func writePaymentResponse(w http.ResponseWriter, statusCode int, id int64, providerName, providerNo, status string, payParams map[string]string, balancePayments ...orderBalancePaymentResult) {
-	data := map[string]any{"id": id, "paymentId": id, "provider": providerName, "provider_order_no": providerNo, "providerOrderNo": providerNo, "status": status, "pay_params": payParams, "wxPayParams": payParams}
+	data := map[string]any{"id": id, "paymentId": id, "provider": providerName, "clientAction": paymentClientAction(providerName, payParams), "provider_order_no": providerNo, "providerOrderNo": providerNo, "status": status, "pay_params": payParams, "wxPayParams": payParams}
 	if len(balancePayments) > 0 && balancePayments[0].AmountCents > 0 {
 		data["balancePaidAmount"] = balancePayments[0].AmountCents
 		data["remainingAmount"] = balancePayments[0].RemainingCents

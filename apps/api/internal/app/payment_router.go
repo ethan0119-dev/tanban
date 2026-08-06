@@ -40,6 +40,8 @@ func (s *Server) paymentNotifyURLFor(name string) string {
 		return s.Config.WeChatPayPartner.NotifyURL
 	case "tianque":
 		return s.Config.TianQue.NotifyURL
+	case "lichu":
+		return s.Config.Lichu.NotifyURL
 	default:
 		return ""
 	}

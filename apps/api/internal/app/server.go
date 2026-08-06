@@ -73,12 +73,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger) *Server {
 		}}
 	} else if cfg.PaymentProvider == "wechat_partner" {
 		payment = wechatPay
+	} else if cfg.PaymentProvider == "lichu" {
+		payment = provider.Lichu{Config: provider.LichuConfig{BaseURL: cfg.Lichu.BaseURL, NotifyURL: cfg.Lichu.NotifyURL}}
 	}
 	paymentRouter := provider.NewPaymentRouter(mockPayment, wechatPay, provider.TianQue{Config: provider.TianQueConfig{
 		BaseURL: cfg.TianQue.BaseURL, OrgID: cfg.TianQue.OrgID,
 		PrivateKey: cfg.TianQue.PrivateKey, PublicKey: cfg.TianQue.PublicKey,
 		NotifyURL: cfg.TianQue.NotifyURL,
-	}})
+	}}, provider.Lichu{Config: provider.LichuConfig{BaseURL: cfg.Lichu.BaseURL, NotifyURL: cfg.Lichu.NotifyURL}})
 	printer := provider.NewPrinterRouter(cfg.PrinterProvider, logger, provider.NewXPrinter(provider.XPrinterConfig{
 		BaseURL: cfg.XPYun.BaseURL,
 		User:    cfg.XPYun.User,
@@ -123,6 +125,7 @@ func (s *Server) Routes() http.Handler {
 			s.publicRoutes(public)
 		})
 		api.Post("/payments/tianque/callback", s.tianQueCallback)
+		api.Post("/payments/lichu/callback", s.lichuCallback)
 		api.Post("/payments/wechat-partner/callback", s.wechatPayCallback)
 		api.Post("/payments/wechat-partner/refund-callback", s.wechatPayRefundCallback)
 		api.Post("/payments/mock/{providerOrderNo}/confirm", s.mockConfirm)

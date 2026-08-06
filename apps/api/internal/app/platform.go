@@ -74,6 +74,9 @@ type tenantPaymentSettings struct {
 	Provider                   string                       `json:"provider"`
 	MerchantNo                 string                       `json:"merchantNo"`
 	SubAppID                   string                       `json:"subAppId"`
+	TerminalID                 string                       `json:"terminalId"`
+	AccessToken                string                       `json:"accessToken,omitempty"`
+	AccessTokenConfigured      bool                         `json:"accessTokenConfigured"`
 	OnboardingStatus           string                       `json:"onboardingStatus"`
 	ProductAuthorizationStatus string                       `json:"productAuthorizationStatus"`
 	RefundAuthorized           bool                         `json:"refundAuthorized"`
@@ -82,6 +85,8 @@ type tenantPaymentSettings struct {
 	LegacyPendingPaymentCount  int                          `json:"legacyPendingPaymentCount"`
 	OnboardingApplication      *wechatOnboardingApplication `json:"onboardingApplication,omitempty"`
 }
+
+const lichuAccessTokenPurpose = "lichu-payment-access-token"
 
 type storeDTO struct {
 	ID            int64  `json:"id"`
@@ -230,7 +235,7 @@ func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	input.PaymentProvider = strings.ToLower(input.PaymentProvider)
 	if !validPaymentProvider(input.PaymentProvider) {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque or wechat_partner")
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque, wechat_partner or lichu")
 		return
 	}
 	input.OwnerUsername = strings.TrimSpace(input.OwnerUsername)
@@ -380,7 +385,7 @@ func (s *Server) updateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	input.PaymentProvider = strings.ToLower(strings.TrimSpace(input.PaymentProvider))
 	if !validPaymentProvider(input.PaymentProvider) {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque or wechat_partner")
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "payment_provider must be mock, tianque, wechat_partner or lichu")
 		return
 	}
 	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET code=?,name=?,contact_name=?,contact_phone=?,status=?,payment_provider=?,payment_merchant_no=?,payment_sub_appid=?
@@ -438,7 +443,7 @@ func (s *Server) updateTenantCashierEnabled(w http.ResponseWriter, r *http.Reque
 }
 
 func validPaymentProvider(value string) bool {
-	return value == "mock" || value == "tianque" || value == "wechat_partner"
+	return value == "mock" || value == "tianque" || value == "wechat_partner" || value == "lichu"
 }
 
 func (s *Server) getTenantPaymentSettings(w http.ResponseWriter, r *http.Request) {
@@ -447,14 +452,16 @@ func (s *Server) getTenantPaymentSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var settings tenantPaymentSettings
-	err := s.DB.QueryRowContext(r.Context(), `SELECT payment_provider,payment_merchant_no,payment_sub_appid,
+	var accessTokenCipher string
+	err := s.DB.QueryRowContext(r.Context(), `SELECT payment_provider,payment_merchant_no,payment_sub_appid,payment_terminal_id,payment_access_token_cipher,
 		payment_onboarding_status,payment_product_authorization_status,payment_refund_authorized
 		FROM tenants WHERE id=? AND deleted_at IS NULL`, id).
-		Scan(&settings.Provider, &settings.MerchantNo, &settings.SubAppID, &settings.OnboardingStatus, &settings.ProductAuthorizationStatus, &settings.RefundAuthorized)
+		Scan(&settings.Provider, &settings.MerchantNo, &settings.SubAppID, &settings.TerminalID, &accessTokenCipher, &settings.OnboardingStatus, &settings.ProductAuthorizationStatus, &settings.RefundAuthorized)
 	if err != nil {
 		handleSQLError(w, err)
 		return
 	}
+	settings.AccessTokenConfigured = accessTokenCipher != ""
 	if err = s.DB.QueryRowContext(r.Context(), `SELECT
 		(SELECT COUNT(*) FROM payment_transactions WHERE tenant_id=? AND status IN ('CREATING','PENDING'))+
 		(SELECT COUNT(*) FROM customer_account_payment_intents WHERE tenant_id=? AND status IN ('CREATING','PENDING')),
@@ -489,10 +496,12 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
 	input.MerchantNo = strings.TrimSpace(input.MerchantNo)
 	input.SubAppID = strings.TrimSpace(input.SubAppID)
+	input.TerminalID = strings.TrimSpace(input.TerminalID)
+	input.AccessToken = strings.TrimSpace(input.AccessToken)
 	input.OnboardingStatus = strings.ToUpper(strings.TrimSpace(input.OnboardingStatus))
 	input.ProductAuthorizationStatus = strings.ToUpper(strings.TrimSpace(input.ProductAuthorizationStatus))
 	if !validPaymentProvider(input.Provider) {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque or wechat_partner")
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque, wechat_partner or lichu")
 		return
 	}
 	if !validStatus(input.OnboardingStatus, "NOT_APPLIED", "REVIEWING", "PENDING_SIGNING", "ACTIVE", "REJECTED") {
@@ -517,14 +526,45 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	if input.Provider == "lichu" {
+		if !digitsOnly(input.MerchantNo) || len(input.MerchantNo) != 15 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "利楚商户号必须为 15 位数字")
+			return
+		}
+		if !digitsOnly(input.TerminalID) || len(input.TerminalID) != 8 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "利楚终端号必须为 8 位数字")
+			return
+		}
+		if input.SubAppID == "" || len(input.SubAppID) != 18 || !strings.HasPrefix(input.SubAppID, "wx") {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "利楚小程序支付必须填写有效的 sub_appid")
+			return
+		}
+	}
 	var previousProvider string
-	if err := s.DB.QueryRowContext(r.Context(), "SELECT payment_provider FROM tenants WHERE id=? AND deleted_at IS NULL", id).Scan(&previousProvider); err != nil {
+	var accessTokenCipher string
+	var err error
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT payment_provider,payment_access_token_cipher FROM tenants WHERE id=? AND deleted_at IS NULL", id).Scan(&previousProvider, &accessTokenCipher); err != nil {
 		handleSQLError(w, err)
 		return
 	}
-	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET payment_provider=?,payment_merchant_no=?,payment_sub_appid=?,
+	if input.AccessToken != "" {
+		if s.SensitiveData == nil {
+			writeError(w, http.StatusServiceUnavailable, "SECURE_STORAGE_NOT_CONFIGURED", "配置利楚终端密钥前必须启用敏感数据加密")
+			return
+		}
+		accessTokenCipher, err = s.SensitiveData.Encrypt([]byte(input.AccessToken), id, lichuAccessTokenPurpose)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "ENCRYPTION_FAILED", "利楚终端密钥加密失败")
+			return
+		}
+	}
+	if input.Provider == "lichu" && accessTokenCipher == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "利楚支付必须配置终端 token 密钥")
+		return
+	}
+	result, err := s.DB.ExecContext(r.Context(), `UPDATE tenants SET payment_provider=?,payment_merchant_no=?,payment_sub_appid=?,payment_terminal_id=?,payment_access_token_cipher=?,
 		payment_onboarding_status=?,payment_product_authorization_status=?,payment_refund_authorized=?
-		WHERE id=? AND deleted_at IS NULL`, input.Provider, input.MerchantNo, input.SubAppID,
+		WHERE id=? AND deleted_at IS NULL`, input.Provider, input.MerchantNo, input.SubAppID, input.TerminalID, accessTokenCipher,
 		input.OnboardingStatus, input.ProductAuthorizationStatus, input.RefundAuthorized, id)
 	if err != nil {
 		handleSQLError(w, err)
@@ -537,7 +577,7 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 	s.audit(r.Context(), currentIdentity(r.Context()), "tenant.payment_settings.update", "tenant", int64String(id), map[string]any{
 		"previous_provider": previousProvider, "provider": input.Provider, "channel_changed": previousProvider != input.Provider,
 		"merchant_no_configured": input.MerchantNo != "",
-		"sub_appid_configured":   input.SubAppID != "", "onboarding_status": input.OnboardingStatus,
+		"sub_appid_configured":   input.SubAppID != "", "terminal_id_configured": input.TerminalID != "", "access_token_configured": accessTokenCipher != "", "onboarding_status": input.OnboardingStatus,
 		"product_authorization_status": input.ProductAuthorizationStatus, "refund_authorized": input.RefundAuthorized,
 	}, r)
 	s.getTenantPaymentSettings(w, r)

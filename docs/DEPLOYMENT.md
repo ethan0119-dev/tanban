@@ -89,7 +89,7 @@ TB_DATA_ENCRYPTION_KEY=file:/run/secrets/data-encryption/master.key
 
 APIv3 小程序下单、通知验签解密、主动查单、退款和退款通知均已实现。API 进程会同时注册可用的支付适配器，`TB_PAYMENT_PROVIDER` 仅作为兼容旧配置的平台默认值；每个商户的新支付由 `tenants.payment_provider` 独立路由。样板商户可保持 `mock`，种子商户可使用 `wechat_partner`，两者能在同一套部署中并存。
 
-切换商户渠道只影响切换后创建的支付意图。`payment_transactions` 与 `customer_account_payment_intents` 会保存 provider、商户号、子 AppID 和渠道单号快照；历史查单、关单、回调、对账及退款始终解析该快照并调用原渠道。因此，只要仍有历史交易或退款，原渠道密钥、回调和适配器就不能删除。利楚支付接入后应新增独立 provider 适配器并注册到路由器，不得复用或改名现有 `tianque` 适配器。
+切换商户渠道只影响切换后创建的支付意图。`payment_transactions` 与 `customer_account_payment_intents` 会保存 provider、商户号、子 AppID 和渠道单号快照；历史查单、关单、回调、对账及退款始终解析该快照并调用原渠道。因此，只要仍有历史交易或退款，原渠道密钥、回调和适配器就不能删除。利楚支付使用独立的 `lichu` provider，不复用或改名现有 `tianque` 适配器。平台级地址使用 `TB_LICHU_BASE_URL`、`TB_LICHU_NOTIFY_URL`；商户级 `merchant_no`、`terminal_id`、`sub_appid` 与终端 `access_token` 在平台后台维护，token 通过 `TB_DATA_ENCRYPTION_KEY` 加密且不回显。利楚普通支付 2.0 小程序下单返回标准 `wx.requestPayment` 参数，但在取得测试终端参数并完成下单、MD5 验签、通知、查单、关单、退款与对账联调前，适配器保持不可真实收款。
 
 ## 首次部署
 

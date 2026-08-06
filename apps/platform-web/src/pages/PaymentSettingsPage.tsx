@@ -17,10 +17,13 @@ const DEFAULT_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/tianque/ca
 const WECHAT_API_BASE_URL = 'https://api.mch.weixin.qq.com';
 const WECHAT_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/wechat-partner/callback';
 const WECHAT_REFUND_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/wechat-partner/refund-callback';
+const LICHU_API_BASE_URL = 'https://pay.lcsw.cn/lcsw';
+const LICHU_NOTIFY_URL = 'https://api.tanban.com.cn/api/v1/payments/lichu/callback';
 const providerNames: Record<string, string> = {
   mock: 'Mock 模拟支付',
   tianque: '会生活 · 随行付',
   wechat_partner: '微信支付（普通服务商）',
+  lichu: '利楚支付 · 扫呗',
 };
 
 export function PaymentSettingsPage() {
@@ -70,6 +73,8 @@ export function PaymentSettingsPage() {
         notifyUrl: settings?.provider === 'tianque' ? settings.notifyUrl : DEFAULT_NOTIFY_URL,
         refundNotifyUrl: undefined,
       });
+    } else if (nextProvider === 'lichu') {
+      form.setFieldsValue({ apiBaseUrl: LICHU_API_BASE_URL, notifyUrl: LICHU_NOTIFY_URL, refundNotifyUrl: undefined, environment: 'production' });
     }
   };
 
@@ -134,6 +139,13 @@ export function PaymentSettingsPage() {
         description="可以先维护服务商参数和商户进件状态；在完成 API v3 下单、回调验签解密、查单、退款及沙箱/生产联调前，系统不会把它标记为可真实收款。"
         className="settings-alert"
       />}
+      {provider === 'lichu' && settings?.lichuAdapterImplemented === false && <Alert
+        showIcon
+        type="warning"
+        message="利楚支付配置入口已就绪，真实交易适配器等待联调"
+        description="已按普通支付 2.0 预留 /pay/open/minipay、MD5 验签、查单、关闭、退款和通知边界。取得利楚测试环境地址、merchant_no、terminal_id 与 access_token 并完成全链路联调前，系统会拒绝真实收款。"
+        className="settings-alert"
+      />}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={16}>
@@ -150,6 +162,9 @@ export function PaymentSettingsPage() {
                   </Radio.Button>
                   <Radio.Button value="wechat_partner">
                     <span className="provider-option"><WechatOutlined /><span><strong>微信支付（普通服务商）</strong><small>API v3 · 服务商小程序支付</small></span></span>
+                  </Radio.Button>
+                  <Radio.Button value="lichu">
+                    <span className="provider-option"><ApiOutlined /><span><strong>利楚支付 · 扫呗</strong><small>普通支付 2.0 · 小程序 wx.requestPayment</small></span></span>
                   </Radio.Button>
                 </Radio.Group>
               </Form.Item>

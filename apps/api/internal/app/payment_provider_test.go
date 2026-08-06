@@ -26,6 +26,25 @@ func TestDescribePaymentProvider(t *testing.T) {
 	}
 }
 
+func TestPaymentClientActionUsesCapabilityInsteadOfProviderName(t *testing.T) {
+	t.Parallel()
+	params := map[string]string{
+		"timeStamp": "1710000000", "nonceStr": "nonce", "package": "prepay_id=123", "signType": "RSA", "paySign": "signature",
+	}
+	if got := paymentClientAction("wechat_partner", params); got != "WECHAT_REQUEST_PAYMENT" {
+		t.Fatalf("wechat action=%q", got)
+	}
+	if got := paymentClientAction("lichu", params); got != "WECHAT_REQUEST_PAYMENT" {
+		t.Fatalf("lichu action=%q", got)
+	}
+	if got := paymentClientAction("mock", nil); got != "MOCK_CONFIRM" {
+		t.Fatalf("mock action=%q", got)
+	}
+	if got := paymentClientAction("lichu", map[string]string{"timeStamp": "1710000000"}); got != "NONE" {
+		t.Fatalf("incomplete action=%q", got)
+	}
+}
+
 func TestWeChatPayCallbacksFailClosedWithoutValidSignature(t *testing.T) {
 	t.Parallel()
 	wechatPay := &provider.WeChatPayPartner{}

@@ -395,6 +395,7 @@ function PaymentSettings({ payment }: { payment: MerchantPaymentSettings }) {
     mock: '模拟支付',
     tianque: '会生活 · 随行付',
     wechat_partner: '微信支付（普通服务商）',
+    lichu: '利楚支付 · 扫呗',
   };
   const checkoutModeLabels: Record<string, string> = {
     MOCK: '模拟支付（仅联调）',

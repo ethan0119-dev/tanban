@@ -42,7 +42,7 @@ interface TenantFormValues {
   contactPhone: string;
   status: 'active' | 'pending';
   cashierEnabled: boolean;
-  paymentProvider: 'mock' | 'tianque' | 'wechat_partner';
+  paymentProvider: 'mock' | 'tianque' | 'wechat_partner' | 'lichu';
   paymentMerchantNo?: string;
   paymentSubAppId?: string;
   initialStoreCode: string;
@@ -90,6 +90,7 @@ const providerNames: Record<TenantPaymentSettings['provider'], string> = {
   mock: 'Mock 模拟支付',
   tianque: '会生活/天阙',
   wechat_partner: '微信支付（普通服务商）',
+  lichu: '利楚支付 · 扫呗',
 };
 
 export function TenantsPage() {
@@ -498,7 +499,7 @@ export function TenantsPage() {
           </Form.Item>
           <Row gutter={12}>
             <Col span={8}><Form.Item label="初始状态" name="status" rules={[{ required: true }]}><Select options={[{ value: 'active', label: '正常运营' }, { value: 'pending', label: '待完善资料' }]} /></Form.Item></Col>
-            <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item></Col>
+            <Col span={8}><Form.Item label="支付适配器" name="paymentProvider" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '虚拟支付（联调）' }, { value: 'tianque', label: '会生活/天阙' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }, { value: 'lichu', label: '利楚支付 · 扫呗' }]} /></Form.Item></Col>
             <Col span={8}><Form.Item label="支付商户号" name="paymentMerchantNo"><Input placeholder="可创建后在支付配置中维护" /></Form.Item></Col>
           </Row>
           <Form.Item
@@ -620,7 +621,7 @@ export function TenantsPage() {
             }
             style={{ marginBottom: 16 }}
           />}
-          <Form.Item label="新支付使用渠道" name="provider" rules={[{ required: true }]} extra="Mock 只用于样板演示商户；真实营业商户请选择已完成签约和联调的支付机构。"><Select options={[{ value: 'mock', label: 'Mock 模拟支付（样板演示）' }, { value: 'tianque', label: '会生活/天阙（待正式适配）' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }]} /></Form.Item>
+          <Form.Item label="新支付使用渠道" name="provider" rules={[{ required: true }]} extra="Mock 只用于样板演示商户；真实营业商户请选择已完成签约和联调的支付机构。"><Select options={[{ value: 'mock', label: 'Mock 模拟支付（样板演示）' }, { value: 'tianque', label: '会生活/天阙（待正式适配）' }, { value: 'wechat_partner', label: '微信支付（普通服务商）' }, { value: 'lichu', label: '利楚支付 · 扫呗（待测试参数联调）' }]} /></Form.Item>
           <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider}>
             {({ getFieldValue }) => getFieldValue('provider') === 'wechat_partner' ? <>
               <Form.Item label="微信支付特约商户号（sub_mchid）" name="merchantNo" rules={[{ pattern: /^\d{8,32}$/, message: '请输入 8 至 32 位数字' }]}><Input placeholder="进件通过后由微信支付分配" /></Form.Item>
@@ -630,10 +631,20 @@ export function TenantsPage() {
                 <Col xs={24} md={12}><Form.Item label="小程序支付产品授权" name="productAuthorizationStatus" rules={[{ required: true }]}><Select options={[{ value: 'NOT_AUTHORIZED', label: '未授权' }, { value: 'PENDING', label: '授权处理中' }, { value: 'AUTHORIZED', label: '已授权' }, { value: 'REVOKED', label: '已撤销' }]} /></Form.Item></Col>
               </Row>
               <Form.Item label="服务商 API 退款授权" name="refundAuthorized" valuePropName="checked"><Switch checkedChildren="已授权" unCheckedChildren="未授权" /></Form.Item>
-            </> : <>
+            </> : getFieldValue('provider') === 'lichu' ? null : <>
               <Form.Item label="支付商户号" name="merchantNo"><Input /></Form.Item>
               <Form.Item label="子 AppID" name="subAppId"><Input /></Form.Item>
             </>}
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider || previous.accessTokenConfigured !== current.accessTokenConfigured}>
+            {({ getFieldValue }) => getFieldValue('provider') === 'lichu' ? <>
+              <Alert type="info" showIcon message="利楚普通支付 2.0" description="小程序端共用微信 wx.requestPayment；商户号、终端号和 token 密钥由利楚分配，token 仅加密保存且不会回显。" style={{ marginBottom: 16 }} />
+              <Form.Item label="利楚商户号（merchant_no）" name="merchantNo" rules={[{ required: true }, { pattern: /^\d{15}$/, message: '请输入 15 位数字' }]}><Input placeholder="15 位商户号" /></Form.Item>
+              <Form.Item label="利楚终端号（terminal_id）" name="terminalId" rules={[{ required: true }, { pattern: /^\d{8}$/, message: '请输入 8 位数字' }]}><Input placeholder="8 位终端号" /></Form.Item>
+              <Form.Item label="小程序 AppID（sub_appid）" name="subAppId" rules={[{ required: true }, { pattern: /^wx[a-zA-Z0-9]{16}$/, message: 'AppID 格式不正确' }]} extra="利楚要求该 AppID 与商户主体匹配并在对应通道完成关注配置。"><Input placeholder="wx..." /></Form.Item>
+              <Form.Item label="终端 token 密钥（access_token）" name="accessToken" rules={getFieldValue('accessTokenConfigured') ? [] : [{ required: true, message: '首次配置必须填写终端 token 密钥' }]} extra={getFieldValue('accessTokenConfigured') ? '密钥已加密保存；留空表示不修改。' : '由利楚为该终端分配，保存后不再回显。'}><Input.Password autoComplete="new-password" placeholder={getFieldValue('accessTokenConfigured') ? '已配置，留空不修改' : '请输入终端 token 密钥'} /></Form.Item>
+              <Form.Item name="accessTokenConfigured" hidden><Input /></Form.Item>
+            </> : null}
           </Form.Item>
         </Form>
       </Modal>

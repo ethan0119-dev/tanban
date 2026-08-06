@@ -103,7 +103,7 @@ func (s *Server) getPlatformPaymentSettings(w http.ResponseWriter, r *http.Reque
 		"effectiveProvider":               settings.Provider, "restartRequired": false,
 		"multiTenantRouting": true, "availableProviders": s.availablePaymentProviders(),
 		"tianqueConfigured":         s.Config.TianQue.OrgID != "" && s.Config.TianQue.PrivateKey != "",
-		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": true,
+		"tianqueAdapterImplemented": false, "wechatPartnerAdapterImplemented": true, "lichuAdapterImplemented": false,
 		"wechatPartnerConfigured": wechat.ServiceProviderMchID != "" && wechat.ServiceProviderAppID != "" &&
 			wechat.APICertSerialNo != "" && wechat.MerchantPrivateKey != "" && wechat.APIV3Key != "" &&
 			wechat.WeChatPayPublicKeyID != "" && wechat.WeChatPayPublicKey != "" && wechat.NotifyURL != "",
@@ -122,7 +122,7 @@ func (s *Server) updatePlatformPaymentSettings(w http.ResponseWriter, r *http.Re
 	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
 	input.MicroOnboardingPermissionStatus = strings.ToUpper(strings.TrimSpace(input.MicroOnboardingPermissionStatus))
 	if !validPaymentProvider(input.Provider) {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque or wechat_partner")
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque, wechat_partner or lichu")
 		return
 	}
 	if input.MicroOnboardingPermissionStatus == "" {

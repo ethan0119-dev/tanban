@@ -973,6 +973,8 @@ func printablePaymentMethod(value any) string {
 		return "会生活 / 随行付"
 	case "wechat_partner":
 		return "微信支付"
+	case "lichu":
+		return "利楚支付 · 扫呗"
 	case "mock":
 		return "模拟支付"
 	case "":

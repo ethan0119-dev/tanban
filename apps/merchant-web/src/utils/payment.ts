@@ -2,6 +2,7 @@ const paymentProviderNames: Record<string, string> = {
   mock: '模拟支付',
   tianque: '会生活 · 随行付',
   wechat_partner: '微信支付',
+  lichu: '利楚支付 · 扫呗',
   offline_cash: '现金',
   external: '系统外支付',
 };
