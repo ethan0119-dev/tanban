@@ -45,6 +45,15 @@ func TestPaymentClientActionUsesCapabilityInsteadOfProviderName(t *testing.T) {
 	}
 }
 
+func TestNormalizePaymentWorkflowStatusesAllowsNonWechatConfiguration(t *testing.T) {
+	t.Parallel()
+	settings := tenantPaymentSettings{Provider: "mock"}
+	normalizePaymentWorkflowStatuses(&settings)
+	if settings.OnboardingStatus != "NOT_APPLIED" || settings.ProductAuthorizationStatus != "NOT_AUTHORIZED" {
+		t.Fatalf("unexpected defaults: %+v", settings)
+	}
+}
+
 func TestWeChatPayCallbacksFailClosedWithoutValidSignature(t *testing.T) {
 	t.Parallel()
 	wechatPay := &provider.WeChatPayPartner{}

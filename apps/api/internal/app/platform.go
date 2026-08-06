@@ -500,6 +500,7 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 	input.AccessToken = strings.TrimSpace(input.AccessToken)
 	input.OnboardingStatus = strings.ToUpper(strings.TrimSpace(input.OnboardingStatus))
 	input.ProductAuthorizationStatus = strings.ToUpper(strings.TrimSpace(input.ProductAuthorizationStatus))
+	normalizePaymentWorkflowStatuses(&input)
 	if !validPaymentProvider(input.Provider) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "provider must be mock, tianque, wechat_partner or lichu")
 		return
@@ -581,6 +582,18 @@ func (s *Server) updateTenantPaymentSettings(w http.ResponseWriter, r *http.Requ
 		"product_authorization_status": input.ProductAuthorizationStatus, "refund_authorized": input.RefundAuthorized,
 	}, r)
 	s.getTenantPaymentSettings(w, r)
+}
+
+func normalizePaymentWorkflowStatuses(settings *tenantPaymentSettings) {
+	if settings == nil {
+		return
+	}
+	if settings.OnboardingStatus == "" {
+		settings.OnboardingStatus = "NOT_APPLIED"
+	}
+	if settings.ProductAuthorizationStatus == "" {
+		settings.ProductAuthorizationStatus = "NOT_AUTHORIZED"
+	}
 }
 
 func digitsOnly(value string) bool {
