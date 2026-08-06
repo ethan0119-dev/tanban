@@ -69,7 +69,8 @@ interface SensitiveOnboardingFields {
   merchantName: string; legalPerson: string; accountType: string; accountName: string;
   accountNumber: string; accountBank: string; bankAddressCode: string; bankBranchId: string;
   bankName: string; storeName: string; storeAddressCode: string; storeEntrancePic: string;
-  indoorPic: string; miniProgramPic: string; settlementId: string; qualificationType: string;
+  indoorPic: string; cashierPic: string; miniProgramPic: string; qualificationPic: string;
+  settlementId: string; qualificationType: string;
 }
 
 export function WechatPayOnboardingCard() {
@@ -144,7 +145,7 @@ export function WechatPayOnboardingCard() {
   const saveSensitive = async () => {
     const applicationValues = await form.validateFields();
     const values = await sensitiveForm.validateFields();
-    const { miniProgramPic, ...sensitiveValues } = values;
+    const { miniProgramPic, qualificationPic, ...sensitiveValues } = values;
     setSavingSensitive(true);
     try {
       // The secure endpoint requires an onboarding draft. Persist the visible
@@ -154,6 +155,7 @@ export function WechatPayOnboardingCard() {
       const result = await api.put<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding/sensitive', {
         ...sensitiveValues,
         miniProgramPics: miniProgramPic ? [miniProgramPic] : [],
+        qualificationPics: qualificationPic ? [qualificationPic] : [],
       });
       setApplication(result);
       messageApi.success('敏感资料已使用租户专用上下文加密保存');
@@ -170,6 +172,7 @@ export function WechatPayOnboardingCard() {
     try {
       const data = new FormData();
       data.append('file', options.file as Blob);
+      data.append('field', field);
       const result = await api.postForm<{ mediaId: string }>('/merchant/wechat-pay-onboarding/media', data);
       sensitiveForm.setFieldValue(field, result.mediaId);
       options.onSuccess?.(result);
@@ -180,8 +183,8 @@ export function WechatPayOnboardingCard() {
     }
   };
 
-  const mediaField = (name: keyof SensitiveOnboardingFields, label: string) => (
-    <Form.Item name={name} label={label} rules={[{ required: true, message: `请上传${label}` }]}>
+  const mediaField = (name: keyof SensitiveOnboardingFields, label: string, required = true) => (
+    <Form.Item name={name} label={label} rules={required ? [{ required: true, message: `请上传${label}` }] : []}>
       <Input addonAfter={<Upload accept="image/jpeg,image/png,image/bmp" maxCount={1} showUploadList={false} customRequest={mediaUpload(name)}><Button type="link" size="small" icon={<UploadOutlined />}>上传</Button></Upload>} readOnly placeholder="上传后自动写入微信 media_id" />
     </Form.Item>
   );
@@ -220,7 +223,7 @@ export function WechatPayOnboardingCard() {
         message="安全资料能力尚未启用"
         description="平台尚未配置独立数据加密主密钥，因此不会接收身份证号、银行卡号和进件图片。"
       />}
-      {application.sensitiveConfigured && <Alert style={{ marginTop: 12 }} type="success" showIcon message="安全资料已保存" description="敏感字段使用 AES-256-GCM 加密保存；图片已直接上传微信支付，仅保存 media_id。出于安全原因页面不会回显明文。" />}
+      {application.sensitiveConfigured && <Alert style={{ marginTop: 12 }} type="success" showIcon message="安全资料已保存" description="敏感字段使用 AES-256-GCM 加密保存；图片上传微信支付后，会额外加密保留仅供平台预审查看的审核副本。出于安全原因页面不会回显明文。" />}
       {application.wechatStateMessage && <Alert style={{ marginTop: 12 }} type="info" showIcon message={`微信审核状态：${application.wechatApplymentState || '处理中'}`} description={application.wechatStateMessage} />}
       {application.signUrl && <Alert style={{ marginTop: 12 }} type="warning" showIcon message="请完成微信支付签约" description={<a href={application.signUrl} target="_blank" rel="noreferrer">打开微信支付签约链接</a>} />}
       {application.applicationStatus === 'NEEDS_INFO' && application.platformNote && (
@@ -276,6 +279,7 @@ export function WechatPayOnboardingCard() {
 
         <Typography.Title level={5}><FileProtectOutlined /> 资料准备确认</Typography.Title>
         <Space direction="vertical" size={12}>
+          <Form.Item name="qualificationConfirmed" valuePropName="checked" noStyle><Checkbox>我确认以上资料及后续上传的证件、照片真实、清晰且在有效期内</Checkbox></Form.Item>
           <Form.Item name="identityMaterialReady" valuePropName="checked" noStyle><Checkbox>经营者身份证原件正反面及有效期已准备</Checkbox></Form.Item>
           <Form.Item name="settlementAccountReady" valuePropName="checked" noStyle><Checkbox><BankOutlined /> 经营者本人银行卡、开户行及支行信息已准备</Checkbox></Form.Item>
           <Form.Item name="businessMaterialReady" valuePropName="checked" noStyle><Checkbox>门头／摊位、经营环境、商品及租赁或摊位证明等材料已准备</Checkbox></Form.Item>
@@ -295,7 +299,7 @@ export function WechatPayOnboardingCard() {
           description="身份证、银行卡和图片不会回显，这是安全保护，不代表草稿丢失。只有资料需要变更时才重新填写并整体替换。"
           action={<Button onClick={() => setEditingSensitive(true)}>重新填写并替换</Button>}
         /> : <>
-          <Alert type="info" showIcon message="先保存上方基础资料，再填写本区域" description="证件号和结算账户只以密文落库；证件与门店图片直接上传微信支付。重新保存会整体替换上一版密文。" style={{ marginBottom: 16 }} />
+          <Alert type="info" showIcon message="先保存上方基础资料，再填写本区域" description="证件号和结算账户只以密文落库；证件与门店图片上传微信支付后，会加密保留仅供平台人工预审的副本。重新保存会整体替换上一版密文。" style={{ marginBottom: 16 }} />
           <Form form={sensitiveForm} layout="vertical" initialValues={{ accountType: 'BANK_ACCOUNT_TYPE_PERSONAL' }}>
           <Typography.Title level={5}>营业执照与身份证</Typography.Title>
           <Row gutter={16}>
@@ -330,7 +334,9 @@ export function WechatPayOnboardingCard() {
             <Col xs={24} md={12}><Form.Item name="storeAddressCode" label={subjectType === 'MICRO' && businessScene === 'MOBILE' ? '经营所在地省市编码' : '门店省市编码'} rules={[{ required: true }, { pattern: /^\d+$/, message: '省市编码只能包含数字' }]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>{mediaField('storeEntrancePic', subjectType === 'MICRO' && businessScene === 'MOBILE' ? '经营现场全景照片' : '门店门头照片')}</Col>
             <Col xs={24} md={12}>{mediaField('indoorPic', subjectType === 'MICRO' && businessScene === 'MOBILE' ? '商品／服务现场照片' : '店内环境照片')}</Col>
+            <Col xs={24} md={12}>{mediaField('cashierPic', '收银台照片')}</Col>
             {subjectType !== 'MICRO' && <Col xs={24} md={12}>{mediaField('miniProgramPic', '小程序经营页面截图')}</Col>}
+            <Col xs={24} md={12}>{mediaField('qualificationPic', '食品经营许可证／行业特殊资质（如有）', false)}</Col>
             <Col xs={24} md={12}><Form.Item
               name="settlementId"
               label="微信结算规则 ID"

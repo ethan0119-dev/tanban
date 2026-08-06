@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,6 +115,36 @@ type WeChatApplymentStatus struct {
 	SignURL     string
 }
 
+type wechatApplymentAPIResponse struct {
+	ApplymentID int64  `json:"applyment_id"`
+	State       string `json:"applyment_state"`
+	StateMsg    string `json:"applyment_state_msg"`
+	SubMchID    string `json:"sub_mchid"`
+	SignURL     string `json:"sign_url"`
+}
+
+func decodeWechatApplymentResult(reader io.Reader) (WeChatApplymentResult, error) {
+	var response wechatApplymentAPIResponse
+	if err := json.NewDecoder(io.LimitReader(reader, 1<<20)).Decode(&response); err != nil {
+		return WeChatApplymentResult{}, err
+	}
+	if response.ApplymentID <= 0 {
+		return WeChatApplymentResult{}, errors.New("WeChat Pay returned an empty applyment_id")
+	}
+	return WeChatApplymentResult{ApplymentID: strconv.FormatInt(response.ApplymentID, 10)}, nil
+}
+
+func decodeWechatApplymentStatus(reader io.Reader) (WeChatApplymentStatus, error) {
+	var response wechatApplymentAPIResponse
+	if err := json.NewDecoder(io.LimitReader(reader, 1<<20)).Decode(&response); err != nil {
+		return WeChatApplymentStatus{}, err
+	}
+	return WeChatApplymentStatus{
+		ApplymentID: strconv.FormatInt(response.ApplymentID, 10), State: response.State, StateMsg: response.StateMsg,
+		SubMchID: response.SubMchID, SignURL: response.SignURL,
+	}, nil
+}
+
 func (w *WeChatPayPartner) UploadApplymentImage(ctx context.Context, reader io.Reader, filename, contentType string) (string, error) {
 	runtime, err := w.v3Runtime(ctx)
 	if err != nil {
@@ -154,16 +185,7 @@ func (w *WeChatPayPartner) SubmitApplyment(ctx context.Context, payload map[stri
 		return WeChatApplymentResult{}, err
 	}
 	defer result.Response.Body.Close()
-	var response struct {
-		ApplymentID string `json:"applyment_id"`
-	}
-	if err = json.NewDecoder(io.LimitReader(result.Response.Body, 1<<20)).Decode(&response); err != nil {
-		return WeChatApplymentResult{}, err
-	}
-	if response.ApplymentID == "" {
-		return WeChatApplymentResult{}, errors.New("WeChat Pay returned an empty applyment_id")
-	}
-	return WeChatApplymentResult{ApplymentID: response.ApplymentID}, nil
+	return decodeWechatApplymentResult(result.Response.Body)
 }
 
 func (w *WeChatPayPartner) QueryApplyment(ctx context.Context, applymentID string) (WeChatApplymentStatus, error) {
@@ -179,17 +201,7 @@ func (w *WeChatPayPartner) QueryApplyment(ctx context.Context, applymentID strin
 		return WeChatApplymentStatus{}, err
 	}
 	defer result.Response.Body.Close()
-	var response struct {
-		ApplymentID string `json:"applyment_id"`
-		State       string `json:"applyment_state"`
-		StateMsg    string `json:"applyment_state_msg"`
-		SubMchID    string `json:"sub_mchid"`
-		SignURL     string `json:"sign_url"`
-	}
-	if err = json.NewDecoder(io.LimitReader(result.Response.Body, 1<<20)).Decode(&response); err != nil {
-		return WeChatApplymentStatus{}, err
-	}
-	return WeChatApplymentStatus{ApplymentID: response.ApplymentID, State: response.State, StateMsg: response.StateMsg, SubMchID: response.SubMchID, SignURL: response.SignURL}, nil
+	return decodeWechatApplymentStatus(result.Response.Body)
 }
 
 func (w *WeChatPayPartner) APIv3Ready(ctx context.Context) (bool, string) {

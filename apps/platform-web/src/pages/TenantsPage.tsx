@@ -1,4 +1,4 @@
-import { AppstoreOutlined, BankOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, BankOutlined, CalendarOutlined, CopyOutlined, EyeOutlined, FileImageOutlined, KeyOutlined, LockOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import {
   Button,
   Alert,
@@ -27,6 +27,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadProps } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import dayjs, { type Dayjs } from 'dayjs';
 import { PageHeader } from '../components/PageHeader';
 import { StatusTag } from '../components/StatusTag';
@@ -94,6 +95,7 @@ const providerNames: Record<TenantPaymentSettings['provider'], string> = {
 };
 
 export function TenantsPage() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Tenant[]>([]);
   const [meta, setMeta] = useState<PageMeta>({ page: 1, pageSize: 20, total: 0 });
   const [keyword, setKeyword] = useState('');
@@ -113,10 +115,6 @@ export function TenantsPage() {
   const [paymentOperational, setPaymentOperational] = useState({ pendingPayments: 0, pendingRefunds: 0, legacyPendingPayments: 0 });
   const [miniAppOpen, setMiniAppOpen] = useState(false);
   const [miniAppLoading, setMiniAppLoading] = useState(false);
-  const [reviewApproveOpen, setReviewApproveOpen] = useState(false);
-  const [reviewRejectOpen, setReviewRejectOpen] = useState(false);
-  const [reviewRejectNote, setReviewRejectNote] = useState('');
-  const [reviewSaving, setReviewSaving] = useState(false);
   const [form] = Form.useForm<TenantFormValues>();
   const [ownerForm] = Form.useForm<OwnerFormValues>();
   const [expirationForm] = Form.useForm<{ expiresAt?: Dayjs }>();
@@ -321,24 +319,6 @@ export function TenantsPage() {
       messageApi.error(error instanceof Error ? error.message : '支付配置保存失败');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const reviewOnboarding = async (action: 'approve' | 'reject', note?: string) => {
-    if (!selected) return;
-    setReviewSaving(true);
-    try {
-      await tenantService.reviewOnboarding(selected.id, action, note);
-      messageApi.success(action === 'approve' ? '已通过审核' : '已驳回');
-      setReviewApproveOpen(false);
-      setReviewRejectOpen(false);
-      setReviewRejectNote('');
-      paymentForm.setFieldsValue(await tenantService.getPaymentSettings(selected.id));
-      await load();
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '审核操作失败');
-    } finally {
-      setReviewSaving(false);
     }
   };
 
@@ -601,21 +581,12 @@ export function TenantsPage() {
                 <span>主体：{{ MICRO: '小微商户', INDIVIDUAL: '个体工商户', ENTERPRISE: '企业' }[paymentForm.getFieldValue(['onboardingApplication', 'subjectType']) as string] || '—'}；经营者：{paymentForm.getFieldValue(['onboardingApplication', 'operatorName']) || '—'}</span>
                 <span>申请状态：{paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) || '—'}；提交时间：{paymentForm.getFieldValue(['onboardingApplication', 'submittedAt']) || '—'}</span>
                 {paymentForm.getFieldValue(['onboardingApplication', 'applicationStatus']) === 'PENDING_PLATFORM_REVIEW' && (
-                  <Space style={{ marginTop: 8 }}>
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<CheckCircleOutlined />}
-                      onClick={() => setReviewApproveOpen(true)}
-                    >通过</Button>
-                    <Button
-                      danger
-                      size="small"
-                      icon={<CloseCircleOutlined />}
-                      loading={reviewSaving}
-                      onClick={() => { setReviewRejectNote(''); setReviewRejectOpen(true); }}
-                    >驳回</Button>
-                  </Space>
+                  <Button
+                    type="primary"
+                    size="small"
+                    style={{ marginTop: 8 }}
+                    onClick={() => { setPaymentOpen(false); navigate('/onboarding-review'); }}
+                  >前往进件审核查看完整资料</Button>
                 )}
               </Space>
             }
@@ -647,45 +618,6 @@ export function TenantsPage() {
             </> : null}
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        title="确认通过审核"
-        open={reviewApproveOpen}
-        okText="确认通过"
-        onOk={() => void reviewOnboarding('approve')}
-        onCancel={() => setReviewApproveOpen(false)}
-        confirmLoading={reviewSaving}
-      >
-        {selected && paymentForm.getFieldValue('onboardingApplication') && (
-          <div>
-            <p>确认通过以下商户的微信支付进件申请？</p>
-            <p><strong>商户：</strong>{selected.name}</p>
-            <p><strong>商户简称：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'merchantShortName'])}</p>
-            <p><strong>经营者：</strong>{paymentForm.getFieldValue(['onboardingApplication', 'operatorName'])}</p>
-            <p style={{ color: '#999', fontSize: 13 }}>通过后申请状态将更新为“微信支付审核中”。</p>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        title={`驳回进件申请 · ${selected?.name || ''}`}
-        open={reviewRejectOpen}
-        okText="确认驳回"
-        okButtonProps={{ danger: true, disabled: !reviewRejectNote.trim() }}
-        onOk={() => void reviewOnboarding('reject', reviewRejectNote.trim())}
-        onCancel={() => { setReviewRejectOpen(false); setReviewRejectNote(''); }}
-        confirmLoading={reviewSaving}
-      >
-        <p>请填写驳回原因，商户将看到此内容并修改后重新提交：</p>
-        <Input.TextArea
-          rows={4}
-          placeholder="例如：经营者姓名与身份证不一致，请核对后重新提交"
-          value={reviewRejectNote}
-          onChange={(event) => setReviewRejectNote(event.target.value)}
-          maxLength={500}
-          showCount
-        />
       </Modal>
 
       <Modal title={`小程序配置 · ${selected?.name || ''}`} open={miniAppOpen} width={720} okText="保存小程序配置" onCancel={() => setMiniAppOpen(false)} onOk={() => void saveMiniAppSettings()} confirmLoading={saving} okButtonProps={{ disabled: miniAppLoading }}>

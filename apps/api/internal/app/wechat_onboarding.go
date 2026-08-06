@@ -4,14 +4,27 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 
 	wechatcore "github.com/wechatpay-apiv3/wechatpay-go/core"
 )
 
 type wechatOnboardingReviewInput struct {
-	Action string `json:"action"`
-	Note   string `json:"note"`
+	Action             string `json:"action"`
+	Note               string `json:"note"`
+	MaterialsConfirmed bool   `json:"materialsConfirmed"`
+}
+
+type wechatOnboardingReviewDetail struct {
+	TenantID     int64                          `json:"tenantId"`
+	TenantName   string                         `json:"tenantName"`
+	TenantCode   string                         `json:"tenantCode"`
+	Application  wechatOnboardingApplication    `json:"application"`
+	Sensitive    wechatOnboardingSensitiveInput `json:"sensitive"`
+	Media        []onboardingReviewMedia        `json:"media"`
+	MissingItems []string                       `json:"missingItems"`
+	ReviewReady  bool                           `json:"reviewReady"`
 }
 
 type pendingOnboardingItem struct {
@@ -133,6 +146,10 @@ func validateWechatOnboarding(w http.ResponseWriter, input wechatOnboardingAppli
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请完整填写商户、经营地址、经营者和联系方式")
 		return false
 	}
+	if !input.QualificationConfirmed {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请确认所填资料和上传材料真实有效")
+		return false
+	}
 	if !input.IdentityMaterialReady || !input.SettlementAccountReady || !input.BusinessMaterialReady {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "请确认身份证、本人银行卡和经营证明材料均已准备")
 		return false
@@ -239,6 +256,21 @@ func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "驳回时必须填写驳回原因")
 		return
 	}
+	if input.Action == "approve" {
+		if !input.MaterialsConfirmed {
+			writeError(w, http.StatusBadRequest, "MATERIAL_REVIEW_REQUIRED", "请先打开完整商户资料并确认已人工核对证件与照片")
+			return
+		}
+		detail, detailErr := s.loadWechatOnboardingReviewDetail(r, tenantID)
+		if detailErr != nil {
+			handleSQLError(w, detailErr)
+			return
+		}
+		if !detail.ReviewReady {
+			writeError(w, http.StatusConflict, "ONBOARDING_MATERIAL_INCOMPLETE", "进件资料不完整，请驳回并要求商户补充后再审核")
+			return
+		}
+	}
 
 	var currentStatus string
 	err := s.DB.QueryRowContext(r.Context(),
@@ -310,6 +342,139 @@ func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) 
 	s.audit(r.Context(), currentIdentity(r.Context()), auditAction, "tenant", int64String(tenantID),
 		map[string]any{"note": input.Note}, r)
 	s.getTenantPaymentSettings(w, r)
+}
+
+func (s *Server) getWechatOnboardingReviewDetail(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	detail, err := s.loadWechatOnboardingReviewDetail(r, tenantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "进件申请不存在")
+			return
+		}
+		handleSQLError(w, err)
+		return
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), "platform.wechat_onboarding.material.view", "tenant", int64String(tenantID), map[string]any{"review_ready": detail.ReviewReady}, r)
+	w.Header().Set("Cache-Control", "no-store")
+	writeData(w, http.StatusOK, detail)
+}
+
+func (s *Server) loadWechatOnboardingReviewDetail(r *http.Request, tenantID int64) (wechatOnboardingReviewDetail, error) {
+	detail := wechatOnboardingReviewDetail{TenantID: tenantID, Media: []onboardingReviewMedia{}, MissingItems: []string{}}
+	if err := s.DB.QueryRowContext(r.Context(), "SELECT name,COALESCE(code,'') FROM tenants WHERE id=? AND deleted_at IS NULL", tenantID).Scan(&detail.TenantName, &detail.TenantCode); err != nil {
+		return detail, err
+	}
+	application, err := s.loadWechatOnboarding(r, tenantID)
+	if err != nil {
+		return detail, err
+	}
+	detail.Application = application
+	var ciphertext string
+	if err = s.DB.QueryRowContext(r.Context(), "SELECT COALESCE(sensitive_ciphertext,'') FROM wechat_pay_onboarding_applications WHERE tenant_id=?", tenantID).Scan(&ciphertext); err != nil {
+		return detail, err
+	}
+	if ciphertext != "" && s.SensitiveData != nil {
+		detail.Sensitive, err = s.decryptWechatOnboardingSensitiveRaw(r.Context(), tenantID, ciphertext)
+		if err != nil {
+			return detail, err
+		}
+	}
+	mediaByField := map[string]onboardingReviewMedia{}
+	if s.SensitiveData != nil {
+		mediaByField, err = s.loadOnboardingReviewMedia(r.Context(), tenantID)
+		if err != nil {
+			return detail, err
+		}
+	}
+	for _, item := range mediaByField {
+		detail.Media = append(detail.Media, item)
+	}
+	sort.Slice(detail.Media, func(i, j int) bool { return detail.Media[i].FieldName < detail.Media[j].FieldName })
+	detail.MissingItems = missingWechatOnboardingReviewItems(application, detail.Sensitive, mediaByField, ciphertext != "")
+	detail.ReviewReady = len(detail.MissingItems) == 0
+	return detail, nil
+}
+
+func missingWechatOnboardingReviewItems(app wechatOnboardingApplication, sensitive wechatOnboardingSensitiveInput, media map[string]onboardingReviewMedia, sensitiveConfigured bool) []string {
+	missing := []string{}
+	addText := func(value, label string) {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, label)
+		}
+	}
+	addText(app.MerchantShortName, "商户简称")
+	addText(app.SubjectType, "主体类型")
+	addText(app.BusinessScene, "经营场景")
+	addText(app.ServicePhone, "客服电话")
+	addText(app.BusinessAddress, "实际经营地址")
+	addText(app.OperatorName, "经营者／法定代表人")
+	addText(app.ContactPhone, "联系手机号")
+	addText(app.ContactEmail, "联系邮箱")
+	if app.SubjectType != "MICRO" {
+		addText(app.LicenseNumber, "营业执照统一社会信用代码")
+	}
+	if !app.QualificationConfirmed {
+		missing = append(missing, "资料真实有效确认")
+	}
+	if !app.IdentityMaterialReady {
+		missing = append(missing, "身份证材料准备确认")
+	}
+	if !app.SettlementAccountReady {
+		missing = append(missing, "结算账户材料准备确认")
+	}
+	if !app.BusinessMaterialReady {
+		missing = append(missing, "经营场景材料准备确认")
+	}
+	if !sensitiveConfigured {
+		return append(missing, "身份证、结算账户及经营场景安全资料")
+	}
+	for _, item := range []struct{ value, label string }{
+		{sensitive.IDCardName, "身份证姓名"}, {sensitive.IDCardNumber, "身份证号码"}, {sensitive.IDCardAddress, "身份证住址"}, {sensitive.CardPeriodBegin, "身份证有效期开始"},
+		{sensitive.CardPeriodEnd, "身份证有效期结束"}, {sensitive.AccountName, "结算账户名称"}, {sensitive.AccountNumber, "银行账号"},
+		{sensitive.AccountType, "结算账户类型"}, {sensitive.AccountBank, "开户银行"}, {sensitive.StoreName, "门店名称"}, {sensitive.StoreAddressCode, "门店省市编码"},
+		{sensitive.SettlementID, "结算规则 ID"}, {sensitive.QualificationType, "所属行业"},
+	} {
+		addText(item.value, item.label)
+	}
+	if app.SubjectType != "MICRO" {
+		addText(sensitive.MerchantName, "营业执照主体全称")
+		addText(sensitive.LegalPerson, "营业执照经营者／法定代表人")
+	}
+	if sensitive.AccountBank == "其他银行" && sensitive.BankBranchID == "" && sensitive.BankName == "" {
+		missing = append(missing, "其他银行的支行全称或联行号")
+	}
+	requireMedia := func(field, label, expectedMediaID string) {
+		item, ok := media[field]
+		if !ok || item.DataURL == "" || !item.WechatSet || expectedMediaID == "" || item.WechatMediaID != expectedMediaID {
+			missing = append(missing, label+"（需重新上传审核副本）")
+		}
+	}
+	if app.SubjectType != "MICRO" {
+		requireMedia("businessLicenseCopy", "营业执照照片", sensitive.BusinessLicenseCopy)
+	}
+	requireMedia("idCardCopy", "身份证人像面", sensitive.IDCardCopy)
+	requireMedia("idCardNational", "身份证国徽面", sensitive.IDCardNational)
+	requireMedia("storeEntrancePic", "门店门头照片", sensitive.StoreEntrancePic)
+	requireMedia("indoorPic", "店内环境照片", sensitive.IndoorPic)
+	if app.SubjectType != "MICRO" {
+		miniProgramMediaID := ""
+		if len(sensitive.MiniProgramPics) > 0 {
+			miniProgramMediaID = sensitive.MiniProgramPics[0]
+		}
+		requireMedia("miniProgramPic", "小程序经营页面截图", miniProgramMediaID)
+	}
+	if sensitive.QualificationType == "餐饮" {
+		if len(sensitive.QualificationPics) > 0 {
+			requireMedia("qualificationPic", "食品经营等行业资质", sensitive.QualificationPics[0])
+		} else {
+			requireMedia("cashierPic", "收银台照片", sensitive.CashierPic)
+		}
+	}
+	return missing
 }
 
 func (s *Server) listPendingWechatOnboarding(w http.ResponseWriter, r *http.Request) {

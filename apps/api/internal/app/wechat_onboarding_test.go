@@ -1,8 +1,14 @@
 package app
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func completeWechatOnboardingApplication() wechatOnboardingApplication {
@@ -68,7 +74,7 @@ func completeWechatOnboardingSensitiveInput() wechatOnboardingSensitiveInput {
 		AccountType: "BANK_ACCOUNT_TYPE_PERSONAL", AccountName: "张三", AccountNumber: "6222000000000000",
 		AccountBank: "工商银行", BankAddressCode: "120000", StoreName: "张三小吃摊", StoreAddressCode: "120100",
 		StoreEntrancePic: "media-scene", IndoorPic: "media-goods", MiniProgramPics: []string{"media-miniapp"},
-		SettlementID: "716", QualificationType: "餐饮",
+		CashierPic: "media-cashier", SettlementID: "716", QualificationType: "餐饮",
 	}
 }
 
@@ -115,5 +121,71 @@ func TestValidateWechatOnboardingSensitiveBankFields(t *testing.T) {
 	input.BankName = "天津银行股份有限公司测试支行"
 	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err != nil {
 		t.Fatalf("expected other bank with a branch name to be accepted, got %v", err)
+	}
+}
+
+func completeWechatOnboardingReviewMedia() map[string]onboardingReviewMedia {
+	mediaIDs := map[string]string{
+		"businessLicenseCopy": "media-license", "idCardCopy": "media-front", "idCardNational": "media-back",
+		"storeEntrancePic": "media-scene", "indoorPic": "media-goods", "cashierPic": "media-cashier", "miniProgramPic": "media-miniapp",
+	}
+	result := map[string]onboardingReviewMedia{}
+	for field, mediaID := range mediaIDs {
+		result[field] = onboardingReviewMedia{FieldName: field, DataURL: "data:image/png;base64,dGVzdA==", WechatSet: true, WechatMediaID: mediaID}
+	}
+	return result
+}
+
+func TestMissingWechatOnboardingReviewItemsAcceptsCompleteApplication(t *testing.T) {
+	missing := missingWechatOnboardingReviewItems(
+		completeWechatOnboardingApplication(),
+		completeWechatOnboardingSensitiveInput(),
+		completeWechatOnboardingReviewMedia(),
+		true,
+	)
+	if len(missing) != 0 {
+		t.Fatalf("expected complete review material, missing=%v", missing)
+	}
+}
+
+func TestMissingWechatOnboardingReviewItemsRequiresReviewableImageCopy(t *testing.T) {
+	media := completeWechatOnboardingReviewMedia()
+	delete(media, "idCardCopy")
+	missing := missingWechatOnboardingReviewItems(
+		completeWechatOnboardingApplication(),
+		completeWechatOnboardingSensitiveInput(),
+		media,
+		true,
+	)
+	if !slices.Contains(missing, "身份证人像面（需重新上传审核副本）") {
+		t.Fatalf("expected missing review copy to block approval, missing=%v", missing)
+	}
+}
+
+func TestMissingWechatOnboardingReviewItemsReportsEveryEmptySensitiveField(t *testing.T) {
+	missing := missingWechatOnboardingReviewItems(
+		completeWechatOnboardingApplication(),
+		wechatOnboardingSensitiveInput{},
+		map[string]onboardingReviewMedia{},
+		true,
+	)
+	for _, expected := range []string{"身份证姓名", "身份证号码", "结算账户名称", "银行账号", "门店名称", "结算规则 ID"} {
+		if !slices.Contains(missing, expected) {
+			t.Fatalf("expected %q in missing items, got %v", expected, missing)
+		}
+	}
+}
+
+func TestApproveWechatOnboardingRequiresExplicitMaterialConfirmation(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/platform/tenants/5/wechat-onboarding/review", strings.NewReader(`{"action":"approve"}`))
+	routeContext := chi.NewRouteContext()
+	routeContext.URLParams.Add("tenantID", "5")
+	request = request.WithContext(context.WithValue(request.Context(), chi.RouteCtxKey, routeContext))
+
+	(&Server{}).reviewWechatOnboarding(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "MATERIAL_REVIEW_REQUIRED") {
+		t.Fatalf("expected review confirmation to be required before database or provider calls, status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }

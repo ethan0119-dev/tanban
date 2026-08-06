@@ -6,6 +6,7 @@ import type {
   LoginResponse,
   PageResult,
   PaymentSettings,
+  OnboardingReviewDetail,
   PendingOnboardingApplication,
   PlatformAnnouncement,
   AnnouncementValues,
@@ -326,8 +327,10 @@ export const tenantService = {
     (await http.get<TenantMiniAppSettings>(`/platform/tenants/${id}/miniapp-settings`)).data,
   updateMiniAppSettings: async (id: string, values: TenantMiniAppSettings) =>
     (await http.put<TenantMiniAppSettings>(`/platform/tenants/${id}/miniapp-settings`, values)).data,
-  reviewOnboarding: async (id: string, action: 'approve' | 'reject', note?: string) =>
-    (await http.post<TenantPaymentSettings>(`/platform/tenants/${id}/wechat-onboarding/review`, { action, note: note || '' })).data,
+  reviewOnboarding: async (id: string, action: 'approve' | 'reject', note?: string, materialsConfirmed = false) =>
+    (await http.post<TenantPaymentSettings>(`/platform/tenants/${id}/wechat-onboarding/review`, { action, note: note || '', materialsConfirmed })).data,
+  getOnboardingReviewDetail: async (id: string) =>
+    (await http.get<OnboardingReviewDetail>(`/platform/tenants/${id}/wechat-onboarding/review-detail`)).data,
   listPendingOnboarding: async (status?: string) =>
     (await http.get<PendingOnboardingApplication[]>('/platform/wechat-onboarding/pending', status ? { status } : {})).data,
   createOwner: async (id: string, values: { username: string; password?: string; displayName?: string; accountMode?: 'CREATE' | 'EXISTING' }) => {

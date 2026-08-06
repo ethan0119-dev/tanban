@@ -176,6 +176,62 @@ export interface PendingOnboardingApplication {
   updatedAt: string;
 }
 
+export interface OnboardingReviewMedia {
+  fieldName: string;
+  label: string;
+  contentType: string;
+  dataUrl: string;
+  wechatMediaIdConfigured: boolean;
+}
+
+export interface OnboardingReviewDetail {
+  tenantId: number;
+  tenantName: string;
+  tenantCode: string;
+  application: {
+    subjectType: 'MICRO' | 'INDIVIDUAL' | 'ENTERPRISE';
+    businessScene: 'STORE' | 'MOBILE';
+    merchantShortName: string;
+    servicePhone: string;
+    businessAddress: string;
+    operatorName: string;
+    contactPhone: string;
+    contactEmail: string;
+    licenseNumber: string;
+    qualificationConfirmed: boolean;
+    identityMaterialReady: boolean;
+    settlementAccountReady: boolean;
+    businessMaterialReady: boolean;
+    applicationStatus: string;
+    platformNote: string;
+    submittedAt: string;
+    updatedAt: string;
+  };
+  sensitive: {
+    idCardName: string;
+    idCardNumber: string;
+    idCardAddress: string;
+    cardPeriodBegin: string;
+    cardPeriodEnd: string;
+    merchantName: string;
+    legalPerson: string;
+    accountType: string;
+    accountName: string;
+    accountNumber: string;
+    accountBank: string;
+    bankAddressCode: string;
+    bankBranchId: string;
+    bankName: string;
+    storeName: string;
+    storeAddressCode: string;
+    settlementId: string;
+    qualificationType: string;
+  };
+  media: OnboardingReviewMedia[];
+  missingItems: string[];
+  reviewReady: boolean;
+}
+
 export interface TenantMiniAppSettings {
   primaryMode: 'PUBLIC' | 'DEDICATED';
   publicEnabled: boolean;

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 )
 
 const wechatOnboardingPurpose = "wechat-pay-onboarding-sensitive"
+const wechatOnboardingMediaPurpose = "wechat-pay-onboarding-review-media"
 
 type wechatOnboardingSensitiveInput struct {
 	IDCardName          string   `json:"idCardName"`
@@ -40,7 +42,9 @@ type wechatOnboardingSensitiveInput struct {
 	StoreAddressCode    string   `json:"storeAddressCode"`
 	StoreEntrancePic    string   `json:"storeEntrancePic"`
 	IndoorPic           string   `json:"indoorPic"`
+	CashierPic          string   `json:"cashierPic"`
 	MiniProgramPics     []string `json:"miniProgramPics"`
+	QualificationPics   []string `json:"qualificationPics"`
 	SettlementID        string   `json:"settlementId"`
 	QualificationType   string   `json:"qualificationType"`
 }
@@ -67,10 +71,14 @@ func normalizeWechatOnboardingSensitive(input *wechatOnboardingSensitiveInput) {
 	input.StoreAddressCode = strings.TrimSpace(input.StoreAddressCode)
 	input.StoreEntrancePic = strings.TrimSpace(input.StoreEntrancePic)
 	input.IndoorPic = strings.TrimSpace(input.IndoorPic)
+	input.CashierPic = strings.TrimSpace(input.CashierPic)
 	input.SettlementID = strings.TrimSpace(input.SettlementID)
 	input.QualificationType = strings.TrimSpace(input.QualificationType)
 	for i := range input.MiniProgramPics {
 		input.MiniProgramPics[i] = strings.TrimSpace(input.MiniProgramPics[i])
+	}
+	for i := range input.QualificationPics {
+		input.QualificationPics[i] = strings.TrimSpace(input.QualificationPics[i])
 	}
 }
 
@@ -110,6 +118,9 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, sub
 	}
 	if subjectType != "MICRO" && len(input.MiniProgramPics) == 0 {
 		return errors.New("请至少上传一张小程序经营页面截图")
+	}
+	if input.QualificationType == "餐饮" && len(input.QualificationPics) == 0 && input.CashierPic == "" {
+		return errors.New("餐饮商户请上传食品经营资质，或补充收银台照片")
 	}
 	return nil
 }
@@ -165,6 +176,10 @@ func (s *Server) uploadWechatOnboardingMedia(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_ACTIVE", "微信支付服务商尚未启用")
 		return
 	}
+	if s.SensitiveData == nil {
+		writeError(w, http.StatusServiceUnavailable, "SENSITIVE_STORE_NOT_CONFIGURED", "平台尚未配置专用数据加密主密钥")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
 	if err := r.ParseMultipartForm(3 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
@@ -176,15 +191,87 @@ func (s *Server) uploadWechatOnboardingMedia(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
+	fieldName := strings.TrimSpace(r.FormValue("field"))
+	if _, ok := onboardingReviewMediaLabels[fieldName]; !ok {
+		writeError(w, http.StatusBadRequest, "INVALID_MEDIA_FIELD", "不支持的进件图片类型")
+		return
+	}
 	contentType := detectUploadContentType(file, header)
+	contents, err := io.ReadAll(io.LimitReader(file, (2<<20)+1))
+	if err != nil || len(contents) == 0 || len(contents) > 2<<20 {
+		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
+		return
+	}
+	_, _ = file.Seek(0, io.SeekStart)
 	mediaID, err := wechat.UploadApplymentImage(r.Context(), file, filepath.Base(header.Filename), contentType)
 	if err != nil {
 		s.Logger.Warn("upload WeChat onboarding image", "error", err)
 		writeError(w, http.StatusBadGateway, "WECHAT_MEDIA_UPLOAD_FAILED", "图片上传微信支付失败")
 		return
 	}
-	s.audit(r.Context(), currentIdentity(r.Context()), "merchant.wechat_onboarding.media.upload", "tenant", int64String(currentIdentity(r.Context()).TenantID), map[string]any{"content_type": contentType}, r)
+	actor := currentIdentity(r.Context())
+	ciphertext, err := s.SensitiveData.Encrypt(contents, actor.TenantID, wechatOnboardingMediaPurpose+":"+fieldName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ENCRYPTION_FAILED", "审核图片加密失败")
+		return
+	}
+	if _, err = s.DB.ExecContext(r.Context(), `INSERT INTO wechat_pay_onboarding_review_media(
+		tenant_id,field_name,ordinal_no,content_type,original_filename,ciphertext,key_version,wechat_media_id
+	) VALUES(?,?,0,?,?,?,'v1',?)
+	ON DUPLICATE KEY UPDATE content_type=VALUES(content_type),original_filename=VALUES(original_filename),
+		ciphertext=VALUES(ciphertext),key_version='v1',wechat_media_id=VALUES(wechat_media_id)`,
+		actor.TenantID, fieldName, contentType, filepath.Base(header.Filename), ciphertext, mediaID); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	s.audit(r.Context(), actor, "merchant.wechat_onboarding.media.upload", "tenant", int64String(actor.TenantID), map[string]any{"content_type": contentType, "field": fieldName}, r)
 	writeData(w, http.StatusCreated, map[string]string{"mediaId": mediaID})
+}
+
+var onboardingReviewMediaLabels = map[string]string{
+	"businessLicenseCopy": "营业执照",
+	"idCardCopy":          "身份证人像面",
+	"idCardNational":      "身份证国徽面",
+	"storeEntrancePic":    "门店门头",
+	"indoorPic":           "店内环境",
+	"cashierPic":          "收银台",
+	"miniProgramPic":      "小程序经营页面",
+	"qualificationPic":    "行业特殊资质",
+}
+
+type onboardingReviewMedia struct {
+	FieldName     string `json:"fieldName"`
+	Label         string `json:"label"`
+	ContentType   string `json:"contentType"`
+	DataURL       string `json:"dataUrl"`
+	WechatSet     bool   `json:"wechatMediaIdConfigured"`
+	WechatMediaID string `json:"-"`
+}
+
+func (s *Server) loadOnboardingReviewMedia(ctx context.Context, tenantID int64) (map[string]onboardingReviewMedia, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT field_name,content_type,ciphertext,wechat_media_id
+		FROM wechat_pay_onboarding_review_media WHERE tenant_id=? ORDER BY field_name,ordinal_no`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]onboardingReviewMedia{}
+	for rows.Next() {
+		var fieldName, contentType, ciphertext, mediaID string
+		if err = rows.Scan(&fieldName, &contentType, &ciphertext, &mediaID); err != nil {
+			return nil, err
+		}
+		plaintext, decryptErr := s.SensitiveData.Decrypt(ciphertext, tenantID, wechatOnboardingMediaPurpose+":"+fieldName)
+		if decryptErr != nil {
+			return nil, decryptErr
+		}
+		result[fieldName] = onboardingReviewMedia{
+			FieldName: fieldName, Label: onboardingReviewMediaLabels[fieldName], ContentType: contentType,
+			DataURL:   "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(plaintext),
+			WechatSet: mediaID != "", WechatMediaID: mediaID,
+		}
+	}
+	return result, rows.Err()
 }
 
 func detectUploadContentType(file multipart.File, header *multipart.FileHeader) string {
@@ -199,6 +286,14 @@ func detectUploadContentType(file multipart.File, header *multipart.FileHeader) 
 }
 
 func (s *Server) decryptWechatOnboardingSensitive(ctx context.Context, tenantID int64, ciphertext, subjectType string) (wechatOnboardingSensitiveInput, error) {
+	input, err := s.decryptWechatOnboardingSensitiveRaw(ctx, tenantID, ciphertext)
+	if err != nil {
+		return input, err
+	}
+	return input, validateWechatOnboardingSensitive(input, subjectType)
+}
+
+func (s *Server) decryptWechatOnboardingSensitiveRaw(ctx context.Context, tenantID int64, ciphertext string) (wechatOnboardingSensitiveInput, error) {
 	if s.SensitiveData == nil {
 		return wechatOnboardingSensitiveInput{}, errors.New("sensitive store is not configured")
 	}
@@ -210,7 +305,7 @@ func (s *Server) decryptWechatOnboardingSensitive(ctx context.Context, tenantID 
 	if err = json.Unmarshal(plaintext, &input); err != nil {
 		return input, err
 	}
-	return input, validateWechatOnboardingSensitive(input, subjectType)
+	return input, nil
 }
 
 func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (provider.WeChatApplymentResult, error) {
@@ -301,9 +396,13 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 		subjectInfo["micro_biz_info"] = microBizInfo
 	} else {
 		subjectInfo["business_license_info"] = map[string]any{"license_copy": sensitive.BusinessLicenseCopy, "license_number": app.LicenseNumber, "merchant_name": sensitive.MerchantName, "legal_person": sensitive.LegalPerson}
+		indoorPics := []string{sensitive.IndoorPic}
+		if sensitive.CashierPic != "" {
+			indoorPics = append(indoorPics, sensitive.CashierPic)
+		}
 		businessInfo["sales_info"] = map[string]any{
 			"sales_scenes_type": []string{"SALES_SCENES_STORE", "SALES_SCENES_MINI_PROGRAM"},
-			"biz_store_info":    map[string]any{"biz_store_name": sensitive.StoreName, "biz_address_code": sensitive.StoreAddressCode, "biz_store_address": app.BusinessAddress, "store_entrance_pic": []string{sensitive.StoreEntrancePic}, "indoor_pic": []string{sensitive.IndoorPic}},
+			"biz_store_info":    map[string]any{"biz_store_name": sensitive.StoreName, "biz_address_code": sensitive.StoreAddressCode, "biz_store_address": app.BusinessAddress, "store_entrance_pic": []string{sensitive.StoreEntrancePic}, "indoor_pic": indoorPics},
 			"mini_program_info": map[string]any{"mini_program_appid": s.Config.WeChatPayPartner.ServiceProviderAppID, "mini_program_pics": sensitive.MiniProgramPics},
 		}
 	}
@@ -322,12 +421,16 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 	if sensitive.BankName != "" {
 		bankAccountInfo["bank_name"] = sensitive.BankName
 	}
+	settlementInfo := map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType}
+	if len(sensitive.QualificationPics) > 0 {
+		settlementInfo["qualifications"] = sensitive.QualificationPics
+	}
 	payload := map[string]any{
 		"business_code":     businessCode,
 		"contact_info":      contactInfo,
 		"subject_info":      subjectInfo,
 		"business_info":     businessInfo,
-		"settlement_info":   map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType},
+		"settlement_info":   settlementInfo,
 		"bank_account_info": bankAccountInfo,
 	}
 	result, err := wechat.SubmitApplyment(ctx, payload)
