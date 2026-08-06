@@ -113,8 +113,11 @@ export function WechatPayOnboardingCard() {
       const result = submit
         ? await api.post<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding/submit', values)
         : await api.put<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding', values);
-      setApplication(result);
-      form.setFieldsValue(result);
+      // Preserve exactly what the merchant submitted. Server-owned fields such
+      // as status still come from the response, but a partial/default response
+      // must never blank the visible draft after a successful save.
+      setApplication({ ...result, ...values });
+      form.setFieldsValue(values);
       messageApi.success(submit ? '申请已提交给摊伴审核' : '进件资料草稿已保存');
     } catch (error) {
       messageApi.error(errorMessage(error));
