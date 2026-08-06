@@ -1,6 +1,6 @@
 CREATE TABLE wechat_pay_onboarding_review_media (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  tenant_id BIGINT UNSIGNED NOT NULL,
   field_name VARCHAR(64) NOT NULL,
   ordinal_no INT NOT NULL DEFAULT 0,
   content_type VARCHAR(64) NOT NULL,

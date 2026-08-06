@@ -14,7 +14,7 @@ func TestWechatOnboardingReviewMediaMigrationEncryptsTenantScopedCopies(t *testi
 	content := string(up)
 	for _, expected := range []string{
 		"CREATE TABLE wechat_pay_onboarding_review_media",
-		"tenant_id BIGINT NOT NULL",
+		"tenant_id BIGINT UNSIGNED NOT NULL",
 		"field_name VARCHAR(64) NOT NULL",
 		"ciphertext LONGTEXT NOT NULL",
 		"wechat_media_id VARCHAR(1024) NOT NULL",
