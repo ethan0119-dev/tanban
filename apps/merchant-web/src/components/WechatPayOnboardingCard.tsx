@@ -79,6 +79,7 @@ export function WechatPayOnboardingCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSensitive, setSavingSensitive] = useState(false);
+  const [editingSensitive, setEditingSensitive] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const subjectType = Form.useWatch('subjectType', form);
   const businessScene = Form.useWatch('businessScene', form);
@@ -148,6 +149,7 @@ export function WechatPayOnboardingCard() {
       setApplication(result);
       messageApi.success('敏感资料已使用租户专用上下文加密保存');
       sensitiveForm.resetFields();
+      setEditingSensitive(false);
     } catch (error) {
       messageApi.error(errorMessage(error));
     } finally {
@@ -277,8 +279,15 @@ export function WechatPayOnboardingCard() {
       </Form>
 
       {application.sensitiveCollectionEnabled && !locked && <Card type="inner" title={<Space><FileProtectOutlined />安全进件资料</Space>} style={{ marginTop: 20 }}>
-        <Alert type="info" showIcon message="先保存上方基础资料，再填写本区域" description="证件号和结算账户只以密文落库；证件与门店图片直接上传微信支付。重新保存会整体替换上一版密文。" style={{ marginBottom: 16 }} />
-        <Form form={sensitiveForm} layout="vertical" initialValues={{ accountType: 'BANK_ACCOUNT_TYPE_PERSONAL' }}>
+        {application.sensitiveConfigured && !editingSensitive ? <Alert
+          type="success"
+          showIcon
+          message="安全资料已加密保存，可以直接提交平台预审"
+          description="身份证、银行卡和图片不会回显，这是安全保护，不代表草稿丢失。只有资料需要变更时才重新填写并整体替换。"
+          action={<Button onClick={() => setEditingSensitive(true)}>重新填写并替换</Button>}
+        /> : <>
+          <Alert type="info" showIcon message="先保存上方基础资料，再填写本区域" description="证件号和结算账户只以密文落库；证件与门店图片直接上传微信支付。重新保存会整体替换上一版密文。" style={{ marginBottom: 16 }} />
+          <Form form={sensitiveForm} layout="vertical" initialValues={{ accountType: 'BANK_ACCOUNT_TYPE_PERSONAL' }}>
           <Typography.Title level={5}>营业执照与身份证</Typography.Title>
           <Row gutter={16}>
             {subjectType !== 'MICRO' && <Col xs={24} md={12}><Form.Item name="merchantName" label="营业执照主体全称" rules={[{ required: true }]}><Input /></Form.Item></Col>}
@@ -312,8 +321,12 @@ export function WechatPayOnboardingCard() {
             <Col xs={24} md={12}><Form.Item name="settlementId" label="微信结算规则 ID" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="qualificationType" label="所属行业名称" rules={[{ required: true }]}><Input placeholder="必须与结算规则表的行业名称一致" /></Form.Item></Col>
           </Row>
-          <Button type="primary" loading={savingSensitive} onClick={() => void saveSensitive()}>加密保存安全资料</Button>
-        </Form>
+            <Space>
+              <Button type="primary" loading={savingSensitive} onClick={() => void saveSensitive()}>加密保存安全资料</Button>
+              {application.sensitiveConfigured && <Button onClick={() => { sensitiveForm.resetFields(); setEditingSensitive(false); }}>取消替换</Button>}
+            </Space>
+          </Form>
+        </>}
       </Card>}
     </Card>
   );
