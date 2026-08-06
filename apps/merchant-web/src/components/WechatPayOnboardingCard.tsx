@@ -83,6 +83,7 @@ export function WechatPayOnboardingCard() {
   const [messageApi, contextHolder] = message.useMessage();
   const subjectType = Form.useWatch('subjectType', form);
   const businessScene = Form.useWatch('businessScene', form);
+  const expectedCateringSettlementId = subjectType === 'MICRO' ? '703' : subjectType === 'ENTERPRISE' ? '716' : '719';
   const status = statusMeta[application.applicationStatus] || statusMeta.DRAFT;
   const locked = useMemo(() => ['PENDING_PLATFORM_REVIEW', 'SUBMITTED_TO_WECHAT', 'FINISHED'].includes(application.applicationStatus), [application.applicationStatus]);
 
@@ -326,8 +327,22 @@ export function WechatPayOnboardingCard() {
             <Col xs={24} md={12}>{mediaField('storeEntrancePic', subjectType === 'MICRO' && businessScene === 'MOBILE' ? '经营现场全景照片' : '门店门头照片')}</Col>
             <Col xs={24} md={12}>{mediaField('indoorPic', subjectType === 'MICRO' && businessScene === 'MOBILE' ? '商品／服务现场照片' : '店内环境照片')}</Col>
             {subjectType !== 'MICRO' && <Col xs={24} md={12}>{mediaField('miniProgramPic', '小程序经营页面截图')}</Col>}
-            <Col xs={24} md={12}><Form.Item name="settlementId" label="微信结算规则 ID" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="qualificationType" label="所属行业名称" rules={[{ required: true }]}><Input placeholder="必须与结算规则表的行业名称一致" /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item
+              name="settlementId"
+              label="微信结算规则 ID"
+              extra="个体餐饮填写 719；这里不是餐饮的行业 ID 1"
+              rules={[
+                { required: true },
+                { pattern: /^\d+$/, message: '结算规则 ID 只能填写数字' },
+                { validator: async (_, value) => {
+                  const industry = String(sensitiveForm.getFieldValue('qualificationType') || '').trim();
+                  if (industry === '餐饮' && String(value || '').trim() !== expectedCateringSettlementId) {
+                    throw new Error(`${subjectType === 'MICRO' ? '小微' : subjectType === 'ENTERPRISE' ? '企业' : '个体工商户'}餐饮的结算规则 ID 应为 ${expectedCateringSettlementId}`);
+                  }
+                } },
+              ]}
+            ><Input placeholder={`餐饮场景填写 ${expectedCateringSettlementId}`} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="qualificationType" label="所属行业名称" extra="餐饮商户填写“餐饮”，不要填写行业 ID 1" rules={[{ required: true }]}><Input placeholder="必须与微信结算规则表的行业名称完全一致" /></Form.Item></Col>
           </Row>
             <Space>
               <Button type="primary" loading={savingSensitive} onClick={() => void saveSensitive()}>加密保存安全资料</Button>

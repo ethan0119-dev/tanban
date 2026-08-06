@@ -2,8 +2,11 @@ package app
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
+
+	wechatcore "github.com/wechatpay-apiv3/wechatpay-go/core"
 )
 
 type wechatOnboardingReviewInput struct {
@@ -258,7 +261,15 @@ func (s *Server) reviewWechatOnboarding(w http.ResponseWriter, r *http.Request) 
 	if input.Action == "approve" {
 		if _, submitErr := s.submitWechatApplyment(r.Context(), tenantID); submitErr != nil {
 			s.Logger.Warn("submit WeChat Pay applyment", "tenant_id", tenantID, "error", submitErr)
-			writeError(w, http.StatusBadGateway, "WECHAT_APPLYMENT_SUBMIT_FAILED", "提交微信支付进件失败，请核对资料或平台配置")
+			message := "提交微信支付进件失败，请核对资料或平台配置"
+			var apiErr *wechatcore.APIError
+			if errors.As(submitErr, &apiErr) && strings.TrimSpace(apiErr.Message) != "" {
+				message = "微信支付进件失败：" + strings.TrimSpace(apiErr.Message)
+				if strings.TrimSpace(apiErr.Code) != "" {
+					message += "（" + strings.TrimSpace(apiErr.Code) + "）"
+				}
+			}
+			writeError(w, http.StatusBadGateway, "WECHAT_APPLYMENT_SUBMIT_FAILED", message)
 			return
 		}
 		newAppStatus = "SUBMITTED_TO_WECHAT"
