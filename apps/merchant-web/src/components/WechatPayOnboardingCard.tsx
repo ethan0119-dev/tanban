@@ -138,11 +138,12 @@ export function WechatPayOnboardingCard() {
 
   const saveSensitive = async () => {
     const values = await sensitiveForm.validateFields();
+    const { miniProgramPic, ...sensitiveValues } = values;
     setSavingSensitive(true);
     try {
       const result = await api.put<WechatPayOnboardingApplication>('/merchant/wechat-pay-onboarding/sensitive', {
-        ...values,
-        miniProgramPics: [values.miniProgramPic],
+        ...sensitiveValues,
+        miniProgramPics: miniProgramPic ? [miniProgramPic] : [],
       });
       setApplication(result);
       messageApi.success('敏感资料已使用租户专用上下文加密保存');
