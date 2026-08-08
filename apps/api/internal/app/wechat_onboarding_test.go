@@ -74,7 +74,7 @@ func completeWechatOnboardingSensitiveInput() wechatOnboardingSensitiveInput {
 		AccountType: "BANK_ACCOUNT_TYPE_PERSONAL", AccountName: "张三", AccountNumber: "6222000000000000",
 		AccountBank: "工商银行", BankAddressCode: "120000", StoreName: "张三小吃摊", StoreAddressCode: "120100",
 		StoreEntrancePic: "media-scene", IndoorPic: "media-goods", MiniProgramPics: []string{"media-miniapp"},
-		CashierPic: "media-cashier", SettlementID: "716", QualificationType: "餐饮",
+		CashierPic: "media-cashier", SettlementID: "719", QualificationType: "餐饮",
 	}
 }
 
@@ -84,6 +84,7 @@ func TestValidateWechatOnboardingSensitiveSupportsMicroWithoutLicense(t *testing
 	input.MerchantName = ""
 	input.LegalPerson = ""
 	input.MiniProgramPics = nil
+	input.SettlementID = "703"
 	if err := validateWechatOnboardingSensitive(input, "MICRO"); err != nil {
 		t.Fatalf("expected valid micro sensitive input, got %v", err)
 	}
@@ -93,11 +94,90 @@ func TestValidateWechatOnboardingSensitiveSupportsMicroWithoutLicense(t *testing
 	}
 }
 
+func TestWechatOnboardingIndustryRulesMatchSubjectAndQualificationRequirements(t *testing.T) {
+	for subjectType, settlementID := range map[string]string{"MICRO": "703", "INDIVIDUAL": "719", "ENTERPRISE": "716"} {
+		if got := expectedWechatSettlementID(subjectType); got != settlementID {
+			t.Fatalf("expected %s settlement ID %s, got %s", subjectType, settlementID, got)
+		}
+	}
+	restaurant, ok := selectedOnboardingIndustryRule("INDIVIDUAL", "719", "餐饮")
+	if !ok || restaurant.QualificationMode != "ALTERNATIVE" {
+		t.Fatalf("expected individual restaurant alternative qualification rule, got %#v", restaurant)
+	}
+	retail, ok := selectedOnboardingIndustryRule("INDIVIDUAL", "719", "零售批发/生活娱乐/其他")
+	if !ok || retail.QualificationMode != "NONE" {
+		t.Fatalf("expected retail to omit qualifications, got %#v", retail)
+	}
+	if _, ok = selectedOnboardingIndustryRule("INDIVIDUAL", "716", "餐饮"); ok {
+		t.Fatal("enterprise settlement ID must not be accepted for an individual merchant")
+	}
+}
+
+func TestValidateWechatOnboardingSensitiveRequiresIndustrySpecificQualification(t *testing.T) {
+	input := completeWechatOnboardingSensitiveInput()
+	input.QualificationType = "私立/民营医院/诊所"
+	input.QualificationPics = nil
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err == nil || !strings.Contains(err.Error(), "必须上传") {
+		t.Fatalf("expected medical qualification to be required, got %v", err)
+	}
+	input.QualificationPics = []string{"media-medical-license"}
+	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err != nil {
+		t.Fatalf("expected medical qualification to pass after upload, got %v", err)
+	}
+}
+
+func TestValidateWechatOnboardingAdminUpdateRejectsMismatchedSettlementRule(t *testing.T) {
+	input := wechatOnboardingAdminUpdateInput{Application: completeWechatOnboardingApplication(), Sensitive: completeWechatOnboardingSensitiveInput()}
+	input.Sensitive.SettlementID = "716"
+	if err := validateWechatOnboardingAdminUpdate(input); err == nil || !strings.Contains(err.Error(), "719") {
+		t.Fatalf("expected individual settlement mismatch, got %v", err)
+	}
+}
+
+func TestBuildWechatOnboardingSettlementInfoOmitsUnneededQualifications(t *testing.T) {
+	input := completeWechatOnboardingSensitiveInput()
+	input.QualificationType = "零售批发/生活娱乐/其他"
+	input.QualificationPics = []string{"media-that-must-not-be-sent"}
+	settlement, err := buildWechatOnboardingSettlementInfo("INDIVIDUAL", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := settlement["qualifications"]; exists {
+		t.Fatalf("qualifications must be omitted for an industry that does not require them: %#v", settlement)
+	}
+}
+
+func TestBuildWechatOnboardingSettlementInfoUsesRestaurantScenePhotoAlternative(t *testing.T) {
+	input := completeWechatOnboardingSensitiveInput()
+	input.QualificationPics = nil
+	settlement, err := buildWechatOnboardingSettlementInfo("INDIVIDUAL", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualifications, ok := settlement["qualifications"].([]string)
+	if !ok || !slices.Equal(qualifications, []string{"media-scene", "media-goods", "media-cashier"}) {
+		t.Fatalf("expected restaurant scene-photo alternative, got %#v", settlement["qualifications"])
+	}
+}
+
 func TestValidateWechatOnboardingSensitiveStillRequiresRegisteredBusinessLicense(t *testing.T) {
 	input := completeWechatOnboardingSensitiveInput()
 	input.BusinessLicenseCopy = ""
 	if err := validateWechatOnboardingSensitive(input, "INDIVIDUAL"); err == nil {
 		t.Fatal("expected registered merchant license image to remain required")
+	}
+}
+
+func TestValidateWechatOnboardingSensitiveRequiresCorporateAccountForEnterprise(t *testing.T) {
+	input := completeWechatOnboardingSensitiveInput()
+	input.SettlementID = "716"
+	input.AccountType = "BANK_ACCOUNT_TYPE_PERSONAL"
+	if err := validateWechatOnboardingSensitive(input, "ENTERPRISE"); err == nil || !strings.Contains(err.Error(), "对公") {
+		t.Fatalf("expected enterprise personal account to be rejected, got %v", err)
+	}
+	input.AccountType = "BANK_ACCOUNT_TYPE_CORPORATE"
+	if err := validateWechatOnboardingSensitive(input, "ENTERPRISE"); err != nil {
+		t.Fatalf("expected enterprise corporate account to pass, got %v", err)
 	}
 }
 

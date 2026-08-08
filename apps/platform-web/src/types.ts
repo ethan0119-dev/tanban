@@ -184,6 +184,33 @@ export interface OnboardingReviewMedia {
   wechatMediaIdConfigured: boolean;
 }
 
+export interface OnboardingFieldMapping {
+  localField: string;
+  label: string;
+  wechatField: string;
+  wechatPath: string;
+  sensitive: boolean;
+  note?: string;
+}
+
+export interface OnboardingMediaRequirement {
+  fieldName: string;
+  label: string;
+  wechatField: string;
+  wechatPath: string;
+  required: boolean;
+  requirement: string;
+}
+
+export interface OnboardingIndustryRequirement {
+  subjectType: string;
+  settlementId: string;
+  industry: string;
+  qualificationMode: 'NONE' | 'REQUIRED' | 'ALTERNATIVE' | 'CONDITIONAL';
+  requirement: string;
+  sourceUrl: string;
+}
+
 export interface OnboardingReviewDetail {
   tenantId: number;
   tenantName: string;
@@ -226,9 +253,23 @@ export interface OnboardingReviewDetail {
     storeAddressCode: string;
     settlementId: string;
     qualificationType: string;
+    idCardCopy: string;
+    idCardNational: string;
+    businessLicenseCopy: string;
+    storeEntrancePic: string;
+    indoorPic: string;
+    cashierPic: string;
+    miniProgramPics: string[];
+    qualificationPics: string[];
   };
   media: OnboardingReviewMedia[];
+  fieldMappings: OnboardingFieldMapping[];
+  mediaRequirements: OnboardingMediaRequirement[];
+  industryOptions: OnboardingIndustryRequirement[];
+  selectedIndustryRequirement?: OnboardingIndustryRequirement;
   missingItems: string[];
+  warnings: string[];
+  submissionBlockers: string[];
   reviewReady: boolean;
 }
 

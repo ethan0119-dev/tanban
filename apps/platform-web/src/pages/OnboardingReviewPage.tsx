@@ -1,10 +1,10 @@
-import { CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Checkbox, Col, Descriptions, Empty, Image, Input, Modal, Row, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
+import { CheckCircleOutlined, CloseCircleOutlined, EditOutlined, ExclamationCircleOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Divider, Empty, Form, Image, Input, Modal, Radio, Row, Select, Space, Spin, Table, Tabs, Tag, Typography, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { tenantService } from '../lib/services';
-import type { OnboardingReviewDetail, PendingOnboardingApplication } from '../types';
+import type { OnboardingFieldMapping, OnboardingReviewDetail, PendingOnboardingApplication } from '../types';
 
 const subjectTypeText: Record<string, string> = {
   MICRO: '小微商户',
@@ -27,6 +27,7 @@ const statusColor: Record<string, string> = {
 };
 
 export function OnboardingReviewPage() {
+	const [editForm] = Form.useForm<Pick<OnboardingReviewDetail, 'application' | 'sensitive'>>();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [pendingItems, setPendingItems] = useState<PendingOnboardingApplication[]>([]);
   const [historyItems, setHistoryItems] = useState<PendingOnboardingApplication[]>([]);
@@ -40,7 +41,13 @@ export function OnboardingReviewPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<OnboardingReviewDetail>();
   const [materialsConfirmed, setMaterialsConfirmed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [uploadingField, setUploadingField] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
+  const editedSubjectType = Form.useWatch(['application', 'subjectType'], editForm);
+  const editedSettlementId = Form.useWatch(['sensitive', 'settlementId'], editForm);
+  const editedIndustry = Form.useWatch(['sensitive', 'qualificationType'], editForm);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +80,7 @@ export function OnboardingReviewPage() {
       setDetailOpen(false);
       setDetail(undefined);
       setMaterialsConfirmed(false);
+      setEditing(false);
       void load();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '操作失败');
@@ -91,14 +99,60 @@ export function OnboardingReviewPage() {
     setDetailOpen(true);
     setDetail(undefined);
     setMaterialsConfirmed(false);
+    setEditing(false);
     setDetailLoading(true);
     try {
-      setDetail(await tenantService.getOnboardingReviewDetail(String(record.tenantId)));
+      const loaded = await tenantService.getOnboardingReviewDetail(String(record.tenantId));
+      setDetail(loaded);
+      editForm.setFieldsValue({ application: loaded.application, sensitive: loaded.sensitive });
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '加载完整进件资料失败');
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const saveDetail = async () => {
+    if (!reviewing) return;
+    const values = await editForm.validateFields();
+    setEditSaving(true);
+    try {
+      const updated = await tenantService.updateOnboardingReviewDetail(String(reviewing.tenantId), values);
+      setDetail(updated);
+      editForm.setFieldsValue({ application: updated.application, sensitive: updated.sensitive });
+      setEditing(false);
+      setMaterialsConfirmed(false);
+      messageApi.success('进件资料已加密保存并重新校验');
+      void load();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '保存进件资料失败');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const replaceMedia = (field: string) => async (options: { file: unknown; onSuccess?: (body?: unknown) => void; onError?: (error: Error) => void }) => {
+    if (!reviewing) return;
+    setUploadingField(field);
+    try {
+      const updated = await tenantService.uploadOnboardingReviewMedia(String(reviewing.tenantId), field, options.file as File);
+      setDetail(updated);
+      editForm.setFieldsValue({ application: updated.application, sensitive: updated.sensitive });
+      setMaterialsConfirmed(false);
+      options.onSuccess?.(updated);
+      messageApi.success('图片已重新上传微信并替换审核副本');
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error : new Error('上传失败'));
+      messageApi.error(error instanceof Error ? error.message : '替换图片失败');
+    } finally {
+      setUploadingField('');
+    }
+  };
+
+  const mappingExtra = (mappingByField: Record<string, OnboardingFieldMapping>, localField: string) => {
+    const mapping = mappingByField[localField];
+    if (!mapping) return undefined;
+    return <span>微信字段：<Typography.Text code>{mapping.wechatPath}</Typography.Text>{mapping.sensitive && <Tag color="warning" style={{ marginLeft: 6 }}>加密传输</Tag>}</span>;
   };
 
   const openReject = (record: PendingOnboardingApplication) => {
@@ -159,6 +213,11 @@ export function OnboardingReviewPage() {
     { title: '审核时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 160 },
   ];
 
+  const fieldMappingByLocalField = Object.fromEntries((detail?.fieldMappings || []).map((item) => [item.localField, item]));
+  const availableIndustries = (detail?.industryOptions || []).filter((item) => item.subjectType === (editedSubjectType || detail?.application.subjectType));
+  const selectedIndustryRequirement = availableIndustries.find((item) => item.settlementId === editedSettlementId && item.industry === editedIndustry) || (!editing ? detail?.selectedIndustryRequirement : undefined);
+  const mediaByField = Object.fromEntries((detail?.media || []).map((item) => [item.fieldName, item]));
+
   return (
     <div>
       {contextHolder}
@@ -209,14 +268,18 @@ export function OnboardingReviewPage() {
       <Modal
         title={`进件资料 · ${detail?.tenantName || reviewing?.tenantName || ''}`}
         open={detailOpen}
-        width={1080}
-        onCancel={() => { setDetailOpen(false); setMaterialsConfirmed(false); }}
+        width={1180}
+        onCancel={() => { setDetailOpen(false); setMaterialsConfirmed(false); setEditing(false); }}
         footer={detail ? <Space>
           <Button danger onClick={() => { setRejectNote(''); setRejectOpen(true); }}>驳回补充</Button>
+          {editing ? <>
+            <Button onClick={() => { setEditing(false); editForm.setFieldsValue({ application: detail.application, sensitive: detail.sensitive }); }}>取消编辑</Button>
+            <Button type="primary" icon={<SaveOutlined />} loading={editSaving} onClick={() => void saveDetail()}>保存并重新校验</Button>
+          </> : <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>编辑全部资料</Button>}
           <Button
             type="primary"
             icon={<CheckCircleOutlined />}
-            disabled={!detail.reviewReady || !materialsConfirmed}
+            disabled={editing || !detail.reviewReady || !materialsConfirmed}
             onClick={() => reviewing && openApprove(reviewing)}
           >确认通过并递交微信</Button>
         </Space> : null}
@@ -228,70 +291,114 @@ export function OnboardingReviewPage() {
             message={`系统发现 ${detail.missingItems.length} 项资料缺失，当前不能通过`}
             description={<ul style={{ marginBottom: 0 }}>{detail.missingItems.map((item) => <li key={item}>{item}</li>)}</ul>}
           />}
+          {detail.submissionBlockers.length > 0 && <Alert
+            type="error"
+            showIcon
+            message="当前存在平台权限阻断，不能递交微信"
+            description={<ul style={{ marginBottom: 0 }}>{detail.submissionBlockers.map((item) => <li key={item}>{item}</li>)}</ul>}
+          />}
+          {detail.warnings.map((item) => <Alert key={item} type="warning" showIcon message={item} />)}
           <Alert type="warning" showIcon message="敏感资料仅限进件审核使用" description="本次查看已记录安全审计日志。请勿截图、下载或向无关人员传播身份证、银行卡和经营材料。" />
 
-          <div>
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="租户编号">{detail.tenantCode || '—'}</Descriptions.Item>
+            <Descriptions.Item label="申请状态">{statusText[detail.application.applicationStatus] || detail.application.applicationStatus}</Descriptions.Item>
+            <Descriptions.Item label="提交时间">{detail.application.submittedAt || '—'}</Descriptions.Item>
+            <Descriptions.Item label="最近更新时间">{detail.application.updatedAt || '—'}</Descriptions.Item>
+          </Descriptions>
+
+          <Form form={editForm} layout="vertical" disabled={!editing} style={{ width: '100%' }}>
             <Typography.Title level={5}>主体与联系方式</Typography.Title>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="租户编号">{detail.tenantCode || '—'}</Descriptions.Item>
-              <Descriptions.Item label="申请状态">{statusText[detail.application.applicationStatus] || detail.application.applicationStatus}</Descriptions.Item>
-              <Descriptions.Item label="主体类型">{subjectTypeText[detail.application.subjectType] || detail.application.subjectType}</Descriptions.Item>
-              <Descriptions.Item label="经营场景">{detail.application.businessScene === 'MOBILE' ? '流动摊位／便民服务' : '固定门店'}</Descriptions.Item>
-              <Descriptions.Item label="商户简称">{detail.application.merchantShortName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="客服电话">{detail.application.servicePhone || '—'}</Descriptions.Item>
-              <Descriptions.Item label="实际经营地址" span={2}>{detail.application.businessAddress || '—'}</Descriptions.Item>
-              <Descriptions.Item label="经营者／法定代表人">{detail.application.operatorName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="联系电话">{detail.application.contactPhone || '—'}</Descriptions.Item>
-              <Descriptions.Item label="联系邮箱">{detail.application.contactEmail || '—'}</Descriptions.Item>
-              <Descriptions.Item label="统一社会信用代码">{detail.application.licenseNumber || '不适用'}</Descriptions.Item>
-              <Descriptions.Item label="资料真实性确认">{detail.application.qualificationConfirmed ? '已确认' : '未确认'}</Descriptions.Item>
-              <Descriptions.Item label="身份证材料">{detail.application.identityMaterialReady ? '已确认备齐' : '未确认'}</Descriptions.Item>
-              <Descriptions.Item label="结算账户材料">{detail.application.settlementAccountReady ? '已确认备齐' : '未确认'}</Descriptions.Item>
-              <Descriptions.Item label="经营场景材料">{detail.application.businessMaterialReady ? '已确认备齐' : '未确认'}</Descriptions.Item>
-              <Descriptions.Item label="提交时间">{detail.application.submittedAt || '—'}</Descriptions.Item>
-              <Descriptions.Item label="最近更新时间">{detail.application.updatedAt || '—'}</Descriptions.Item>
-              {detail.application.platformNote && <Descriptions.Item label="平台反馈" span={2}>{detail.application.platformNote}</Descriptions.Item>}
-            </Descriptions>
-          </div>
+            <Row gutter={16}>
+              <Col xs={24} md={12}><Form.Item name={['application', 'subjectType']} label="主体类型" extra={mappingExtra(fieldMappingByLocalField, 'application.subjectType')} rules={[{ required: true }]}><Select onChange={(value) => {
+                editForm.setFieldValue(['sensitive', 'settlementId'], value === 'MICRO' ? '703' : value === 'ENTERPRISE' ? '716' : '719');
+                editForm.setFieldValue(['sensitive', 'qualificationType'], undefined);
+              }} options={[{ value: 'MICRO', label: '小微商户' }, { value: 'INDIVIDUAL', label: '个体工商户' }, { value: 'ENTERPRISE', label: '企业' }]} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'businessScene']} label="经营场景" extra={mappingExtra(fieldMappingByLocalField, 'application.businessScene')} rules={[{ required: true }]}><Radio.Group><Radio value="STORE">固定门店</Radio><Radio value="MOBILE">流动摊位／便民服务</Radio></Radio.Group></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'merchantShortName']} label="商户简称" extra={mappingExtra(fieldMappingByLocalField, 'application.merchantShortName')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'servicePhone']} label="客服电话" extra={mappingExtra(fieldMappingByLocalField, 'application.servicePhone')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col span={24}><Form.Item name={['application', 'businessAddress']} label="实际经营地址" extra={mappingExtra(fieldMappingByLocalField, 'application.businessAddress')} rules={[{ required: true }]}><Input.TextArea rows={2} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'operatorName']} label="经营者／法定代表人" extra={mappingExtra(fieldMappingByLocalField, 'application.operatorName')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'contactPhone']} label="联系电话" extra={mappingExtra(fieldMappingByLocalField, 'application.contactPhone')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['application', 'contactEmail']} label="联系邮箱" extra={mappingExtra(fieldMappingByLocalField, 'application.contactEmail')} rules={[{ required: true }, { type: 'email' }]}><Input /></Form.Item></Col>
+              {editedSubjectType !== 'MICRO' && <Col xs={24} md={12}><Form.Item name={['application', 'licenseNumber']} label="统一社会信用代码" extra={mappingExtra(fieldMappingByLocalField, 'application.licenseNumber')} rules={[{ required: true }]}><Input /></Form.Item></Col>}
+            </Row>
+            <Space direction="vertical" size={8} style={{ marginBottom: 20 }}>
+              <Form.Item name={['application', 'qualificationConfirmed']} valuePropName="checked" noStyle><Checkbox>资料真实有效已确认</Checkbox></Form.Item>
+              <Form.Item name={['application', 'identityMaterialReady']} valuePropName="checked" noStyle><Checkbox>身份证材料已备齐</Checkbox></Form.Item>
+              <Form.Item name={['application', 'settlementAccountReady']} valuePropName="checked" noStyle><Checkbox>结算账户材料已备齐</Checkbox></Form.Item>
+              <Form.Item name={['application', 'businessMaterialReady']} valuePropName="checked" noStyle><Checkbox>经营场景材料已备齐</Checkbox></Form.Item>
+            </Space>
 
-          <div>
+            <Divider />
             <Typography.Title level={5}>证件与结算账户</Typography.Title>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="证件姓名">{detail.sensitive.idCardName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="身份证号码">{detail.sensitive.idCardNumber || '—'}</Descriptions.Item>
-              <Descriptions.Item label="身份证住址" span={2}>{detail.sensitive.idCardAddress || '—'}</Descriptions.Item>
-              <Descriptions.Item label="证件有效期">{detail.sensitive.cardPeriodBegin || '—'} 至 {detail.sensitive.cardPeriodEnd || '—'}</Descriptions.Item>
-              <Descriptions.Item label="营业执照主体">{detail.sensitive.merchantName || '不适用'}</Descriptions.Item>
-              <Descriptions.Item label="账户类型">{detail.sensitive.accountType === 'BANK_ACCOUNT_TYPE_CORPORATE' ? '对公账户' : '经营者个人账户'}</Descriptions.Item>
-              <Descriptions.Item label="开户名称">{detail.sensitive.accountName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="银行账号">{detail.sensitive.accountNumber || '—'}</Descriptions.Item>
-              <Descriptions.Item label="开户银行">{detail.sensitive.accountBank || '—'}</Descriptions.Item>
-              <Descriptions.Item label="支行／联行号">{detail.sensitive.bankName || detail.sensitive.bankBranchId || '—'}</Descriptions.Item>
-              <Descriptions.Item label="银行地区编码">{detail.sensitive.bankAddressCode || '—'}</Descriptions.Item>
-            </Descriptions>
-          </div>
+            <Row gutter={16}>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'idCardName']} label="身份证姓名" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.idCardName')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'idCardNumber']} label="身份证号码" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.idCardNumber')} rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
+              <Col span={24}><Form.Item name={['sensitive', 'idCardAddress']} label="身份证住址" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.idCardAddress')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'cardPeriodBegin']} label="证件有效期开始" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.cardPeriodBegin')} rules={[{ required: true }]}><Input placeholder="YYYY-MM-DD" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'cardPeriodEnd']} label="证件有效期结束" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.cardPeriodEnd')} rules={[{ required: true }]}><Input placeholder="YYYY-MM-DD 或 长期" /></Form.Item></Col>
+              {editedSubjectType !== 'MICRO' && <><Col xs={24} md={12}><Form.Item name={['sensitive', 'merchantName']} label="营业执照主体" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.merchantName')} rules={[{ required: true }]}><Input /></Form.Item></Col><Col xs={24} md={12}><Form.Item name={['sensitive', 'legalPerson']} label="营业执照经营者／法定代表人" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.legalPerson')} rules={[{ required: true }]}><Input /></Form.Item></Col></>}
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'accountType']} label="账户类型" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.accountType')} rules={[{ required: true }]}><Select options={editedSubjectType === 'ENTERPRISE' ? [{ value: 'BANK_ACCOUNT_TYPE_CORPORATE', label: '对公账户' }] : [{ value: 'BANK_ACCOUNT_TYPE_PERSONAL', label: '经营者个人账户' }, ...(editedSubjectType === 'MICRO' ? [] : [{ value: 'BANK_ACCOUNT_TYPE_CORPORATE', label: '对公账户' }])]} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'accountName']} label="开户名称" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.accountName')} rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'accountNumber']} label="银行账号" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.accountNumber')} rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'accountBank']} label="开户银行" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.accountBank')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'bankAddressCode']} label="银行地区编码" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.bankAddressCode')} rules={[{ pattern: /^\d{6}$/, message: '请输入6位数字' }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'bankBranchId']} label="联行号" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.bankBranchId')} rules={[{ pattern: /^\d{12}$/, message: '请输入12位数字' }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'bankName']} label="开户支行全称" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.bankName')}><Input /></Form.Item></Col>
+            </Row>
 
-          <div>
+            <Divider />
             <Typography.Title level={5}>经营与结算规则</Typography.Title>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="门店名称">{detail.sensitive.storeName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="门店地区编码">{detail.sensitive.storeAddressCode || '—'}</Descriptions.Item>
-              <Descriptions.Item label="结算规则 ID">{detail.sensitive.settlementId || '—'}</Descriptions.Item>
-              <Descriptions.Item label="所属行业">{detail.sensitive.qualificationType || '—'}</Descriptions.Item>
-            </Descriptions>
+            <Row gutter={16}>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'storeName']} label="门店／经营名称" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.storeName')} rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'storeAddressCode']} label="门店省市编码" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.storeAddressCode')} rules={[{ required: true }, { pattern: /^\d+$/ }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'settlementId']} label="结算规则 ID" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.settlementId')} rules={[{ required: true }]}><Select options={[{ value: editedSubjectType === 'MICRO' ? '703' : editedSubjectType === 'ENTERPRISE' ? '716' : '719', label: editedSubjectType === 'MICRO' ? '703 · 小微' : editedSubjectType === 'ENTERPRISE' ? '716 · 企业' : '719 · 个体工商户' }]} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['sensitive', 'qualificationType']} label="所属行业" extra={mappingExtra(fieldMappingByLocalField, 'sensitive.qualificationType')} rules={[{ required: true }]}><Select showSearch options={availableIndustries.map((item) => ({ value: item.industry, label: item.industry }))} /></Form.Item></Col>
+            </Row>
+            {selectedIndustryRequirement && <Alert
+              type={selectedIndustryRequirement.qualificationMode === 'NONE' ? 'info' : selectedIndustryRequirement.qualificationMode === 'REQUIRED' ? 'warning' : 'success'}
+              showIcon
+              message={`${selectedIndustryRequirement.industry} · ${selectedIndustryRequirement.settlementId} · ${selectedIndustryRequirement.qualificationMode === 'NONE' ? '无需特殊资质' : selectedIndustryRequirement.qualificationMode === 'REQUIRED' ? '必须提供特殊资质' : selectedIndustryRequirement.qualificationMode === 'ALTERNATIVE' ? '许可证或经营照片二选一' : '按实际经营内容判断'}`}
+              description={<>{selectedIndustryRequirement.requirement} <a href={selectedIndustryRequirement.sourceUrl} target="_blank" rel="noreferrer">查看微信官方对照表</a></>}
+            />}
+          </Form>
+
+          <div>
+            <Typography.Title level={5}>证件与经营照片及微信字段映射</Typography.Title>
+            <Image.PreviewGroup>
+              <Row gutter={[16, 16]}>
+                {detail.mediaRequirements.map((requirement) => {
+                  const item = mediaByField[requirement.fieldName];
+                  return <Col xs={24} sm={12} md={8} key={requirement.fieldName}>
+                  <Card size="small" title={<Space>{requirement.label}<Tag color={requirement.required ? 'error' : 'default'}>{requirement.required ? '必需' : '按规则'}</Tag></Space>}>
+                    {item ? <Image src={item.dataUrl} alt={requirement.label} style={{ width: '100%', height: 180, objectFit: 'contain', background: '#f5f5f5' }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未上传" style={{ height: 180, paddingTop: 35 }} />}
+                    <Typography.Paragraph style={{ marginTop: 10, marginBottom: 4 }}><Typography.Text code>{requirement.wechatPath}</Typography.Text></Typography.Paragraph>
+                    <Typography.Paragraph type="secondary" style={{ minHeight: 44 }}>{requirement.requirement}</Typography.Paragraph>
+                    {editing && <Upload accept="image/jpeg,image/png,image/bmp" maxCount={1} showUploadList={false} customRequest={replaceMedia(requirement.fieldName)}>
+                      <Button block icon={<UploadOutlined />} loading={uploadingField === requirement.fieldName}>{item ? '重新上传并替换' : '上传材料'}</Button>
+                    </Upload>}
+                  </Card>
+                </Col>})}
+              </Row>
+            </Image.PreviewGroup>
           </div>
 
           <div>
-            <Typography.Title level={5}>证件与经营照片</Typography.Title>
-            {detail.media.length === 0 ? <Empty description="暂无可供人工预审的加密图片副本，请驳回并要求商户重新上传" /> : <Image.PreviewGroup>
-              <Row gutter={[16, 16]}>
-                {detail.media.map((item) => <Col xs={24} sm={12} md={8} key={item.fieldName}>
-                  <Card size="small" title={item.label || item.fieldName}>
-                    <Image src={item.dataUrl} alt={item.label} style={{ width: '100%', height: 180, objectFit: 'contain', background: '#f5f5f5' }} />
-                  </Card>
-                </Col>)}
-              </Row>
-            </Image.PreviewGroup>}
+            <Typography.Title level={5}>全部字段提交映射</Typography.Title>
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="localField"
+              dataSource={detail.fieldMappings}
+              columns={[
+                { title: '审核内容', dataIndex: 'label', key: 'label', width: 180 },
+                { title: '本地字段', dataIndex: 'localField', key: 'localField', width: 240, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+                { title: '微信接口字段', dataIndex: 'wechatField', key: 'wechatField', width: 220, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+                { title: '微信请求路径', dataIndex: 'wechatPath', key: 'wechatPath', render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+              ]}
+              scroll={{ x: 980 }}
+            />
           </div>
 
           <Checkbox checked={materialsConfirmed} disabled={!detail.reviewReady} onChange={(event) => setMaterialsConfirmed(event.target.checked)}>

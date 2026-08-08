@@ -1,6 +1,7 @@
 package securestore
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,10 @@ func TestEncryptDecryptBindsTenantAndPurpose(t *testing.T) {
 func TestDecryptRejectsTamperingAndUnknownVersion(t *testing.T) {
 	store, _ := New(strings.Repeat("z", 32))
 	ciphertext, _ := store.Encrypt([]byte("secret"), 1, "field")
-	tampered := ciphertext[:len(ciphertext)-1] + "A"
+	_, encoded, _ := strings.Cut(ciphertext, ":")
+	payload, _ := base64.RawURLEncoding.DecodeString(encoded)
+	payload[len(payload)-1] ^= 0x01
+	tampered := "v1:" + base64.RawURLEncoding.EncodeToString(payload)
 	if _, err := store.Decrypt(tampered, 1, "field"); err == nil {
 		t.Fatal("tampering must fail")
 	}

@@ -331,6 +331,14 @@ export const tenantService = {
     (await http.post<TenantPaymentSettings>(`/platform/tenants/${id}/wechat-onboarding/review`, { action, note: note || '', materialsConfirmed })).data,
   getOnboardingReviewDetail: async (id: string) =>
     (await http.get<OnboardingReviewDetail>(`/platform/tenants/${id}/wechat-onboarding/review-detail`)).data,
+  updateOnboardingReviewDetail: async (id: string, values: Pick<OnboardingReviewDetail, 'application' | 'sensitive'>) =>
+    (await http.put<OnboardingReviewDetail>(`/platform/tenants/${id}/wechat-onboarding/review-detail`, values)).data,
+  uploadOnboardingReviewMedia: async (id: string, field: string, file: File) => {
+    const body = new FormData();
+    body.append('field', field);
+    body.append('file', file);
+    return (await http.postForm<OnboardingReviewDetail>(`/platform/tenants/${id}/wechat-onboarding/media`, body)).data;
+  },
   listPendingOnboarding: async (status?: string) =>
     (await http.get<PendingOnboardingApplication[]>('/platform/wechat-onboarding/pending', status ? { status } : {})).data,
   createOwner: async (id: string, values: { username: string; password?: string; displayName?: string; accountMode?: 'CREATE' | 'EXISTING' }) => {

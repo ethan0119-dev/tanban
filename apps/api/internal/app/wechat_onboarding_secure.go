@@ -107,6 +107,9 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, sub
 	if subjectType == "MICRO" && input.AccountType != "BANK_ACCOUNT_TYPE_PERSONAL" {
 		return errors.New("小微商户只能使用经营者个人银行卡")
 	}
+	if subjectType == "ENTERPRISE" && input.AccountType != "BANK_ACCOUNT_TYPE_CORPORATE" {
+		return errors.New("企业主体只能使用对公银行账户")
+	}
 	if input.BankAddressCode != "" && (len(input.BankAddressCode) != 6 || !digitsOnly(input.BankAddressCode)) {
 		return errors.New("开户银行省市编码必须是微信支付地区表中的6位数字")
 	}
@@ -119,8 +122,19 @@ func validateWechatOnboardingSensitive(input wechatOnboardingSensitiveInput, sub
 	if subjectType != "MICRO" && len(input.MiniProgramPics) == 0 {
 		return errors.New("请至少上传一张小程序经营页面截图")
 	}
-	if input.QualificationType == "餐饮" && len(input.QualificationPics) == 0 && input.CashierPic == "" {
-		return errors.New("餐饮商户请上传食品经营资质，或补充收银台照片")
+	expectedSettlementID := expectedWechatSettlementID(subjectType)
+	if input.SettlementID != expectedSettlementID {
+		return fmt.Errorf("%s主体的结算规则 ID 必须为 %s", subjectType, expectedSettlementID)
+	}
+	rule, known := selectedOnboardingIndustryRule(subjectType, input.SettlementID, input.QualificationType)
+	if !known {
+		return errors.New("所属行业与主体类型、结算规则 ID 不匹配")
+	}
+	if rule.QualificationMode == "REQUIRED" && len(input.QualificationPics) == 0 {
+		return errors.New("当前行业必须上传对应的行业特殊资质")
+	}
+	if rule.QualificationMode == "ALTERNATIVE" && len(input.QualificationPics) == 0 && input.CashierPic == "" {
+		return errors.New("当前行业请上传行业许可证，或补充收银台照片作为经营照片替代材料")
 	}
 	return nil
 }
@@ -171,45 +185,11 @@ func (s *Server) saveMerchantWechatOnboardingSensitive(w http.ResponseWriter, r 
 }
 
 func (s *Server) uploadWechatOnboardingMedia(w http.ResponseWriter, r *http.Request) {
-	wechat := s.WeChatPay
-	if wechat == nil {
-		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_ACTIVE", "微信支付服务商尚未启用")
-		return
-	}
-	if s.SensitiveData == nil {
-		writeError(w, http.StatusServiceUnavailable, "SENSITIVE_STORE_NOT_CONFIGURED", "平台尚未配置专用数据加密主密钥")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
-	if err := r.ParseMultipartForm(3 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
-		return
-	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "请选择进件图片")
-		return
-	}
-	defer file.Close()
-	fieldName := strings.TrimSpace(r.FormValue("field"))
-	if _, ok := onboardingReviewMediaLabels[fieldName]; !ok {
-		writeError(w, http.StatusBadRequest, "INVALID_MEDIA_FIELD", "不支持的进件图片类型")
-		return
-	}
-	contentType := detectUploadContentType(file, header)
-	contents, err := io.ReadAll(io.LimitReader(file, (2<<20)+1))
-	if err != nil || len(contents) == 0 || len(contents) > 2<<20 {
-		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
-		return
-	}
-	_, _ = file.Seek(0, io.SeekStart)
-	mediaID, err := wechat.UploadApplymentImage(r.Context(), file, filepath.Base(header.Filename), contentType)
-	if err != nil {
-		s.Logger.Warn("upload WeChat onboarding image", "error", err)
-		writeError(w, http.StatusBadGateway, "WECHAT_MEDIA_UPLOAD_FAILED", "图片上传微信支付失败")
-		return
-	}
 	actor := currentIdentity(r.Context())
+	fieldName, contentType, filename, contents, mediaID, ok := s.receiveWechatOnboardingMedia(w, r)
+	if !ok {
+		return
+	}
 	ciphertext, err := s.SensitiveData.Encrypt(contents, actor.TenantID, wechatOnboardingMediaPurpose+":"+fieldName)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ENCRYPTION_FAILED", "审核图片加密失败")
@@ -220,12 +200,158 @@ func (s *Server) uploadWechatOnboardingMedia(w http.ResponseWriter, r *http.Requ
 	) VALUES(?,?,0,?,?,?,'v1',?)
 	ON DUPLICATE KEY UPDATE content_type=VALUES(content_type),original_filename=VALUES(original_filename),
 		ciphertext=VALUES(ciphertext),key_version='v1',wechat_media_id=VALUES(wechat_media_id)`,
-		actor.TenantID, fieldName, contentType, filepath.Base(header.Filename), ciphertext, mediaID); err != nil {
+		actor.TenantID, fieldName, contentType, filename, ciphertext, mediaID); err != nil {
 		handleSQLError(w, err)
 		return
 	}
 	s.audit(r.Context(), actor, "merchant.wechat_onboarding.media.upload", "tenant", int64String(actor.TenantID), map[string]any{"content_type": contentType, "field": fieldName}, r)
 	writeData(w, http.StatusCreated, map[string]string{"mediaId": mediaID})
+}
+
+func (s *Server) receiveWechatOnboardingMedia(w http.ResponseWriter, r *http.Request) (string, string, string, []byte, string, bool) {
+	wechat := s.WeChatPay
+	if wechat == nil {
+		writeError(w, http.StatusServiceUnavailable, "WECHAT_PAY_NOT_ACTIVE", "微信支付服务商尚未启用")
+		return "", "", "", nil, "", false
+	}
+	if s.SensitiveData == nil {
+		writeError(w, http.StatusServiceUnavailable, "SENSITIVE_STORE_NOT_CONFIGURED", "平台尚未配置专用数据加密主密钥")
+		return "", "", "", nil, "", false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
+	if err := r.ParseMultipartForm(3 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
+		return "", "", "", nil, "", false
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "请选择进件图片")
+		return "", "", "", nil, "", false
+	}
+	defer file.Close()
+	fieldName := strings.TrimSpace(r.FormValue("field"))
+	if _, ok := onboardingReviewMediaLabels[fieldName]; !ok {
+		writeError(w, http.StatusBadRequest, "INVALID_MEDIA_FIELD", "不支持的进件图片类型")
+		return "", "", "", nil, "", false
+	}
+	contentType := detectUploadContentType(file, header)
+	contents, err := io.ReadAll(io.LimitReader(file, (2<<20)+1))
+	if err != nil || len(contents) == 0 || len(contents) > 2<<20 {
+		writeError(w, http.StatusBadRequest, "INVALID_IMAGE", "图片不得超过 2MB")
+		return "", "", "", nil, "", false
+	}
+	_, _ = file.Seek(0, io.SeekStart)
+	filename := filepath.Base(header.Filename)
+	mediaID, err := wechat.UploadApplymentImage(r.Context(), file, filename, contentType)
+	if err != nil {
+		s.Logger.Warn("upload WeChat onboarding image", "error", err)
+		writeError(w, http.StatusBadGateway, "WECHAT_MEDIA_UPLOAD_FAILED", "图片上传微信支付失败")
+		return "", "", "", nil, "", false
+	}
+	return fieldName, contentType, filename, contents, mediaID, true
+}
+
+func (s *Server) uploadPlatformWechatOnboardingMedia(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r, "tenantID")
+	if !ok {
+		return
+	}
+	var sensitiveCiphertext, currentStatus string
+	if err := s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(sensitive_ciphertext,''),application_status
+		FROM wechat_pay_onboarding_applications WHERE tenant_id=?`, tenantID).Scan(&sensitiveCiphertext, &currentStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "进件申请不存在")
+			return
+		}
+		handleSQLError(w, err)
+		return
+	}
+	if currentStatus != "PENDING_PLATFORM_REVIEW" {
+		writeError(w, http.StatusConflict, "CONFLICT", "只有待平台审核的申请允许替换材料")
+		return
+	}
+	if sensitiveCiphertext == "" {
+		writeError(w, http.StatusConflict, "SENSITIVE_MATERIAL_REQUIRED", "申请尚未保存安全进件资料")
+		return
+	}
+	fieldName, contentType, filename, contents, mediaID, uploaded := s.receiveWechatOnboardingMedia(w, r)
+	if !uploaded {
+		return
+	}
+	mediaCiphertext, err := s.SensitiveData.Encrypt(contents, tenantID, wechatOnboardingMediaPurpose+":"+fieldName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ENCRYPTION_FAILED", "审核图片加密失败")
+		return
+	}
+	sensitive, err := s.decryptWechatOnboardingSensitiveRaw(r.Context(), tenantID, sensitiveCiphertext)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DECRYPTION_FAILED", "安全进件资料解密失败")
+		return
+	}
+	setWechatOnboardingMediaReference(&sensitive, fieldName, mediaID)
+	sensitivePayload, err := json.Marshal(sensitive)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ENCODING_FAILED", "安全进件资料编码失败")
+		return
+	}
+	updatedSensitiveCiphertext, err := s.SensitiveData.Encrypt(sensitivePayload, tenantID, wechatOnboardingPurpose)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ENCRYPTION_FAILED", "安全进件资料加密失败")
+		return
+	}
+	tx, err := s.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO wechat_pay_onboarding_review_media(
+		tenant_id,field_name,ordinal_no,content_type,original_filename,ciphertext,key_version,wechat_media_id
+	) VALUES(?,?,0,?,?,?,'v1',?)
+	ON DUPLICATE KEY UPDATE content_type=VALUES(content_type),original_filename=VALUES(original_filename),
+		ciphertext=VALUES(ciphertext),key_version='v1',wechat_media_id=VALUES(wechat_media_id)`,
+		tenantID, fieldName, contentType, filename, mediaCiphertext, mediaID)
+	if err == nil {
+		var result sql.Result
+		result, err = tx.ExecContext(r.Context(), `UPDATE wechat_pay_onboarding_applications SET sensitive_ciphertext=?,sensitive_key_version='v1'
+			WHERE tenant_id=? AND application_status='PENDING_PLATFORM_REVIEW'`, updatedSensitiveCiphertext, tenantID)
+		if err == nil {
+			if changed, _ := result.RowsAffected(); changed != 1 {
+				err = errors.New("onboarding application status changed while replacing media")
+			}
+		}
+	}
+	if err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		handleSQLError(w, err)
+		return
+	}
+	s.audit(r.Context(), currentIdentity(r.Context()), "platform.wechat_onboarding.media.replace", "tenant", int64String(tenantID), map[string]any{"content_type": contentType, "field": fieldName}, r)
+	s.getWechatOnboardingReviewDetail(w, r)
+}
+
+func setWechatOnboardingMediaReference(sensitive *wechatOnboardingSensitiveInput, fieldName, mediaID string) {
+	switch fieldName {
+	case "businessLicenseCopy":
+		sensitive.BusinessLicenseCopy = mediaID
+	case "idCardCopy":
+		sensitive.IDCardCopy = mediaID
+	case "idCardNational":
+		sensitive.IDCardNational = mediaID
+	case "storeEntrancePic":
+		sensitive.StoreEntrancePic = mediaID
+	case "indoorPic":
+		sensitive.IndoorPic = mediaID
+	case "cashierPic":
+		sensitive.CashierPic = mediaID
+	case "miniProgramPic":
+		sensitive.MiniProgramPics = []string{mediaID}
+	case "qualificationPic":
+		sensitive.QualificationPics = []string{mediaID}
+	}
 }
 
 var onboardingReviewMediaLabels = map[string]string{
@@ -421,9 +547,9 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 	if sensitive.BankName != "" {
 		bankAccountInfo["bank_name"] = sensitive.BankName
 	}
-	settlementInfo := map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType}
-	if len(sensitive.QualificationPics) > 0 {
-		settlementInfo["qualifications"] = sensitive.QualificationPics
+	settlementInfo, err := buildWechatOnboardingSettlementInfo(app.SubjectType, sensitive)
+	if err != nil {
+		return provider.WeChatApplymentResult{}, err
 	}
 	payload := map[string]any{
 		"business_code":     businessCode,
@@ -441,6 +567,29 @@ func (s *Server) submitWechatApplyment(ctx context.Context, tenantID int64) (pro
 		wechat_applyment_state='APPLYMENT_STATE_AUDITING',application_status='SUBMITTED_TO_WECHAT',provider_submitted_at=NOW(3)
 		WHERE tenant_id=?`, businessCode, result.ApplymentID, tenantID)
 	return result, err
+}
+
+func buildWechatOnboardingSettlementInfo(subjectType string, sensitive wechatOnboardingSensitiveInput) (map[string]any, error) {
+	settlementInfo := map[string]any{"settlement_id": sensitive.SettlementID, "qualification_type": sensitive.QualificationType}
+	rule, ok := selectedOnboardingIndustryRule(subjectType, sensitive.SettlementID, sensitive.QualificationType)
+	if !ok {
+		return nil, errors.New("onboarding settlement rule and industry do not match")
+	}
+	qualificationIDs := []string{}
+	switch rule.QualificationMode {
+	case "REQUIRED", "CONDITIONAL":
+		qualificationIDs = append(qualificationIDs, sensitive.QualificationPics...)
+	case "ALTERNATIVE":
+		if len(sensitive.QualificationPics) > 0 {
+			qualificationIDs = append(qualificationIDs, sensitive.QualificationPics...)
+		} else {
+			qualificationIDs = append(qualificationIDs, sensitive.StoreEntrancePic, sensitive.IndoorPic, sensitive.CashierPic)
+		}
+	}
+	if len(qualificationIDs) > 0 {
+		settlementInfo["qualifications"] = qualificationIDs
+	}
+	return settlementInfo, nil
 }
 
 func (s *Server) syncWechatApplyment(ctx context.Context, tenantID int64) (provider.WeChatApplymentStatus, error) {

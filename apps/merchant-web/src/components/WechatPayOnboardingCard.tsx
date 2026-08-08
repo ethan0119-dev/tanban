@@ -106,6 +106,7 @@ export function WechatPayOnboardingCard() {
 
   useEffect(() => {
     if (subjectType === 'MICRO') sensitiveForm.setFieldValue('accountType', 'BANK_ACCOUNT_TYPE_PERSONAL');
+    if (subjectType === 'ENTERPRISE') sensitiveForm.setFieldValue('accountType', 'BANK_ACCOUNT_TYPE_CORPORATE');
   }, [sensitiveForm, subjectType]);
 
   const persist = async (submit: boolean) => {
@@ -316,7 +317,7 @@ export function WechatPayOnboardingCard() {
           </Row>
           <Typography.Title level={5}>结算账户</Typography.Title>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Item name="accountType" label="账户类型" rules={[{ required: true }]}><Radio.Group><Radio value="BANK_ACCOUNT_TYPE_PERSONAL">经营者个人账户</Radio>{subjectType !== 'MICRO' && <Radio value="BANK_ACCOUNT_TYPE_CORPORATE">对公账户</Radio>}</Radio.Group></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="accountType" label="账户类型" rules={[{ required: true }]}><Radio.Group>{subjectType !== 'ENTERPRISE' && <Radio value="BANK_ACCOUNT_TYPE_PERSONAL">经营者个人账户</Radio>}{subjectType !== 'MICRO' && <Radio value="BANK_ACCOUNT_TYPE_CORPORATE">对公账户</Radio>}</Radio.Group></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="accountName" label="账户名称" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="accountNumber" label="银行账号" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="accountBank" label="开户银行" extra="须使用微信银行列表的标准值；天津银行等地方银行通常填写“其他银行”" rules={[{ required: true }]}><Input placeholder="例：工商银行；地方银行填：其他银行" /></Form.Item></Col>

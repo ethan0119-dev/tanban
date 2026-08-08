@@ -149,6 +149,8 @@ func (s *Server) platformRoutes(r chi.Router) {
 		t.With(requireRoles(RolePlatformAdmin)).Put("/cashier-enabled", s.updateTenantCashierEnabled)
 		t.Get("/payment-settings", s.getTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Get("/wechat-onboarding/review-detail", s.getWechatOnboardingReviewDetail)
+		t.With(requireRoles(RolePlatformAdmin)).Put("/wechat-onboarding/review-detail", s.updateWechatOnboardingReviewDetail)
+		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/media", s.uploadPlatformWechatOnboardingMedia)
 		t.With(requireRoles(RolePlatformAdmin)).Put("/payment-settings", s.updateTenantPaymentSettings)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/review", s.reviewWechatOnboarding)
 		t.With(requireRoles(RolePlatformAdmin)).Post("/wechat-onboarding/sync", s.syncPlatformWechatOnboarding)
